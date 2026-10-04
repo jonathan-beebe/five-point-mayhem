@@ -298,7 +298,7 @@ local function isClear(position: Vector3, roadMargin: number): boolean
 		return false
 	end
 	local _, regionDistance = Config.nearestRegion(position)
-	if regionDistance < 145 then
+	if regionDistance < 145 or Config.isInParking(position) then
 		return false
 	end
 	return Roads.distanceTo(position) > roadMargin

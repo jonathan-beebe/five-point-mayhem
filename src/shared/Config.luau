@@ -24,6 +24,11 @@ Config.OUTER_ROAD_RADIUS = 720
 Config.WORLD_RADIUS = 1000
 Config.SPOKE_END_RADIUS = 420
 
+-- Motor pools: vehicles park in rows along both sides of each spoke road, from the lobby out.
+Config.PARKING_START_RADIUS = 90
+Config.PARKING_END_RADIUS = 250
+Config.PARKING_REACH = 48 -- from the spoke's center line; scenery stays out of this band
+
 Config.NORMAL_GRAVITY = 196.2
 Config.MOON_GRAVITY = 38
 
@@ -72,6 +77,23 @@ function Config.nearestRegion(position: Vector3): (number, number)
 		end
 	end
 	return best, bestDistance
+end
+
+-- Whether a position is inside a motor pool beside a spoke road.
+function Config.isInParking(position: Vector3): boolean
+	for index = 1, #Config.REGIONS do
+		local angle = Config.regionAngle(index)
+		local along = position.X * math.cos(angle) + position.Z * math.sin(angle)
+		local across = -position.X * math.sin(angle) + position.Z * math.cos(angle)
+		if
+			along > Config.PARKING_START_RADIUS - 10
+			and along < Config.PARKING_END_RADIUS + 10
+			and math.abs(across) < Config.PARKING_REACH
+		then
+			return true
+		end
+	end
+	return false
 end
 
 -- The lobby is a safe zone: nobody inside it can deal or take damage.

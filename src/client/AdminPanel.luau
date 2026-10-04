@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 
 local AdminPanel = {}
@@ -19,7 +20,7 @@ local GIFTS = {
 	{ id = "speed", label = "👟 Super speed" },
 	{ id = "jump", label = "🦘 Mega jump" },
 	{ id = "giant", label = "🗿 Giant" },
-	{ id = "car", label = "🚙 Car" },
+	{ id = "car", label = "🚙 Random vehicle" },
 }
 
 local POWERS = {
@@ -196,6 +197,9 @@ local function build()
 	})
 
 	local entries = table.clone(GIFTS)
+	for _, vehicle in VehicleCatalog.ALL do
+		table.insert(entries, { id = vehicle.id, label = vehicle.icon .. " " .. vehicle.name })
+	end
 	for _, weapon in WeaponCatalog.ALL do
 		table.insert(entries, { id = weapon.id, label = weapon.name })
 	end

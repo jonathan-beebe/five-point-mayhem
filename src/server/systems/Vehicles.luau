@@ -1,8 +1,9 @@
--- Arcade cars parked beside the lobby exits and near each landmark. A car is a frictionless skid
--- carrying welded body parts. The driver's client sends its stick/keys over the DriveInput remote;
--- the server turns that into targets for velocity constraints on the skid. Constraints are
--- simulated by whichever machine owns the car's physics, so this works under any ownership.
--- Wrecked or abandoned cars return to their parking spot.
+-- Arcade vehicles parked in motor pools along each spoke road. A vehicle is a frictionless skid
+-- carrying welded body parts, built from its model file in `src/server/vehicleModels`. The
+-- driver's client sends its stick/keys over the DriveInput remote; the server turns that into
+-- targets for velocity constraints on the skid. Constraints are simulated by whichever machine
+-- owns the vehicle's physics, so this works under any ownership. Wrecked or abandoned vehicles
+-- return to their parking spot.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -10,97 +11,78 @@ local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
+local VehicleModel = require(script.Parent.VehicleModel)
 
 local Vehicles = {}
 
 local rgb = Color3.fromRGB
 local M = Enum.Material
 
-type Kind = {
-	name: string,
-	width: number,
-	length: number,
-	wheel: number,
-	speed: number,
-	color: Color3,
-	seats: number,
-}
-
-local KINDS: { [string]: Kind } = {
-	jeep = {
-		name = "Jeep",
-		width = 8,
-		length = 14,
-		wheel = 3.4,
-		speed = 85,
-		color = rgb(85, 110, 60),
-		seats = 3,
-	},
-	monster = {
-		name = "Monster Truck",
-		width = 11,
-		length = 16,
-		wheel = 7,
-		speed = 75,
-		color = rgb(200, 40, 40),
-		seats = 3,
-	},
-	kart = {
-		name = "Go-Kart",
-		width = 5,
-		length = 8,
-		wheel = 2,
-		speed = 105,
-		color = rgb(40, 120, 255),
-		seats = 0,
-	},
-	taxi = {
-		name = "Taxi",
-		width = 8,
-		length = 15,
-		wheel = 3,
-		speed = 90,
-		color = rgb(255, 200, 20),
-		seats = 3,
-	},
-	buggy = {
-		name = "Dune Buggy",
-		width = 8,
-		length = 12,
-		wheel = 3.6,
-		speed = 95,
-		color = rgb(255, 130, 30),
-		seats = 1,
-	},
-	snowcat = {
-		name = "Snow Cat",
-		width = 10,
-		length = 14,
-		wheel = 4,
-		speed = 70,
-		color = rgb(250, 250, 255),
-		seats = 3,
-	},
-}
-
--- Themed car parked near each landmark, by region id.
-local REGION_KIND =
-	{ castle = "jeep", pagoda = "kart", tower = "taxi", pyramid = "buggy", palace = "snowcat" }
+local modelFiles = script.Parent.Parent:FindFirstChild("vehicleModels")
 
 local folder = Instance.new("Folder")
 folder.Name = "Vehicles"
 folder.Parent = workspace
 
+-- Stands in for a vehicle whose model file is missing or broken.
+local function placeholder(name: string): VehicleModel.Model
+	return VehicleModel.define({
+		name = name,
+		speed = 80,
+		footprint = Vector2.new(8, 16),
+		seats = { CFrame.new(-1.5, 1.5, 0) },
+		pieces = {
+			{
+				size = Vector3.new(8, 2.5, 16),
+				offset = CFrame.new(0, 2.25, 0),
+				color = rgb(120, 120, 125),
+				material = M.Metal,
+			},
+		},
+	})
+end
+
+local specs: { [string]: VehicleModel.Model } = {}
+
+local function specFor(id: string): VehicleModel.Model
+	local cached = specs[id]
+	if cached then
+		return cached
+	end
+	local entry = VehicleCatalog.get(id)
+	local name = if entry then entry.name else id
+	local file = modelFiles and modelFiles:FindFirstChild(id)
+	local spec
+	if file then
+		local ok, result = pcall(function()
+			return VehicleModel.define(require(file :: ModuleScript) :: any)
+		end)
+		if ok then
+			spec = result
+		else
+			warn("[Mayhem vehicle] " .. id .. ": " .. tostring(result))
+		end
+	end
+	spec = spec or placeholder(name)
+	specs[id] = spec
+	return spec
+end
+
+-- Constraint strengths, tuned on an 8 x 14 skid and scaled with mass and size.
+local BASE_MASS = 8 * 14 * 4
+local BASE_SPAN = 8 ^ 2 + 14 ^ 2
 local ACCELERATION = 55
 local BRAKING = 90
 local COASTING = 30
-local TURN_RATE = 2.4
+local TURN_RATE = 2.4 -- default
 
 type Car = {
 	seat: VehicleSeat,
 	skid: BasePart,
 	mover: LinearVelocity,
 	turner: AngularVelocity,
+	turnRate: number,
 	throttle: number,
 	steer: number,
 }
@@ -140,7 +122,7 @@ local function drive(car: Car, dt: number)
 
 	car.mover.PlaneVelocity = Vector2.new(forward.X * newSpeed, forward.Z * newSpeed)
 	local grip = math.clamp(newSpeed / 20, -1, 1)
-	car.turner.AngularVelocity = Vector3.new(0, -car.steer * TURN_RATE * grip, 0)
+	car.turner.AngularVelocity = Vector3.new(0, -car.steer * car.turnRate * grip, 0)
 end
 
 RunService.Heartbeat:Connect(function(dt)
@@ -169,61 +151,108 @@ Remotes.DriveInput.OnServerEvent:Connect(function(player, throttle, steer)
 	car.steer = math.clamp(steer, -1, 1)
 end)
 
-local function weldPart(
-	model: Model,
-	skid: BasePart,
-	size: Vector3,
-	offset: CFrame,
-	color: Color3,
-	material: Enum.Material?,
-	shape: Enum.PartType?,
-	collide: boolean?
-): Part
-	local part = Instance.new("Part")
-	if shape then
-		part.Shape = shape
-	end
-	part.Size = size
-	part.Color = color
-	part.Material = material or M.SmoothPlastic
-	part.CanCollide = collide == true
+local SKID_TO_GROUND = CFrame.new(0, -0.5, 0)
+
+-- Welds a part to the skid at an offset given in vehicle space (origin on the ground).
+local function attach(model: Model, skid: BasePart, part: BasePart, offset: CFrame)
+	local relative = SKID_TO_GROUND * offset
+	part.Anchored = false
 	part.Massless = true
-	part.CFrame = skid.CFrame * offset
+	part.CFrame = skid.CFrame * relative
 	local weld = Instance.new("Weld")
 	weld.Part0 = skid
 	weld.Part1 = part
-	weld.C0 = offset
+	weld.C0 = relative
 	weld.Parent = part
 	part.Parent = model
-	return part
 end
 
-local function seat(
-	model: Model,
+-- Collision boxes can enclose seats, so players get in by prompt: Drive (E) takes the driver
+-- seat, Ride (F) the free passenger seat nearest the player. Both prompts sit above the middle of
+-- the vehicle and reach past its far end, so they work from any side.
+local function addPrompts(
 	skid: BasePart,
-	className: string,
-	offset: CFrame
-): Seat | VehicleSeat
-	local chair = Instance.new(className) :: any
-	chair.Size = Vector3.new(2.4, 1, 2.4)
-	chair.Color = rgb(30, 30, 30)
-	chair.Massless = true
-	chair.CFrame = skid.CFrame * offset
-	local weld = Instance.new("Weld")
-	weld.Part0 = skid
-	weld.Part1 = chair
-	weld.C0 = offset
-	weld.Parent = chair
-	chair.Parent = model
-	return chair
+	spec: VehicleModel.Model,
+	driver: VehicleSeat,
+	passengers: { Seat }
+)
+	local W, L = spec.footprint.X, spec.footprint.Y
+	local anchor = Instance.new("Attachment")
+	anchor.Name = "PromptAnchor"
+	anchor.Position = Vector3.new(0, 3.5, 0)
+	anchor.Parent = skid
+	local reach = math.sqrt((W / 2) ^ 2 + (L / 2) ^ 2) + 6
+
+	local function prompt(action: string, key: Enum.KeyCode, order: number): ProximityPrompt
+		local each = Instance.new("ProximityPrompt")
+		each.Name = action .. "Prompt"
+		each.ActionText = action
+		each.ObjectText = spec.name
+		each.KeyboardKeyCode = key
+		each.UIOffset = Vector2.new(0, order * 72)
+		each.MaxActivationDistance = reach
+		each.RequiresLineOfSight = false
+		each.Parent = anchor
+		return each
+	end
+
+	local function seatPlayer(player: Player, seat: Seat | VehicleSeat)
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if humanoid and humanoid.Health > 0 and not seat.Occupant then
+			seat:Sit(humanoid)
+		end
+	end
+
+	local drivePrompt = prompt("Drive", Enum.KeyCode.E, 0)
+	drivePrompt.Triggered:Connect(function(player)
+		seatPlayer(player, driver)
+	end)
+	driver:GetPropertyChangedSignal("Occupant"):Connect(function()
+		drivePrompt.Enabled = driver.Occupant == nil
+	end)
+
+	if #passengers == 0 then
+		return
+	end
+	local ridePrompt = prompt("Ride", Enum.KeyCode.F, 1)
+	ridePrompt.Triggered:Connect(function(player)
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if not root then
+			return
+		end
+		local best, bestDistance = nil, math.huge
+		for _, seat in passengers do
+			local distance = (seat.Position - root.Position).Magnitude
+			if not seat.Occupant and distance < bestDistance then
+				best, bestDistance = seat, distance
+			end
+		end
+		if best then
+			seatPlayer(player, best)
+		end
+	end)
+	local function refresh()
+		local free = false
+		for _, seat in passengers do
+			free = free or seat.Occupant == nil
+		end
+		ridePrompt.Enabled = free
+	end
+	for _, seat in passengers do
+		seat:GetPropertyChangedSignal("Occupant"):Connect(refresh)
+	end
 end
 
-local function build(kind: Kind, cframe: CFrame): Model
+local function build(id: string, cframe: CFrame): Model
+	local spec = specFor(id)
 	local model = Instance.new("Model")
-	model.Name = kind.name
-	local W, L, d = kind.width, kind.length, kind.wheel
+	model.Name = spec.name
+	model:SetAttribute("VehicleId", id)
+	local W, L = spec.footprint.X, spec.footprint.Y
 
-	-- The skid is the only colliding, massive part: a low, wide, frictionless sled.
+	-- The skid is the only massive part: a low, frictionless sled under the footprint.
 	local skid = Instance.new("Part")
 	skid.Name = "Skid"
 	skid.Size = Vector3.new(W, 1, L)
@@ -233,103 +262,57 @@ local function build(kind: Kind, cframe: CFrame): Model
 	skid.Parent = model
 	model.PrimaryPart = skid
 
-	local deck = d * 0.55
-	weldPart(
-		model,
-		skid,
-		Vector3.new(W, 1.6, L),
-		CFrame.new(0, deck, 0),
-		kind.color,
-		M.Metal,
-		nil,
-		true
-	)
-	weldPart(
-		model,
-		skid,
-		Vector3.new(W - 1, 1.4, 3),
-		CFrame.new(0, deck + 1.4, -L / 2 + 1.5),
-		kind.color,
-		M.Metal
-	)
-	weldPart(
-		model,
-		skid,
-		Vector3.new(W - 1.4, 2.2, 0.3),
-		CFrame.new(0, deck + 2.6, -L / 2 + 3.2) * CFrame.Angles(math.rad(-20), 0, 0),
-		rgb(150, 200, 230),
-		M.Glass
-	)
-	for _, side in { -1, 1 } do
-		weldPart(
-			model,
-			skid,
-			Vector3.new(0.8, 0.8, 0.3),
-			CFrame.new(side * (W / 2 - 1), deck + 0.6, -L / 2 - 0.1),
-			rgb(255, 255, 210),
-			M.Neon
-		)
-		weldPart(
-			model,
-			skid,
-			Vector3.new(0.8, 0.6, 0.3),
-			CFrame.new(side * (W / 2 - 1), deck + 0.6, L / 2 + 0.1),
-			rgb(255, 30, 30),
-			M.Neon
-		)
+	for index, box in spec.collision :: { VehicleModel.BoxSpec } do
+		local hull = Instance.new("Part")
+		hull.Name = "Hull" .. index
+		hull.Size = box.size
+		hull.Transparency = 1
+		hull.CustomPhysicalProperties = PhysicalProperties.new(1, 0, 0, 100, 1)
+		attach(model, skid, hull, box.offset)
 	end
-	-- Roll bar.
-	if kind.seats > 0 then
-		for _, side in { -1, 1 } do
-			weldPart(
-				model,
-				skid,
-				Vector3.new(0.4, 4, 0.4),
-				CFrame.new(side * (W / 2 - 0.5), deck + 2.8, 1),
-				rgb(40, 40, 40),
-				M.Metal
-			)
+
+	for _, piece in spec.pieces do
+		local part: BasePart = Instance.new(piece.class or "Part") :: any
+		if piece.shape and part:IsA("Part") then
+			part.Shape = piece.shape
 		end
-		weldPart(
-			model,
-			skid,
-			Vector3.new(W - 0.6, 0.4, 0.4),
-			CFrame.new(0, deck + 4.8, 1),
-			rgb(40, 40, 40),
-			M.Metal
-		)
-	end
-	-- Wheels (decorative; the skid carries the car).
-	for _, corner in
-		{ Vector2.new(-1, -1), Vector2.new(1, -1), Vector2.new(-1, 1), Vector2.new(1, 1) }
-	do
-		weldPart(
-			model,
-			skid,
-			Vector3.new(d * 0.45, d, d),
-			CFrame.new(corner.X * (W / 2 + d * 0.15), d / 2 - 0.5, corner.Y * (L / 2 - d * 0.5)),
-			rgb(25, 25, 25),
-			M.SmoothPlastic,
-			Enum.PartType.Cylinder
-		)
+		part.Name = piece.name or "Piece"
+		part.Size = piece.size
+		part.Color = piece.color
+		part.Material = piece.material or M.SmoothPlastic
+		part.Transparency = piece.transparency or 0
+		part.Reflectance = piece.reflectance or 0
+		part.CanCollide = false
+		part.CanTouch = false
+		part.CastShadow = part.Transparency < 0.5
+		attach(model, skid, part, piece.offset)
 	end
 
-	local driver =
-		seat(model, skid, "VehicleSeat", CFrame.new(-W / 4, deck + 1.3, -1)) :: VehicleSeat
-	driver.Name = "DriverSeat"
-	driver.MaxSpeed = kind.speed
+	local driver: VehicleSeat
+	local passengers: { Seat } = {}
+	for index, offset in spec.seats do
+		local chair: BasePart = Instance.new(if index == 1 then "VehicleSeat" else "Seat") :: any
+		chair.Name = if index == 1 then "DriverSeat" else "Seat" .. index
+		chair.Size = VehicleModel.SEAT_SIZE
+		chair.Transparency = 1
+		chair.CanCollide = false
+		attach(model, skid, chair, offset)
+		if index == 1 then
+			driver = chair :: VehicleSeat
+		else
+			table.insert(passengers, chair :: Seat)
+		end
+	end
+	addPrompts(skid, spec, driver, passengers)
+	driver.MaxSpeed = spec.speed
 	driver:SetAttribute("MayhemCar", true)
-	driver:SetAttribute("TopSpeed", kind.speed)
-	local seatOffsets = {
-		CFrame.new(W / 4, deck + 1.3, -1),
-		CFrame.new(-W / 4, deck + 1.3, 3.5),
-		CFrame.new(W / 4, deck + 1.3, 3.5),
-	}
-	for index = 1, kind.seats do
-		seat(model, skid, "Seat", seatOffsets[index])
-	end
+	driver:SetAttribute("TopSpeed", spec.speed)
 
-	-- Keeps the car upright without fixing its heading.
+	local mass = W * L * 4
+	local strength = mass / BASE_MASS
+	local leverage = strength * (W ^ 2 + L ^ 2) / BASE_SPAN
+
+	-- Keeps the vehicle upright without fixing its heading.
 	local attachment = Instance.new("Attachment")
 	attachment.CFrame = CFrame.Angles(0, 0, math.rad(90))
 	attachment.Parent = skid
@@ -338,7 +321,7 @@ local function build(kind: Kind, cframe: CFrame): Model
 	upright.AlignType = Enum.AlignType.PrimaryAxisParallel
 	upright.PrimaryAxis = Vector3.yAxis
 	upright.Attachment0 = attachment
-	upright.MaxTorque = 4e5
+	upright.MaxTorque = 4e5 * leverage
 	upright.Responsiveness = 12
 	upright.Parent = skid
 
@@ -352,18 +335,25 @@ local function build(kind: Kind, cframe: CFrame): Model
 	mover.VelocityConstraintMode = Enum.VelocityConstraintMode.Plane
 	mover.PrimaryTangentAxis = Vector3.xAxis
 	mover.SecondaryTangentAxis = Vector3.zAxis
-	mover.MaxForce = 3e5
+	mover.MaxForce = 3e5 * strength
 	mover.Enabled = false
 	mover.Parent = skid
 	local turner = Instance.new("AngularVelocity")
 	turner.Attachment0 = driveAttachment
 	turner.RelativeTo = Enum.ActuatorRelativeTo.World
-	turner.MaxTorque = 1e6
+	turner.MaxTorque = 1e6 * leverage
 	turner.Enabled = false
 	turner.Parent = skid
 
-	local car: Car =
-		{ seat = driver, skid = skid, mover = mover, turner = turner, throttle = 0, steer = 0 }
+	local car: Car = {
+		seat = driver,
+		skid = skid,
+		mover = mover,
+		turner = turner,
+		turnRate = spec.turnRate or TURN_RATE,
+		throttle = 0,
+		steer = 0,
+	}
 	-- While someone drives, the server simulates the car (and the seated driver with it). When
 	-- they get out, hand their character's physics back to them.
 	local lastDriver: Player? = nil
@@ -396,14 +386,14 @@ local function build(kind: Kind, cframe: CFrame): Model
 	return model
 end
 
-type Spot = { kind: Kind, cframe: CFrame, model: Model? }
+type Spot = { id: string, cframe: CFrame, model: Model? }
 local spots: { Spot } = {}
 
 local function park(spot: Spot)
 	if spot.model then
 		spot.model:Destroy()
 	end
-	spot.model = build(spot.kind, spot.cframe)
+	spot.model = build(spot.id, spot.cframe)
 	spot.model:SetAttribute("LastUsed", os.clock())
 end
 
@@ -418,36 +408,46 @@ local function isOccupied(model: Model): boolean
 	return false
 end
 
-function Vehicles.spawnNear(position: Vector3, kindId: string?): Model
-	local kind = KINDS[kindId or "jeep"] or KINDS.jeep
-	return build(kind, CFrame.new(position + Vector3.new(0, 2, 0)))
+-- Spawns a vehicle (a random one when no id is given) facing away from a position.
+function Vehicles.spawnNear(position: Vector3, facing: Vector3?, id: string?): Model
+	local kind = id and VehicleCatalog.get(id)
+		or VehicleCatalog.ALL[math.random(1, #VehicleCatalog.ALL)]
+	local spec = specFor(kind.id)
+	local flat = facing and Vector3.new(facing.X, 0, facing.Z)
+	local look = if flat and flat.Magnitude > 0.01 then flat.Unit else Vector3.zAxis
+	-- Clear the spawn point by half the vehicle's length.
+	local center = position + look * (spec.footprint.Y / 2) + Vector3.new(0, 1, 0)
+	return build(kind.id, CFrame.lookAt(center, center + look))
+end
+
+-- Lays every catalog vehicle out in rows on both sides of the spoke roads, in catalog order,
+-- dealing them round-robin across the spokes. Each vehicle faces out toward its landmark.
+local function layOut()
+	local cursors: { { number } } = {}
+	for index = 1, #Config.REGIONS do
+		cursors[index] = { Config.PARKING_START_RADIUS, Config.PARKING_START_RADIUS }
+	end
+	for order, entry in VehicleCatalog.ALL do
+		local spoke = (order - 1) % #Config.REGIONS + 1
+		local sideIndex = (math.floor((order - 1) / #Config.REGIONS) % 2) + 1
+		local spec = specFor(entry.id)
+		local W, L = spec.footprint.X, spec.footprint.Y
+		local angle = Config.regionAngle(spoke)
+		local outward = Config.pointAt(angle, 1)
+		local side = Vector3.new(-outward.Z, 0, outward.X) * (if sideIndex == 1 then -1 else 1)
+		local along = cursors[spoke][sideIndex] + L / 2
+		cursors[spoke][sideIndex] += L + 8
+		if along + L / 2 > Config.PARKING_END_RADIUS then
+			warn("[Mayhem vehicle] motor pool overflow at " .. entry.id)
+		end
+		local across = 11 + 5 + W / 2
+		local position = Config.pointAt(angle, along) + side * across + Vector3.new(0, 0.2, 0)
+		table.insert(spots, { id = entry.id, cframe = CFrame.lookAt(position, position + outward) })
+	end
 end
 
 function Vehicles.start()
-	for index, region in Config.REGIONS do
-		local angle = Config.regionAngle(index)
-		local outward = Config.pointAt(angle, 1)
-		local side = Vector3.new(-outward.Z, 0, outward.X)
-		-- Two near the lobby exit, on either side of the road.
-		for _, offset in { -1, 1 } do
-			local position = Config.pointAt(angle, 100)
-				+ side * offset * 22
-				+ Vector3.new(0, 0.2, 0)
-			local kindId = if offset < 0
-				then "jeep"
-				else (if index % 2 == 0 then "monster" else "kart")
-			table.insert(
-				spots,
-				{ kind = KINDS[kindId], cframe = CFrame.lookAt(position, position + outward) }
-			)
-		end
-		-- One themed car on the road toward the landmark.
-		local position = Config.pointAt(angle, 330) + side * 22 + Vector3.new(0, 0.2, 0)
-		table.insert(spots, {
-			kind = KINDS[REGION_KIND[region.id]],
-			cframe = CFrame.lookAt(position, position - outward),
-		})
-	end
+	layOut()
 	for _, spot in spots do
 		park(spot)
 	end

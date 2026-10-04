@@ -1,7 +1,8 @@
 -- God powers. Available as chat commands and from the admin panel (client AdminPanel).
 --
 --   /mayhem                    destroy everyone outside the lobby
---   /give <who> <item>         any weapon, or: speed, jump, giant, heal, shield, car, arsenal
+--   /give <who> <item>         any weapon or vehicle id, or: speed, jump, giant, heal, shield,
+--                              car (a random vehicle), arsenal
 --   /meteors [seconds]         meteor storm across the board
 --   /gravity                   toggle moon gravity
 --   /freeze <who>              freeze players solid for 10 seconds
@@ -19,6 +20,7 @@ local TweenService = game:GetService("TweenService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 local Combat = require(script.Parent.Combat)
 local Creatures = require(script.Parent.Creatures)
@@ -109,6 +111,7 @@ local function gift(player: Player, item: string): boolean
 	local character, humanoid, root = characterParts(player)
 	local backpack = player:FindFirstChildOfClass("Backpack")
 	local weapon = WeaponCatalog.find(item)
+	local vehicle = VehicleCatalog.get(item)
 	if item == "arsenal" then
 		for _, each in WeaponCatalog.ALL do
 			Weapons.give(player, each.id)
@@ -135,8 +138,9 @@ local function gift(player: Player, item: string): boolean
 		local shield = Instance.new("ForceField")
 		shield.Parent = character
 		Debris:AddItem(shield, 30)
-	elseif item == "car" then
-		Vehicles.spawnNear(root.Position + root.CFrame.LookVector * 15)
+	elseif item == "car" or vehicle then
+		local look = root.CFrame.LookVector
+		Vehicles.spawnNear(root.Position + look * 8, look, if vehicle then vehicle.id else nil)
 	elseif weapon then
 		Weapons.give(player, weapon.id)
 	else
@@ -151,8 +155,10 @@ local function give(caller: Player, who: string?, item: string?)
 	end
 	local query = string.lower(item)
 	local weapon = WeaponCatalog.find(query)
+	local vehicle = VehicleCatalog.get(query)
 	local label = if table.find(Admin.GIFTS, query)
 		then string.upper(query)
+		elseif vehicle then vehicle.name
 		elseif weapon then weapon.name
 		else nil
 	if not label then

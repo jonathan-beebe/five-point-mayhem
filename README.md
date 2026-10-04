@@ -15,6 +15,9 @@ rojo serve      # then connect from the Rojo plugin in Studio and press Play
 | --- | --- |
 | `src/shared/Config.luau` | World layout, teams, admin user ids |
 | `src/shared/WeaponCatalog.luau` | All 52 weapons (data only) |
+| `src/shared/VehicleCatalog.luau` | All vehicles (data only) |
+| `src/server/vehicleModels` | One part-built model per vehicle (format: `src/server/systems/VehicleModel.luau`) |
+| `tools/preview` | Renders a vehicle model file to a PNG of orthographic views |
 | `src/server/world` | Lobby, roads, terrain/scenery, the five landmarks |
 | `src/server/systems` | Combat, weapons, players/teams, creatures, vehicles, admin powers |
 | `src/client` | Armory UI, weapon input, car input, admin panel, announcer |
@@ -55,7 +58,7 @@ Admins see a **👑 GOD MODE** button in the top-right corner. It opens the pane
 │   👟 Super speed                  │  tap one to give it to the target
 │   🦘 Mega jump                    │
 │   🗿 Giant                        │
-│   🚙 Car                          │
+│   🚙 Random vehicle               │
 │   Knight Sword …                  │
 └──────────────────────────────────┘
 ```
@@ -98,7 +101,8 @@ Both `<who>` and `<item>` are required. Examples: `/give all rocket`, `/give me 
 | `speed` | Walk speed 40 (normal is 16) | Until death |
 | `jump` | Jump power 120 (normal is 50) | Until death |
 | `giant` | 2.5× size | Until death |
-| `car` | A jeep appears 15 studs in front of the player | Until it is wrecked or abandoned |
+| `car` | A random vehicle appears in front of the player | Until it is wrecked or abandoned |
+| any vehicle id | That vehicle appears in front of the player | Until it is wrecked or abandoned |
 | any weapon | That weapon into the backpack | Until death |
 
 - A weapon matches by its id or by the start of its name: `rocket` gives the Rocket Launcher.
@@ -136,6 +140,20 @@ Both `<who>` and `<item>` are required. Examples: `/give all rocket`, `/give me 
 **🌓 NIGHT** — `/night`
 
 - Fades to midnight over 3 seconds, or back to mid-afternoon.
+
+## Vehicles
+
+Every vehicle parks in the motor pools along the five spoke roads outside the lobby. From any side
+of a vehicle, press **E** (or tap **Drive**) to take the driver's seat, or **F** (**Ride**) for the
+free passenger seat nearest you. A passenger can press **E** to move to the empty driver's seat.
+Wrecked or abandoned vehicles return to their spot. The ids in `src/shared/VehicleCatalog.luau`
+work with `/give`, e.g. `/give me abrams`.
+
+Preview a vehicle model without Studio (needs `lune` from `rokit install` and Python with Pillow):
+
+```sh
+python3 tools/preview/render.py src/server/vehicleModels/abrams.luau abrams.png
+```
 
 ## Weapon ids
 
