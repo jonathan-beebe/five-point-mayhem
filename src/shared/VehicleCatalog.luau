@@ -45,6 +45,7 @@ local VEHICLES: { Vehicle } = {
 	{ id = "stryker", name = "Stryker APC", icon = "🛡" },
 	{ id = "abrams", name = "M1 Abrams Tank", icon = "💥" },
 	{ id = "tiger", name = "Tiger I Tank", icon = "💥" },
+	{ id = "mech", name = "Titan Mech", icon = "🤖" },
 }
 
 local byId: { [string]: Vehicle } = {}

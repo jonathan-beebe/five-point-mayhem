@@ -268,6 +268,7 @@ function Landscape.explosiveBarrel(parent: Instance, cframe: CFrame): Part
 		Build.column(parent, cframe, 4, 3, rgb(200, 40, 30), M.Metal, { name = "ExplosiveBarrel" })
 	barrel:SetAttribute("Home", cframe)
 	CollectionService:AddTag(barrel, "ExplosiveBarrel")
+	barrel.CollisionGroup = "Scenery"
 	return barrel
 end
 
@@ -347,6 +348,12 @@ function Landscape.build(parent: Instance)
 	scatter(45, 4, function(position)
 		Landscape.explosiveBarrel(obstacles, CFrame.new(position + Vector3.new(0, 2, 0)))
 	end)
+	-- Walkers (the mech) step through scenery; see Vehicles.registerCollisionGroups.
+	for _, part in model:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.CollisionGroup = "Scenery"
+		end
+	end
 	return model
 end
 

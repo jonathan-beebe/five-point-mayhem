@@ -18,9 +18,10 @@ rojo serve      # then connect from the Rojo plugin in Studio and press Play
 | `src/shared/VehicleCatalog.luau` | All vehicles (data only) |
 | `src/server/vehicleModels` | One part-built model per vehicle (format: `src/server/systems/VehicleModel.luau`) |
 | `tools/preview` | Renders a vehicle model file to a PNG of orthographic views |
+| `tools/audition.luau` | Plays every weapon and vehicle sound; paste into the Studio Command Bar during Play |
 | `src/server/world` | Lobby, roads, terrain/scenery, the five landmarks |
 | `src/server/systems` | Combat, weapons, players/teams, creatures, vehicles, admin powers |
-| `src/client` | Armory UI, weapon input, car input, admin panel, announcer |
+| `src/client` | Armory UI, weapon input, car input, mech animation and camera, admin panel, announcer |
 
 ## God mode
 
@@ -164,6 +165,23 @@ with `/give`, e.g. `/give me abrams`.
 
 Vehicles climb ledges up to 1.6 studs (roads, landmark plazas and courtyards, Sakura Hall's
 steps). Walls, the lobby gates, and taller ledges stop them.
+
+### Titan Mech
+
+The Titan Mech (`mech`, 🤖) is a two-legged walker, 46 studs tall. It parks with the other vehicles
+and works with `/give <who> mech`.
+
+- **Get in**: climb the ladder on its back to the deck on top, then press **E** (or tap **Drive**)
+  at the hatch. The prompt shows only on the deck.
+- **Drive**: the same controls as every car (WASD/arrows, thumbstick, gamepad). It walks at 18
+  studs/s, turns in place, and backs up slowly. It speeds up, stops, and turns slowly.
+- **View**: you start in the cockpit, looking out the chest window. **V**, gamepad **Y**, or the
+  **VIEW** button (touch, left of the jump button) switches to an outside view and back.
+- **Get out**: jump. You land on the deck behind the hatch; the ladder is behind you.
+- With nobody in it, the mech's brake holds it in place when bumped.
+
+The legs and arms are decoration and do not collide; the cab, hips and back pods do. Gates, walls
+and building doors stop it.
 
 Preview a vehicle model without Studio (needs `lune` from `rokit install` and Python with Pillow):
 

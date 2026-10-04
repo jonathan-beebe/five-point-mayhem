@@ -4,7 +4,7 @@
 Usage:
   python3 tools/preview/render.py src/server/vehicleModels/<id>.luau [out.png]
       [--views front34,rear34,left,front,top,rear] [--panel 640x420]
-      [--focus x,y,z,radius] [--no-overlay]
+      [--focus x,y,z,radius] [--no-overlay] [--phase 0..1 [--speed studs/s]]
   python3 tools/preview/render.py src/server/weaponModels/<id>.luau [out.png] [--weapon]
       [--views left,front,top,front34] ...
 
@@ -19,6 +19,13 @@ Overlays, drawn on top of the model so they show through it:
   orange  collision boxes
   green   seat blocks
   red     the seated avatar envelope above each seat (torso and head, then legs forward)
+
+Rigged vehicles (with `bones`) render in the rest pose, or mid-stride with --phase. Their extras:
+  magenta  bone pivots (joint centers)
+  brown    ladders, outlining the TrussPart (drawn as a solid 2 x height x 2 box)
+  yellow   the Drive prompt anchor; in the top view also its reach circle
+  blue     the exit spot (a standing avatar, feet 3 below the root, facing -Z of the exit frame)
+           and the outside-view camera focus (a cross)
 
 Weapons render in the wielder's frame after the hold (WeaponModel.grip): the tool-hold pose's
 right arm points straight ahead along -Z, +Y is up, +X is the wielder's right. "front" looks back
@@ -52,6 +59,10 @@ AVATAR_LEGS = ((-1.0, 0.0, -2.6), (1.0, 1.0, -0.5))
 FIST = ((-0.25, -0.25, -0.25), (0.25, 0.25, 0.25))
 FOREARM = ((-0.25, -0.25, 0.25), (0.25, 0.25, 2.75))
 IDENTITY = (0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+
+# Standing avatar around its HumanoidRootPart (feet 3 below the root), in the exit frame.
+AVATAR_STANDING = ((-1.0, -3.0, -0.5), (1.0, 2.0, 0.5))
+TRUSS_COLOR = (46 / 255, 48 / 255, 52 / 255)
 
 VIEWS = {
     "front34": ("front 3/4 (front-left)", (-1.0, 0.65, -1.0)),
@@ -294,12 +305,29 @@ def shade(part, n, d):
     return tuple(int(c * 255) for c in col) + (int(alpha * 255),)
 
 
+def ladder_parts(data):
+    """TrussParts as solid boxes: base is the bottom center, 2 x height x 2."""
+    out = []
+    for ladder in data.get("ladders", []):
+        bx, by, bz = ladder["base"]
+        height = ladder["height"]
+        out.append({"name": "Ladder", "class": "Part", "shape": "Block", "size": [2, height, 2],
+                    "cframe": [bx, by + height / 2, bz, 1, 0, 0, 0, 1, 0, 0, 0, 1],
+                    "color": TRUSS_COLOR, "material": "Metal", "transparency": 0})
+    return out
+
+
+def cross_lines(p, r, color):
+    return [((sub(p, axis), add(p, axis)), color) for axis in ((r, 0, 0), (0, r, 0), (0, 0, r))]
+
+
 def render_view(data, key, w, h, overlay, focus):
     label, direction = VIEWS[key]
     right, up, d = camera(direction)
     W, H = w * SS, h * SS
     faces = []
-    for part in data["parts"]:
+    ladders = ladder_parts(data)
+    for part in data["parts"] + ladders:
         if part["transparency"] >= 0.999:
             continue
         for world, n in part_faces(part):
@@ -387,6 +415,22 @@ def render_view(data, key, w, h, overlay, focus):
             for lo, hi in (AVATAR_BODY, AVATAR_LEGS):
                 lines += [(e, (225, 30, 30, 255)) for e in box_edges(top, lo, hi)]
         labels = []
+        for part in ladders:
+            sx, sy, sz = part["size"]
+            lines += [(e, (130, 80, 30, 255)) for e in box_edges(part["cframe"], (-sx / 2, -sy / 2, -sz / 2),
+                                                                   (sx / 2, sy / 2, sz / 2))]
+        for bone in data.get("bones", []):
+            lines += cross_lines(tuple(bone["cframe"][:3]), 0.6, (210, 0, 210, 255))
+        if data.get("exit"):
+            exit_cf = data["exit"]
+            lines += [(e, (30, 90, 230, 255)) for e in box_edges(exit_cf, *AVATAR_STANDING)]
+            lines.append(((transform(exit_cf, (0, 1, 0)), transform(exit_cf, (0, 1, -1.5))), (30, 90, 230, 255)))
+            labels.append((transform(exit_cf, (1, 2, 0)), "exit", (30, 90, 230, 255)))
+        if data.get("cameraFocus"):
+            f = tuple(data["cameraFocus"])
+            lines += cross_lines(f, 1.0, (30, 90, 230, 255))
+            labels.append((add(f, (1, 0.5, 0)), "camera focus", (30, 90, 230, 255)))
+        prompt = data.get("prompt")
         if weapon:
             lines += [(e, (225, 30, 30, 255)) for e in box_edges(IDENTITY, *FIST)]
             lines += [(e, (240, 140, 0, 255)) for e in box_edges(IDENTITY, *FOREARM)]
@@ -400,6 +444,15 @@ def render_view(data, key, w, h, overlay, focus):
                 labels.append((add(m, (0.3, 0.3, 0)), "muzzle", (190, 0, 190, 255)))
         for (a, b), color in lines:
             draw.line([project(a), project(b)], fill=color, width=SS)
+        if prompt:
+            px, py = project(tuple(prompt["position"]))
+            r = 5 * SS
+            draw.polygon([(px, py - r), (px + r, py), (px, py + r), (px - r, py)], fill=(250, 200, 0, 255),
+                         outline=(120, 90, 0, 255))
+            labels.append((tuple(prompt["position"]), "prompt", (170, 120, 0, 255)))
+            if key == "top":
+                reach = prompt["reach"] * s
+                draw.ellipse([px - reach, py - reach, px + reach, py + reach], outline=(220, 170, 0, 255), width=SS)
         small = ImageFont.load_default(size=12 * SS)
         placed = []
         for p, text, color in labels:
@@ -429,9 +482,13 @@ def main():
     parser.add_argument("--panel", default="640x420")
     parser.add_argument("--focus", help="x,y,z,radius in vehicle space")
     parser.add_argument("--no-overlay", action="store_true")
+    parser.add_argument("--phase", help="walkers: pose mid-stride at this gait phase (0..1)")
+    parser.add_argument("--speed", help="walkers with --phase: walking speed, studs/s (default top speed)")
     args = parser.parse_args()
 
     command = ["lune", "run", EXPORT, args.file] + (["--weapon"] if args.weapon else [])
+    if args.phase is not None:
+        command += ["--phase", args.phase] + (["--speed", args.speed] if args.speed is not None else [])
     result = subprocess.run(command, capture_output=True, text=True, cwd=ROOT)
     if result.returncode != 0:
         sys.stderr.write(result.stderr or result.stdout)
@@ -464,6 +521,8 @@ def main():
         fw, fl = data.get("footprint") or (0, 0)
         title = (f"{data.get('name')}  |  {len(data['parts'])} pieces  |  footprint {fw} x {fl} studs  |  "
                  f"speed {data.get('speed')}  |  seats {len(data['seats'])}")
+        if data.get("bones"):
+            title += f"  |  bones {len(data['bones'])}  |  ladders {len(data.get('ladders', []))}"
     draw.text((10, 4), title, fill=(0, 0, 0), font=font)
     problems = data.get("problems") or []
     draw.text((10, 24), ("PROBLEMS: " + "; ".join(problems)) if problems else "no problems found",

@@ -1,6 +1,8 @@
 -- Loads a vehicle or weapon model file outside Roblox and prints its parts as JSON for render.py.
 -- Usage: lune run tools/preview/export.luau <path/to/model.luau> [--weapon]
 -- Files under a `weaponModels` folder are weapons without the flag.
+-- A vehicle with `bones` exports in its rest pose: each piece and seat on a bone follows that bone.
+-- A walker exports mid-stride with `--phase <0..1> [--speed <studs/s>]` (see below).
 
 local fs = require("@lune/fs")
 local luau = require("@lune/luau")
@@ -10,7 +12,23 @@ local serde = require("@lune/serde")
 
 local path = process.args[1]
 assert(path, "usage: lune run tools/preview/export.luau <model.luau> [--weapon]")
-local isWeapon = process.args[2] == "--weapon" or string.find(path, "weaponModels", 1, true) ~= nil
+-- Flags after the path: `--name` alone is true, `--name value` takes the value.
+local options: { [string]: string | boolean } = {}
+do
+	local index = 2
+	while process.args[index] do
+		local name = assert(string.match(process.args[index], "^%-%-(.+)$"), "unexpected argument")
+		local value = process.args[index + 1]
+		if value and not string.match(value, "^%-%-") then
+			options[name] = value
+			index += 2
+		else
+			options[name] = true
+			index += 1
+		end
+	end
+end
+local isWeapon = options.weapon == true or string.find(path, "weaponModels", 1, true) ~= nil
 
 -- Lune's CFrame.lookAt (and CFrame.new(position, target)) disagree with Roblox; rebuild them
 -- from fromMatrix the way Roblox defines them: -Z toward the target, +Y as close to `up` as possible.
@@ -89,6 +107,77 @@ local function problem(text: string)
 	table.insert(problems, text)
 end
 
+-- Bone frames in vehicle space. A bone's world frame is its parent's (the skid's is identity)
+-- times the joint C0 times the joint Transform, as Roblox builds a Motor6D chain. `transforms`
+-- holds each bone's Transform; empty is the rest pose, where every bone frame is CFrame.new(pivot).
+local transforms: { [string]: CFrame } = {}
+
+-- --phase <0..1> [--speed <studs/s>]: a walker (gait "mech") posed mid-stride by
+-- src/shared/MechGait.luau. Walks at the speed (default top speed) until the stride settles, then
+-- on to the phase. Phase 0 is the left heel strike, 0.5 the right.
+if options.phase and spec.gait == "mech" then
+	local MechGait = load("src/shared/MechGait.luau")
+	local pivots = {}
+	for _, bone in spec.bones or {} do
+		pivots[bone.name] = bone.pivot
+	end
+	local state = MechGait.new(MechGait.rig(pivots))
+	local target = assert(tonumber(options.phase), "--phase takes a number from 0 to 1") % 1
+	local DT = 1 / 240
+	local input = {
+		forward = tonumber(options.speed) or spec.speed,
+		yawRate = 0,
+		occupied = true,
+		topSpeed = spec.speed,
+		turnRate = spec.turnRate or 0.7,
+		time = 0,
+	}
+	local function advance()
+		input.time += DT
+		MechGait.step(state, input, DT)
+	end
+	for _ = 1, 8 / DT do
+		advance()
+	end
+	-- Stop on the frame that reaches the phase (none if the legs have stopped).
+	for _ = 1, 4 / DT do
+		if state.rate == 0 then
+			break
+		end
+		local before = state.phase
+		advance()
+		local after = state.phase
+		local reached = if after >= before
+			then before < target and target <= after
+			else target > before or target <= after
+		if reached then
+			break
+		end
+	end
+	for name, pose in MechGait.pose(state) do
+		transforms[name] = pose
+	end
+end
+local bones: { [string]: { pivot: Vector3, world: CFrame } } = {}
+local boneList = {}
+for _, bone in spec.bones or {} do
+	local parent = if bone.parent then bones[bone.parent] else nil
+	local parentWorld = if parent then parent.world else RobloxCFrame.new()
+	local parentPivot = if parent then parent.pivot else roblox.Vector3.zero
+	local c0 = RobloxCFrame.new(parentPivot):Inverse() * RobloxCFrame.new(bone.pivot)
+	local world = parentWorld * c0 * (transforms[bone.name] or RobloxCFrame.new())
+	bones[bone.name] = { pivot = bone.pivot, world = world }
+end
+
+-- Where a rest-pose frame owned by `bone` sits in the current pose (unchanged for the skid).
+local function posed(bone: string?, offset)
+	local owner = if bone then bones[bone] else nil
+	if not owner then
+		return offset
+	end
+	return owner.world * RobloxCFrame.new(owner.pivot):Inverse() * offset
+end
+
 local parts = {}
 -- Weapons render in the wielder's frame (RightGripAttachment, -Z forward along the arm, +Y up):
 -- the handle sits at Grip:Inverse(), as Roblox places a tool's handle.
@@ -140,10 +229,11 @@ for index, piece in spec.pieces do
 		class = class,
 		shape = shape,
 		size = vector(size),
-		cframe = frame(hold * piece.offset),
+		cframe = frame(hold * posed(piece.bone, piece.offset)),
 		color = { piece.color.R, piece.color.G, piece.color.B },
 		material = if piece.material then piece.material.Name else "SmoothPlastic",
 		transparency = piece.transparency or 0,
+		bone = piece.bone,
 	})
 end
 
@@ -165,7 +255,30 @@ end
 
 local seats = {}
 for _, seat in spec.seats or {} do
-	table.insert(seats, frame(seat))
+	table.insert(seats, frame(posed(spec.seatBone, seat)))
+end
+
+for _, bone in spec.bones or {} do
+	local posedBone = bones[bone.name]
+	table.insert(boneList, {
+		name = bone.name,
+		parent = bone.parent,
+		pivot = vector(bone.pivot),
+		cframe = frame(if posedBone then posedBone.world else RobloxCFrame.new(bone.pivot)),
+	})
+end
+
+local ladders = {}
+for _, ladder in spec.ladders or {} do
+	table.insert(ladders, { base = vector(ladder.base), height = ladder.height })
+end
+
+-- The game's own checks (bones, seatBone, ladders, prompt) on a copy: define fills defaults in place.
+do
+	local ok, err = pcall(requireShim({ name = "VehicleModel" }).define, table.clone(spec))
+	if not ok then
+		problem((string.gsub(tostring(err), "^.-:%d+: ", "")))
+	end
 end
 
 local collision = {}
@@ -196,5 +309,12 @@ print(serde.encode("json", {
 	parts = parts,
 	seats = seats,
 	collision = collision,
+	bones = boneList,
+	ladders = ladders,
+	prompt = if spec.prompt
+		then { position = vector(spec.prompt.position), reach = spec.prompt.reach }
+		else nil,
+	exit = if spec.exit then frame(spec.exit) else nil,
+	cameraFocus = if spec.cameraFocus then vector(spec.cameraFocus) else nil,
 	problems = problems,
 }))

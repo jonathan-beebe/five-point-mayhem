@@ -85,6 +85,7 @@ end
 
 clearTemplate()
 Session.registerCollisionGroups()
+Vehicles.registerCollisionGroups()
 Combat.setBarrelFactory(Landscape.explosiveBarrel)
 atmosphere()
 workspace.Gravity = Config.NORMAL_GRAVITY

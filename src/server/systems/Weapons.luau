@@ -14,6 +14,7 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 local Combat = require(script.Parent.Combat)
 local WeaponModel = require(script.Parent.WeaponModel)
+local WeaponSounds = require(script.Parent.WeaponSounds)
 
 local modelFiles = script.Parent.Parent:FindFirstChild("weaponModels")
 
@@ -361,13 +362,6 @@ local function makeHandle(weapon: Weapon): Part
 	handle.CanCollide = false
 	handle.CanQuery = false
 	handle.Massless = true
-	if weapon.sound then
-		local sound = Instance.new("Sound")
-		sound.Name = "FireSound"
-		sound.SoundId = weapon.sound
-		sound.Volume = 0.6
-		sound.Parent = handle
-	end
 	return handle
 end
 
@@ -380,6 +374,7 @@ function Weapons.createTool(weapon: Weapon): Tool
 	-- Shot muzzles are handle.CFrame * muzzle, so they follow the grip.
 	tool.Grip = WeaponModel.grip(modelFor(weapon))
 	local handle = makeHandle(weapon)
+	WeaponSounds.equip(handle, weapon.id)
 	handle.Parent = tool
 	for _, spec in modelFor(weapon).pieces do
 		attach(handle, spec, tool)
@@ -547,6 +542,7 @@ local function fireMelee(shot: Shot)
 	local look = shot.root.CFrame.LookVector
 	local flatLook = Vector3.new(look.X, 0, look.Z).Unit
 	local minimumDot = weapon.arc or 0.3
+	local struck = false
 	for _, target in Combat.getTargets() do
 		if target.model ~= shot.character then
 			local offset = target.root.Position - shot.root.Position
@@ -567,6 +563,10 @@ local function fireMelee(shot: Shot)
 					shot.root.Position
 				)
 				flash(target.root.Position, weapon.color, 2)
+				if not struck then
+					struck = true -- one hit sound per swing
+					WeaponSounds.at(weapon.id, "hit", target.root.Position)
+				end
 			end
 		end
 	end
@@ -611,6 +611,7 @@ local function chainLightning(shot: Shot, from: Model, jumps: number)
 		hit[best.model] = true
 		lightning(currentRoot.Position, best.root.Position, shot.weapon.color)
 		Combat.damage(shot.player, best.model, best.humanoid, shot.weapon.damage * 0.6)
+		WeaponSounds.at(shot.weapon.id, "chain", best.root.Position)
 		current = best.model
 	end
 end
@@ -619,6 +620,7 @@ local function fireHitscan(shot: Shot)
 	local weapon = shot.weapon
 	local direction = (shot.aim - shot.origin).Unit
 	local width = if weapon.neon then 0.35 else 0.12
+	local struck = false
 	for _ = 1, weapon.pellets or 1 do
 		local vector = spreadDirection(direction, weapon.spread or 0) * weapon.range
 		local result = raycast(shot.player, shot.origin, vector)
@@ -643,6 +645,10 @@ local function fireHitscan(shot: Shot)
 				weapon.power,
 				shot.origin
 			)
+			if victim and not struck then
+				struck = true -- one hit sound per trigger, however many pellets land
+				WeaponSounds.at(weapon.id, "hit", result.Position)
+			end
 			if victim and weapon.chain then
 				chainLightning(shot, victim, weapon.chain)
 			end
@@ -704,6 +710,7 @@ local function blackHole(shot: Shot, position: Vector3)
 	core.Size = Vector3.one * 6
 	core.CFrame = CFrame.new(position + Vector3.new(0, 3, 0))
 	core.Parent = effectsFolder
+	WeaponSounds.on(weapon.id, "loop", core)
 	TweenService:Create(core, TweenInfo.new(3), { Size = Vector3.one * 14 }):Play()
 	local radius = weapon.radius or 40
 	task.spawn(function()
@@ -721,7 +728,15 @@ local function blackHole(shot: Shot, position: Vector3)
 			task.wait(0.2)
 		end
 		core:Destroy()
-		Combat.explode(shot.player, core.Position, 14, weapon.damage)
+		Combat.explode(
+			shot.player,
+			core.Position,
+			14,
+			weapon.damage,
+			nil,
+			nil,
+			WeaponSounds.cue(weapon.id, "finish")
+		)
 	end)
 end
 
@@ -746,6 +761,7 @@ local function bananaTrap(shot: Shot, position: Vector3)
 			and Combat.damage(shot.player, character, humanoid, shot.weapon.damage)
 		then
 			connection:Disconnect()
+			WeaponSounds.at(shot.weapon.id, "trap", peel.Position)
 			humanoid.Sit = true
 			Combat.push(
 				character,
@@ -764,8 +780,10 @@ local function impact(projectile: Projectile, position: Vector3, part: BasePart?
 		blackHole(shot, position)
 	elseif weapon.impact == "trap" then
 		bananaTrap(shot, position)
-	elseif weapon.blast then
-		Combat.explode(
+	elseif weapon.blast and weapon.splash then
+		flash(position, weapon.color, weapon.blast * 0.75)
+		WeaponSounds.at(weapon.id, "impact", position)
+		Combat.blast(
 			shot.player,
 			position,
 			weapon.blast,
@@ -773,8 +791,19 @@ local function impact(projectile: Projectile, position: Vector3, part: BasePart?
 			weapon.effect,
 			weapon.power
 		)
+	elseif weapon.blast then
+		Combat.explode(
+			shot.player,
+			position,
+			weapon.blast,
+			weapon.damage,
+			weapon.effect,
+			weapon.power,
+			WeaponSounds.cue(weapon.id, "impact")
+		)
 	else
 		flash(position, weapon.color, 1.5)
+		WeaponSounds.at(weapon.id, "impact", position)
 		if part then
 			Combat.hitPart(
 				shot.player,
@@ -857,6 +886,7 @@ local function fireStrike(shot: Shot)
 		rock.CFrame = CFrame.new(target + Vector3.new(40, 160, 0))
 		Instance.new("Fire", rock).Size = 12
 		rock.Parent = effectsFolder
+		WeaponSounds.on(weapon.id, "fall", rock)
 		TweenService:Create(
 			rock,
 			TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
@@ -864,7 +894,15 @@ local function fireStrike(shot: Shot)
 		):Play()
 		task.delay(0.7, function()
 			rock:Destroy()
-			Combat.explode(shot.player, target, radius, weapon.damage, weapon.effect, weapon.power)
+			Combat.explode(
+				shot.player,
+				target,
+				radius,
+				weapon.damage,
+				weapon.effect,
+				weapon.power,
+				WeaponSounds.cue(weapon.id, "strike")
+			)
 		end)
 	else
 		lightning(
@@ -873,6 +911,7 @@ local function fireStrike(shot: Shot)
 			weapon.color
 		)
 		flash(target, weapon.color, radius)
+		WeaponSounds.at(weapon.id, "strike", target)
 		for _, victim in Combat.getTargets() do
 			if (victim.root.Position - target).Magnitude <= radius + 2 then
 				Combat.damage(shot.player, victim.model, victim.humanoid, weapon.damage)
@@ -910,9 +949,11 @@ local function fireBlink(shot: Shot)
 		return
 	end
 	flash(shot.root.Position, weapon.color, 6)
+	WeaponSounds.at(weapon.id, "blinkFrom", shot.root.Position)
 	local _, yaw = shot.root.CFrame:ToOrientation()
 	shot.character:PivotTo(CFrame.new(target + Vector3.new(0, 4, 0)) * CFrame.Angles(0, yaw, 0))
 	flash(target + Vector3.new(0, 3, 0), weapon.color, 6)
+	WeaponSounds.at(weapon.id, "blinkTo", target)
 end
 
 local function firePush(shot: Shot)
@@ -995,10 +1036,7 @@ Remotes.FireWeapon.OnServerEvent:Connect(function(player, weaponId, aim)
 	local aimPoint = if (aim - origin).Magnitude < 0.5
 		then origin + root.CFrame.LookVector * 10
 		else aim
-	local sound = handle and handle:FindFirstChild("FireSound") :: Sound?
-	if sound then
-		sound:Play()
-	end
+	WeaponSounds.fire(handle, weaponId)
 	FIRE[weapon.kind]({
 		player = player,
 		weapon = weapon,

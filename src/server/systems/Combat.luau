@@ -9,6 +9,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local SoundCatalog = require(ReplicatedStorage.Shared.SoundCatalog)
+local Sounds = require(ReplicatedStorage.Shared.Sounds)
 
 local Combat = {}
 
@@ -290,7 +292,19 @@ end
 
 -- Explosions ----------------------------------------------------------------------------------
 
-function Combat.explode(
+-- The sound for an explosion without a weapon cue: louder for bigger blasts.
+local function defaultBoom(radius: number): SoundCatalog.Cue
+	local spec = SoundCatalog.EXPLOSION
+	return {
+		key = spec.key,
+		volume = math.min(spec.base + spec.perRadius * radius, spec.max),
+		jitter = spec.jitter,
+		range = "explosion",
+	}
+end
+
+-- Damages and throws everyone within `radius`, and sets off barrels in reach. No visual or sound.
+function Combat.blast(
 	attacker: Player?,
 	position: Vector3,
 	radius: number,
@@ -298,14 +312,6 @@ function Combat.explode(
 	effect: string?,
 	power: number?
 )
-	local blast = Instance.new("Explosion")
-	blast.Position = position
-	blast.BlastRadius = radius
-	blast.BlastPressure = 0
-	blast.DestroyJointRadiusPercent = 0
-	blast.ExplosionType = Enum.ExplosionType.NoCraters
-	blast.Parent = workspace
-
 	for _, target in Combat.getTargets() do
 		local distance = (target.root.Position - position).Magnitude
 		if distance <= radius + 2 then
@@ -326,6 +332,28 @@ function Combat.explode(
 			task.delay(0.15, Combat.detonateBarrel, barrel, attacker)
 		end
 	end
+end
+
+-- A blast with a fireball. `sound` is the weapon's impact cue; without one the blast plays a
+-- generic boom.
+function Combat.explode(
+	attacker: Player?,
+	position: Vector3,
+	radius: number,
+	damage: number,
+	effect: string?,
+	power: number?,
+	sound: SoundCatalog.Cue?
+)
+	local blast = Instance.new("Explosion")
+	blast.Position = position
+	blast.BlastRadius = radius
+	blast.BlastPressure = 0
+	blast.DestroyJointRadiusPercent = 0
+	blast.ExplosionType = Enum.ExplosionType.NoCraters
+	blast.Parent = workspace
+	Sounds.playAt(sound or defaultBoom(radius), position, "Weapons", SoundCatalog.EXPLOSION_GAIN)
+	Combat.blast(attacker, position, radius, damage, effect, power)
 end
 
 local barrelFactory: ((Instance, CFrame) -> BasePart)? = nil

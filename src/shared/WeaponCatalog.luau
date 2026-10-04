@@ -5,7 +5,8 @@
 --   melee      hits everything within `range` in front of the wielder (`arc` is the minimum dot)
 --   hitscan    instant ray(s): `pellets`, `spread` (degrees), optional `chain` lightning jumps
 --   projectile simulated shot: `speed`, `gravity` (0..1 of world gravity), `blast` radius,
---              `count` shots per trigger, optional `impact` = "blackhole" | "trap"
+--              `count` shots per trigger, optional `impact` = "blackhole" | "trap",
+--              `splash` = the blast lands as a burst in `color`, without a fireball or boom
 --   strike     calls `style` = "lightning" | "meteor" down onto the aim point
 --   heal       restores `damage` health to the wielder and nearby teammates
 --   blink      teleports the wielder to the aim point
@@ -13,6 +14,7 @@
 --
 -- effect: burn | freeze | slow | knockback | launch | float
 -- adminOnly: hidden from non-admins in the armory and refused in their loadout; /give still works
+-- Sounds live in `SoundCatalog.WEAPONS`, keyed by weapon id.
 
 export type Weapon = {
 	id: string,
@@ -41,15 +43,9 @@ export type Weapon = {
 	radius: number?,
 	effect: string?,
 	power: number?,
-	sound: string?,
+	splash: boolean?,
 	adminOnly: boolean?,
 }
-
-local SLASH = "rbxasset://sounds/swordslash.wav"
-local LUNGE = "rbxasset://sounds/swordlunge.wav"
-local SHOT = "rbxasset://sounds/paintball.wav"
-local ROCKET = "rbxasset://sounds/Rocket shot.wav"
-local ZAP = "rbxasset://sounds/electronicpingshort.wav"
 
 local rgb = Color3.fromRGB
 
@@ -76,7 +72,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(200, 205, 215),
 		shape = "blade",
 		length = 4,
-		sound = SLASH,
 	},
 	{
 		id = "katana",
@@ -90,7 +85,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(235, 235, 240),
 		shape = "blade",
 		length = 4.5,
-		sound = SLASH,
 	},
 	{
 		id = "battle_axe",
@@ -104,7 +98,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(120, 120, 130),
 		shape = "axe",
 		length = 4.5,
-		sound = LUNGE,
 	},
 	{
 		id = "war_hammer",
@@ -120,7 +113,6 @@ local WEAPONS: { Weapon } = {
 		length = 4.5,
 		effect = "knockback",
 		power = 90,
-		sound = LUNGE,
 	},
 	{
 		id = "spear",
@@ -135,7 +127,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(190, 160, 80),
 		shape = "spear",
 		length = 7,
-		sound = LUNGE,
 	},
 	{
 		id = "scythe",
@@ -150,7 +141,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(60, 60, 70),
 		shape = "scythe",
 		length = 6,
-		sound = SLASH,
 	},
 	{
 		id = "plasma_blade",
@@ -166,7 +156,6 @@ local WEAPONS: { Weapon } = {
 		length = 4.5,
 		neon = true,
 		effect = "burn",
-		sound = SLASH,
 	},
 	{
 		id = "ice_dagger",
@@ -182,7 +171,6 @@ local WEAPONS: { Weapon } = {
 		length = 2.2,
 		neon = true,
 		effect = "slow",
-		sound = SLASH,
 	},
 	{
 		id = "trident",
@@ -197,7 +185,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(40, 170, 160),
 		shape = "spear",
 		length = 6.5,
-		sound = LUNGE,
 	},
 	{
 		id = "frying_pan",
@@ -213,7 +200,6 @@ local WEAPONS: { Weapon } = {
 		length = 3,
 		effect = "knockback",
 		power = 60,
-		sound = LUNGE,
 	},
 
 	-- Guns --------------------------------------------------------------------------------
@@ -230,7 +216,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(50, 50, 55),
 		shape = "gun",
 		length = 1.6,
-		sound = SHOT,
 	},
 	{
 		id = "revolver",
@@ -245,7 +230,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(150, 110, 70),
 		shape = "gun",
 		length = 2.2,
-		sound = SHOT,
 	},
 	{
 		id = "golden_pistol",
@@ -261,7 +245,6 @@ local WEAPONS: { Weapon } = {
 		shape = "gun",
 		length = 1.8,
 		neon = true,
-		sound = SHOT,
 	},
 	{
 		id = "shotgun",
@@ -277,7 +260,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(110, 75, 45),
 		shape = "gun",
 		length = 3.5,
-		sound = SHOT,
 	},
 	{
 		id = "double_barrel",
@@ -293,7 +275,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(80, 55, 35),
 		shape = "gun",
 		length = 3.8,
-		sound = SHOT,
 	},
 	{
 		id = "smg",
@@ -309,7 +290,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(70, 70, 75),
 		shape = "gun",
 		length = 2.4,
-		sound = SHOT,
 	},
 	{
 		id = "assault_rifle",
@@ -325,7 +305,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(85, 95, 70),
 		shape = "gun",
 		length = 3.8,
-		sound = SHOT,
 	},
 	{
 		id = "sniper",
@@ -342,7 +321,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(45, 60, 45),
 		shape = "gun",
 		length = 5.5,
-		sound = SHOT,
 	},
 	{
 		id = "minigun",
@@ -358,7 +336,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(60, 60, 60),
 		shape = "tube",
 		length = 5,
-		sound = SHOT,
 	},
 	{
 		id = "crossbow",
@@ -374,7 +351,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(120, 85, 50),
 		shape = "gun",
 		length = 3,
-		sound = LUNGE,
 	},
 
 	-- Blasters ----------------------------------------------------------------------------
@@ -392,7 +368,6 @@ local WEAPONS: { Weapon } = {
 		shape = "gun",
 		length = 1.8,
 		neon = true,
-		sound = ZAP,
 	},
 	{
 		id = "laser_rifle",
@@ -409,7 +384,6 @@ local WEAPONS: { Weapon } = {
 		shape = "gun",
 		length = 4,
 		neon = true,
-		sound = ZAP,
 	},
 	{
 		id = "ray_gun",
@@ -425,7 +399,6 @@ local WEAPONS: { Weapon } = {
 		shape = "gun",
 		length = 2,
 		neon = true,
-		sound = ZAP,
 	},
 	{
 		id = "freeze_ray",
@@ -443,7 +416,6 @@ local WEAPONS: { Weapon } = {
 		neon = true,
 		effect = "freeze",
 		power = 2.5,
-		sound = ZAP,
 	},
 	{
 		id = "tesla_gun",
@@ -460,7 +432,6 @@ local WEAPONS: { Weapon } = {
 		shape = "tube",
 		length = 3,
 		neon = true,
-		sound = ZAP,
 	},
 	{
 		id = "bounce_ray",
@@ -478,7 +449,6 @@ local WEAPONS: { Weapon } = {
 		neon = true,
 		effect = "launch",
 		power = 110,
-		sound = ZAP,
 	},
 	{
 		id = "plasma_cannon",
@@ -496,7 +466,6 @@ local WEAPONS: { Weapon } = {
 		shape = "tube",
 		length = 4,
 		neon = true,
-		sound = ZAP,
 	},
 
 	-- Explosives --------------------------------------------------------------------------
@@ -515,7 +484,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(70, 90, 60),
 		shape = "tube",
 		length = 5,
-		sound = ROCKET,
 	},
 	{
 		id = "bazooka",
@@ -532,7 +500,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(100, 110, 50),
 		shape = "tube",
 		length = 6,
-		sound = ROCKET,
 	},
 	{
 		id = "grenade_launcher",
@@ -549,7 +516,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(60, 70, 50),
 		shape = "tube",
 		length = 3.5,
-		sound = ROCKET,
 	},
 	{
 		id = "missile_swarm",
@@ -568,7 +534,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(200, 60, 40),
 		shape = "tube",
 		length = 4,
-		sound = ROCKET,
 	},
 	{
 		id = "firework_launcher",
@@ -586,7 +551,6 @@ local WEAPONS: { Weapon } = {
 		shape = "tube",
 		length = 3.5,
 		neon = true,
-		sound = ROCKET,
 	},
 	{
 		id = "bomb",
@@ -603,7 +567,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(25, 25, 30),
 		shape = "ball",
 		length = 1.6,
-		sound = LUNGE,
 	},
 	{
 		id = "mini_nuke",
@@ -621,7 +584,6 @@ local WEAPONS: { Weapon } = {
 		shape = "tube",
 		length = 6,
 		neon = true,
-		sound = ROCKET,
 	},
 
 	-- Magic -------------------------------------------------------------------------------
@@ -637,12 +599,12 @@ local WEAPONS: { Weapon } = {
 		speed = 120,
 		gravity = 0,
 		blast = 6,
+		splash = true,
 		color = rgb(255, 110, 20),
 		shape = "staff",
 		length = 6,
 		neon = true,
 		effect = "burn",
-		sound = ZAP,
 	},
 	{
 		id = "ice_wand",
@@ -661,7 +623,6 @@ local WEAPONS: { Weapon } = {
 		neon = true,
 		effect = "freeze",
 		power = 3,
-		sound = ZAP,
 	},
 	{
 		id = "lightning_staff",
@@ -678,7 +639,6 @@ local WEAPONS: { Weapon } = {
 		shape = "staff",
 		length = 6,
 		neon = true,
-		sound = ZAP,
 	},
 	{
 		id = "meteor_staff",
@@ -696,7 +656,6 @@ local WEAPONS: { Weapon } = {
 		length = 6,
 		neon = true,
 		effect = "burn",
-		sound = ZAP,
 	},
 	{
 		id = "healing_staff",
@@ -711,7 +670,6 @@ local WEAPONS: { Weapon } = {
 		shape = "staff",
 		length = 6,
 		neon = true,
-		sound = ZAP,
 	},
 	{
 		id = "teleport_wand",
@@ -726,7 +684,6 @@ local WEAPONS: { Weapon } = {
 		shape = "wand",
 		length = 2.5,
 		neon = true,
-		sound = ZAP,
 	},
 	{
 		id = "gravity_gauntlet",
@@ -741,7 +698,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(120, 60, 200),
 		shape = "orb",
 		neon = true,
-		sound = ZAP,
 	},
 	{
 		id = "black_hole",
@@ -759,7 +715,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(80, 0, 120),
 		shape = "orb",
 		neon = true,
-		sound = ZAP,
 	},
 	{
 		id = "bubble_wand",
@@ -778,7 +733,6 @@ local WEAPONS: { Weapon } = {
 		shape = "wand",
 		length = 2.5,
 		neon = true,
-		sound = ZAP,
 	},
 
 	-- Silly -------------------------------------------------------------------------------
@@ -795,7 +749,6 @@ local WEAPONS: { Weapon } = {
 		shape = "chicken",
 		effect = "knockback",
 		power = 160,
-		sound = LUNGE,
 	},
 	{
 		id = "pool_noodle",
@@ -811,7 +764,6 @@ local WEAPONS: { Weapon } = {
 		length = 7,
 		effect = "launch",
 		power = 80,
-		sound = LUNGE,
 	},
 	{
 		id = "giant_lollipop",
@@ -825,7 +777,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(255, 80, 120),
 		shape = "lollipop",
 		length = 4.5,
-		sound = LUNGE,
 	},
 	{
 		id = "slingshot",
@@ -841,7 +792,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(140, 100, 60),
 		shape = "wand",
 		length = 1.6,
-		sound = LUNGE,
 	},
 	{
 		id = "snowball",
@@ -858,7 +808,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(250, 250, 255),
 		shape = "ball",
 		length = 1.2,
-		sound = LUNGE,
 	},
 	{
 		id = "water_balloon",
@@ -872,12 +821,12 @@ local WEAPONS: { Weapon } = {
 		speed = 90,
 		gravity = 0.4,
 		blast = 8,
+		splash = true,
 		effect = "knockback",
 		power = 70,
 		color = rgb(60, 140, 255),
 		shape = "ball",
 		length = 1.5,
-		sound = LUNGE,
 	},
 	{
 		id = "tomato_launcher",
@@ -894,7 +843,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(220, 40, 30),
 		shape = "tube",
 		length = 3,
-		sound = SHOT,
 	},
 	{
 		id = "banana_launcher",
@@ -911,7 +859,6 @@ local WEAPONS: { Weapon } = {
 		color = rgb(255, 230, 50),
 		shape = "tube",
 		length = 3,
-		sound = LUNGE,
 	},
 	{
 		id = "confetti_cannon",
@@ -927,7 +874,6 @@ local WEAPONS: { Weapon } = {
 		shape = "tube",
 		length = 2.5,
 		neon = true,
-		sound = ROCKET,
 	},
 }
 

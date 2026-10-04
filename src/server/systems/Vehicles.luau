@@ -3,8 +3,10 @@
 -- driver's client sends its stick/keys over the DriveInput remote; the server turns that into
 -- targets for velocity constraints on the skid. Constraints are simulated by whichever machine
 -- owns the vehicle's physics, so this works under any ownership. Wrecked or abandoned vehicles
--- return to their parking spot.
+-- return to their parking spot. A driven vehicle hurts whoever it touches: cars ram, walkers stomp.
 
+local CollectionService = game:GetService("CollectionService")
+local PhysicsService = game:GetService("PhysicsService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -12,6 +14,7 @@ local RunService = game:GetService("RunService")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
+local Combat = require(script.Parent.Combat)
 local VehicleModel = require(script.Parent.VehicleModel)
 
 local Vehicles = {}
@@ -83,6 +86,16 @@ type Car = {
 	mover: LinearVelocity,
 	turner: AngularVelocity,
 	turnRate: number,
+	acceleration: number,
+	braking: number,
+	coasting: number,
+	turnAcceleration: number?, -- rad/s^2 on the yaw rate; nil = instant
+	turnInPlace: boolean, -- full turn rate at any speed
+	parkingBrake: boolean, -- hold still with no driver
+	stomps: boolean, -- walker: hurts what is under it at any pace, not by ramming speed
+	reach: Vector3, -- half width, height, half length of the box it hurts, from the ground
+	struck: { [Model]: number }, -- os.clock() each victim was last hurt
+	yaw: number, -- commanded yaw rate
 	throttle: number,
 	steer: number,
 }
@@ -100,11 +113,17 @@ end
 local function drive(car: Car, dt: number)
 	local occupant = car.seat.Occupant
 	local skid = car.skid
-	-- Without a driver, ordinary physics has the car. With one, the drive constraints steer it,
-	-- in the air too: arcade cars keep control off jumps.
-	car.mover.Enabled = occupant ~= nil
-	car.turner.Enabled = occupant ~= nil
+	-- Without a driver, ordinary physics has the car, unless its parking brake holds it still.
+	-- With one, the drive constraints steer it, in the air too: arcade cars keep control off jumps.
+	local held = occupant ~= nil or car.parkingBrake
+	car.mover.Enabled = held
+	car.turner.Enabled = held
 	if not occupant then
+		car.yaw = 0
+		if held then
+			car.mover.PlaneVelocity = Vector2.zero
+			car.turner.AngularVelocity = Vector3.zero
+		end
 		return
 	end
 
@@ -115,14 +134,19 @@ local function drive(car: Car, dt: number)
 	local throttle = car.throttle
 	local target = if throttle >= 0 then throttle * topSpeed else throttle * topSpeed * 0.4
 	local rate = if throttle == 0
-		then COASTING
-		elseif math.sign(target) ~= math.sign(speed) and math.abs(speed) > 1 then BRAKING
-		else ACCELERATION
+		then car.coasting
+		elseif math.sign(target) ~= math.sign(speed) and math.abs(speed) > 1 then car.braking
+		else car.acceleration
 	local newSpeed = moveToward(speed, target, rate * dt)
 
 	car.mover.PlaneVelocity = Vector2.new(forward.X * newSpeed, forward.Z * newSpeed)
-	local grip = math.clamp(newSpeed / 20, -1, 1)
-	car.turner.AngularVelocity = Vector3.new(0, -car.steer * car.turnRate * grip, 0)
+	local grip = if car.turnInPlace then 1 else math.clamp(newSpeed / 20, -1, 1)
+	local yaw = -car.steer * car.turnRate * grip
+	if car.turnAcceleration then
+		yaw = moveToward(car.yaw, yaw, car.turnAcceleration * dt)
+	end
+	car.yaw = yaw
+	car.turner.AngularVelocity = Vector3.new(0, yaw, 0)
 end
 
 RunService.Heartbeat:Connect(function(dt)
@@ -172,6 +196,191 @@ local function attach(model: Model, skid: BasePart, part: BasePart, offset: CFra
 	part.Parent = model
 end
 
+type Bone = { part: BasePart, pivot: Vector3 }
+
+-- Welds a part to a bone at an offset given in vehicle space, rest pose. The bone's Transform
+-- then moves it. No bone: welded to the skid.
+local function attachTo(model: Model, skid: BasePart, bone: Bone?, part: BasePart, offset: CFrame)
+	if not bone then
+		attach(model, skid, part, offset)
+		return
+	end
+	local relative = CFrame.new(bone.pivot):Inverse() * offset
+	part.Anchored = false
+	part.Massless = true
+	part.CFrame = bone.part.CFrame * relative
+	local weld = Instance.new("Weld")
+	weld.Part0 = bone.part
+	weld.Part1 = part
+	weld.C0 = relative
+	weld.Parent = part
+	part.Parent = model
+end
+
+-- The rig: an invisible "Bone_<name>" part per bone, joined to its parent bone (or the skid) by a
+-- Motor6D "Joint_<name>" whose rest frame sits at the pivot with the vehicle's axes. Clients
+-- animate the joints' Transforms; the server keeps the rest pose.
+local function buildBones(
+	model: Model,
+	skid: BasePart,
+	spec: VehicleModel.Model
+): { [string]: Bone }
+	local bones: { [string]: Bone } = {}
+	for _, boneSpec in spec.bones or {} do
+		local part = Instance.new("Part")
+		part.Name = "Bone_" .. boneSpec.name
+		part.Size = Vector3.new(0.2, 0.2, 0.2)
+		part.Transparency = 1
+		part.CanCollide = false
+		part.CanTouch = false
+		part.CanQuery = false
+		part.Massless = true
+		part.CFrame = skid.CFrame * SKID_TO_GROUND * CFrame.new(boneSpec.pivot)
+		local parent = boneSpec.parent and bones[boneSpec.parent]
+		local joint = Instance.new("Motor6D")
+		joint.Name = "Joint_" .. boneSpec.name
+		joint.Part0 = if parent then parent.part else skid
+		joint.Part1 = part
+		joint.C0 = if parent
+			then CFrame.new(parent.pivot):Inverse() * CFrame.new(boneSpec.pivot)
+			else SKID_TO_GROUND * CFrame.new(boneSpec.pivot)
+		joint.Parent = part
+		part.Parent = model
+		bones[boneSpec.name] = { part = part, pivot = boneSpec.pivot }
+	end
+	return bones
+end
+
+-- Collision groups. Every vehicle's solid parts are in Vehicles; a vehicle that steps over things
+-- (spec.stepsOver) is in Walkers, which passes through Vehicles and Scenery (trees, rocks, crates,
+-- barrels). Buildings, roads, terrain and players stay solid to both.
+function Vehicles.registerCollisionGroups()
+	for _, group in { "Vehicles", "Walkers", "Scenery" } do
+		if not PhysicsService:IsCollisionGroupRegistered(group) then
+			PhysicsService:RegisterCollisionGroup(group)
+		end
+	end
+	PhysicsService:CollisionGroupSetCollidable("Walkers", "Vehicles", false)
+	PhysicsService:CollisionGroupSetCollidable("Walkers", "Scenery", false)
+end
+
+-- Climbable TrussParts welded to the skid.
+local function addLadders(model: Model, skid: BasePart, spec: VehicleModel.Model)
+	for index, ladder in spec.ladders or {} do
+		local truss = Instance.new("TrussPart")
+		truss.Name = "Ladder" .. index
+		truss.Size = Vector3.new(2, ladder.height, 2)
+		truss.Style = Enum.Style.AlternatingSupports
+		truss.Color = rgb(46, 48, 52)
+		truss.Material = M.Metal
+		truss.CanCollide = true
+		attach(model, skid, truss, CFrame.new(ladder.base + Vector3.new(0, ladder.height / 2, 0)))
+	end
+end
+
+-- Height of the vehicle's solid parts above the ground: collision boxes and ladders.
+local function solidHeight(spec: VehicleModel.Model): number
+	local top = 0
+	for _, box in spec.collision :: { VehicleModel.BoxSpec } do
+		top = math.max(top, box.offset.Position.Y + box.size.Y / 2)
+	end
+	for _, ladder in spec.ladders or {} do
+		top = math.max(top, ladder.base.Y + ladder.height)
+	end
+	return top
+end
+
+-- Contact damage -------------------------------------------------------------------------------
+
+local HIT_INTERVAL = 0.1 -- seconds between contact checks
+local HIT_COOLDOWN = 0.8 -- seconds before the same vehicle hurts the same victim again
+local HIT_MARGIN = 1.5 -- studs past the footprint that count as touching
+local RAM_MIN_SPEED = 12 -- studs/s; slower cars nudge
+local RAM_DAMAGE = 0.6 -- per stud/s of speed: 48 at 80
+local STOMP_DAMAGE = 40
+local STOMP_HEIGHT = 14 -- walkers hurt only around their legs, not riders on the deck
+
+-- The box a vehicle hurts, as half width, height and half length from the ground.
+local function reachFor(spec: VehicleModel.Model): Vector3
+	local height = if spec.stepsOver then STOMP_HEIGHT else math.max(solidHeight(spec), 4)
+	return Vector3.new(spec.footprint.X / 2 + HIT_MARGIN, height, spec.footprint.Y / 2 + HIT_MARGIN)
+end
+
+local function touches(car: Car, ground: CFrame, position: Vector3): boolean
+	local at = ground:PointToObjectSpace(position)
+	return math.abs(at.X) <= car.reach.X
+		and math.abs(at.Z) <= car.reach.Z
+		and at.Y >= -2
+		and at.Y <= car.reach.Y
+end
+
+local function hurtTouching(model: Model, car: Car)
+	local occupant = car.seat.Occupant
+	if not occupant then
+		return
+	end
+	local driver = Players:GetPlayerFromCharacter(occupant.Parent)
+	local skid = car.skid
+	local velocity = skid.AssemblyLinearVelocity
+	local flat = Vector3.new(velocity.X, 0, velocity.Z)
+	local speed = flat.Magnitude
+	local moving = if car.stomps
+		then speed > 2 or math.abs(skid.AssemblyAngularVelocity.Y) > 0.15
+		else speed >= RAM_MIN_SPEED
+	if not moving then
+		return
+	end
+	local ground = skid.CFrame * SKID_TO_GROUND
+	local now = os.clock()
+	for _, target in Combat.getTargets() do
+		local humanoid = target.humanoid
+		local seat = humanoid.SeatPart
+		if
+			(seat and seat:IsDescendantOf(model))
+			or humanoid:GetState() == Enum.HumanoidStateType.Climbing
+			or now - (car.struck[target.model] or 0) < HIT_COOLDOWN
+			or not touches(car, ground, target.root.Position)
+		then
+			continue
+		end
+		local amount = if car.stomps then STOMP_DAMAGE else speed * RAM_DAMAGE
+		if Combat.damage(driver, target.model, humanoid, amount) then
+			car.struck[target.model] = now
+			local away = target.root.Position - ground.Position
+			away = Vector3.new(away.X, 0, away.Z)
+			local direction = if car.stomps or speed < 1
+				then (if away.Magnitude > 0.1 then away.Unit else ground.LookVector)
+				else flat.Unit
+			local shove = if car.stomps then 50 else speed * 0.8
+			Combat.push(target.model, direction * shove + Vector3.new(0, 35, 0), 0.2)
+		end
+	end
+	for _, barrel in CollectionService:GetTagged("ExplosiveBarrel") do
+		if barrel:IsA("BasePart") and touches(car, ground, barrel.Position) then
+			Combat.detonateBarrel(barrel, driver)
+		end
+	end
+	for victim, at in car.struck do
+		if now - at > HIT_COOLDOWN then
+			car.struck[victim] = nil
+		end
+	end
+end
+
+local sinceHits = 0
+RunService.Heartbeat:Connect(function(dt)
+	sinceHits += dt
+	if sinceHits < HIT_INTERVAL then
+		return
+	end
+	sinceHits = 0
+	for model, car in cars do
+		if model.Parent then
+			hurtTouching(model, car)
+		end
+	end
+end)
+
 -- Collision boxes can enclose seats, so players get in by prompt: Drive (E) takes the driver
 -- seat, Ride (F) the free passenger seat nearest the player. Both prompts sit above the middle of
 -- the vehicle and reach past its far end, so they work from any side.
@@ -187,6 +396,11 @@ local function addPrompts(
 	anchor.Position = Vector3.new(0, 3.5, 0)
 	anchor.Parent = skid
 	local reach = math.sqrt((W / 2) ^ 2 + (L / 2) ^ 2) + 6
+	if spec.prompt then
+		-- A fixed spot (a walker's hatch): only players right there get the prompt.
+		anchor.CFrame = SKID_TO_GROUND * CFrame.new(spec.prompt.position)
+		reach = spec.prompt.reach
+	end
 
 	local function prompt(action: string, key: Enum.KeyCode, order: number): ProximityPrompt
 		local each = Instance.new("ProximityPrompt")
@@ -300,6 +514,15 @@ local function build(id: string, cframe: CFrame): Model
 		attach(model, skid, hull, box.offset)
 	end
 
+	local bones = buildBones(model, skid, spec)
+	addLadders(model, skid, spec)
+	local group = if spec.stepsOver then "Walkers" else "Vehicles"
+	for _, part in model:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.CollisionGroup = group
+		end
+	end
+
 	for _, piece in spec.pieces do
 		local part: BasePart = Instance.new(piece.class or "Part") :: any
 		if piece.shape and part:IsA("Part") then
@@ -314,7 +537,22 @@ local function build(id: string, cframe: CFrame): Model
 		part.CanCollide = false
 		part.CanTouch = false
 		part.CastShadow = part.Transparency < 0.5
-		attach(model, skid, part, piece.offset)
+		attachTo(model, skid, piece.bone and bones[piece.bone], part, piece.offset)
+	end
+
+	-- Outside-view camera subject.
+	if spec.cameraFocus then
+		local focus = Instance.new("Part")
+		focus.Name = "CameraFocus"
+		focus.Size = Vector3.one
+		focus.Transparency = 1
+		focus.CanCollide = false
+		focus.CanTouch = false
+		focus.CanQuery = false
+		attach(model, skid, focus, CFrame.new(spec.cameraFocus))
+	end
+	if spec.gait then
+		model:SetAttribute("Gait", spec.gait)
 	end
 
 	local driver: VehicleSeat
@@ -325,7 +563,7 @@ local function build(id: string, cframe: CFrame): Model
 		chair.Size = VehicleModel.SEAT_SIZE
 		chair.Transparency = 1
 		chair.CanCollide = false
-		attach(model, skid, chair, offset)
+		attachTo(model, skid, spec.seatBone and bones[spec.seatBone], chair, offset)
 		if index == 1 then
 			driver = chair :: VehicleSeat
 		else
@@ -336,6 +574,12 @@ local function build(id: string, cframe: CFrame): Model
 	driver.MaxSpeed = spec.speed
 	driver:SetAttribute("MayhemCar", true)
 	driver:SetAttribute("TopSpeed", spec.speed)
+	if spec.cockpitCamera then
+		driver:SetAttribute("CockpitCamera", true)
+	end
+	if spec.gait then
+		driver:SetAttribute("TurnRate", spec.turnRate or TURN_RATE) -- the walk animator reads it
+	end
 
 	local mass = W * L * 4
 	local strength = mass / BASE_MASS
@@ -350,7 +594,7 @@ local function build(id: string, cframe: CFrame): Model
 	upright.AlignType = Enum.AlignType.PrimaryAxisParallel
 	upright.PrimaryAxis = Vector3.yAxis
 	upright.Attachment0 = attachment
-	upright.MaxTorque = 4e5 * leverage
+	upright.MaxTorque = 4e5 * leverage * (spec.uprightTorque or 1)
 	upright.Responsiveness = 12
 	upright.Parent = skid
 
@@ -380,11 +624,22 @@ local function build(id: string, cframe: CFrame): Model
 		mover = mover,
 		turner = turner,
 		turnRate = spec.turnRate or TURN_RATE,
+		acceleration = spec.acceleration or ACCELERATION,
+		braking = spec.braking or BRAKING,
+		coasting = spec.coasting or COASTING,
+		turnAcceleration = spec.turnAcceleration,
+		turnInPlace = spec.turnInPlace == true,
+		parkingBrake = spec.parkingBrake == true,
+		stomps = spec.stepsOver == true,
+		reach = reachFor(spec),
+		struck = {},
+		yaw = 0,
 		throttle = 0,
 		steer = 0,
 	}
 	-- While someone drives, the server simulates the car (and the seated driver with it). When
-	-- they get out, hand their character's physics back to them.
+	-- they get out, put them at the model's exit spot if it has one, then hand their character's
+	-- physics back to them.
 	local lastDriver: Player? = nil
 	driver:GetPropertyChangedSignal("Occupant"):Connect(function()
 		model:SetAttribute("LastUsed", os.clock())
@@ -404,9 +659,17 @@ local function build(id: string, cframe: CFrame): Model
 		task.defer(function()
 			local character = previous and previous.Character
 			local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-			if root then
-				pcall(root.SetNetworkOwner, root, previous)
+			if not character or not root then
+				return
 			end
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			if spec.exit and skid.Parent and humanoid and humanoid.Health > 0 then
+				-- Pivot the character so its root lands on the exit frame.
+				local rootOffset = character:GetPivot():ToObjectSpace(root.CFrame)
+				character:PivotTo(skid.CFrame * SKID_TO_GROUND * spec.exit * rootOffset:Inverse())
+				root.AssemblyLinearVelocity = Vector3.zero
+			end
+			pcall(root.SetNetworkOwner, root, previous)
 		end)
 	end)
 
@@ -452,7 +715,7 @@ end
 local placement = Random.new()
 local SPOKE_HALF_WIDTH = 11
 local CLEARANCE = 3 -- free space kept around each parked vehicle
-local CLEAR_HEIGHT = 16 -- taller than every vehicle
+local CLEAR_HEIGHT = 16 -- taller than every car; walkers clear their own height
 local ATTEMPTS = 400
 
 -- Everything but the terrain counts as an obstacle, roads included: no vehicle parks on a road.
@@ -461,8 +724,8 @@ clearParams.FilterType = Enum.RaycastFilterType.Exclude
 clearParams.FilterDescendantsInstances = { workspace.Terrain }
 
 -- Whether a W x L footprint at `ground` (a ground-level CFrame) is clear of the lobby and of
--- every part in the world, with CLEARANCE to spare.
-local function isClear(ground: CFrame, W: number, L: number): boolean
+-- every part in the world up to `height`, with CLEARANCE to spare.
+local function isClear(ground: CFrame, W: number, L: number, height: number): boolean
 	for _, x in { -1, 1 } do
 		for _, z in { -1, 1 } do
 			local corner = ground * Vector3.new(x * W / 2, 0, z * L / 2)
@@ -471,8 +734,8 @@ local function isClear(ground: CFrame, W: number, L: number): boolean
 			end
 		end
 	end
-	local size = Vector3.new(W + CLEARANCE * 2, CLEAR_HEIGHT, L + CLEARANCE * 2)
-	local box = ground * CFrame.new(0, 0.1 + CLEAR_HEIGHT / 2, 0)
+	local size = Vector3.new(W + CLEARANCE * 2, height, L + CLEARANCE * 2)
+	local box = ground * CFrame.new(0, 0.1 + height / 2, 0)
 	return #workspace:GetPartBoundsInBox(box, size, clearParams) == 0
 end
 
@@ -496,14 +759,16 @@ local function layOut()
 		local spoke = (order - 1) % #Config.REGIONS + 1
 		local spec = specFor(entry.id)
 		local W, L = spec.footprint.X, spec.footprint.Y
+		local top = solidHeight(spec)
+		local height = if top > CLEAR_HEIGHT then top + 2 else CLEAR_HEIGHT
 		local ground = randomSpot(spoke)
-		local clear = isClear(ground, W, L)
+		local clear = isClear(ground, W, L, height)
 		for _ = 2, ATTEMPTS do
 			if clear then
 				break
 			end
 			ground = randomSpot(spoke)
-			clear = isClear(ground, W, L)
+			clear = isClear(ground, W, L, height)
 		end
 		if not clear then
 			warn("[Mayhem vehicle] no clear parking spot for " .. entry.id)
