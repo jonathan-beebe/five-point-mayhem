@@ -196,6 +196,8 @@ for i, a in { 45, 135, 225, 315 } do
 end
 
 return WeaponModel.define({
+	-- Modeled standing along +Y; tip the staff forward so the head points along -Z.
+	rotation = CFrame.Angles(math.rad(-90), 0, 0),
 	handle = { transparency = 1 },
 	muzzle = CFrame.new(0, ORB_Y, 0),
 	pieces = pieces,

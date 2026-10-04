@@ -34,6 +34,8 @@ local EDGE_SIZE = Vector3.new(1.85, 0.20, 0.08)
 local SPIKE_SIZE = Vector3.new(0.16, 0.60, 0.15)
 
 return WeaponModel.define({
+	-- Roll 180 degrees about the haft: the bit (built at +Y) faces down, the back spike up.
+	rotation = CFrame.Angles(0, 0, math.pi),
 	handle = {
 		size = Vector3.new(0.3, 0.3, 1.2),
 		color = LEATHER,

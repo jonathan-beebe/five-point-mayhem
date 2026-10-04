@@ -350,6 +350,8 @@ for index, filament in FILAMENTS do
 end
 
 return WeaponModel.define({
+	-- Modeled standing along +Y; tip the staff forward so the head points along -Z.
+	rotation = CFrame.Angles(math.rad(-90), 0, 0),
 	handle = {
 		size = Vector3.new(0.4, 1.2, 0.4),
 		color = LEATHER,

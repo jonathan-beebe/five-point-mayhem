@@ -27,6 +27,8 @@ local EDGE_POS = CFrame.Angles(0, 0, deg(90))
 local EDGE_NEG = CFrame.Angles(0, 0, deg(-90))
 
 return WeaponModel.define({
+	-- Roll about the shaft: the tines (built spread along X) stand in the vertical YZ plane.
+	rotation = CFrame.Angles(0, 0, -math.pi / 2),
 	handle = {
 		size = Vector3.new(0.25, 0.25, 1.2),
 		color = WORN_LEATHER,

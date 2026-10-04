@@ -298,6 +298,8 @@ table.insert(pieces, {
 })
 
 return WeaponModel.define({
+	-- Roll about the snath: the blade (built along +X) hangs below it, the edge still toward the wielder (+Z).
+	rotation = CFrame.Angles(0, 0, -math.pi / 2),
 	handle = {
 		size = Vector3.new(0.3, 0.3, 1.2),
 		color = wornLeather,

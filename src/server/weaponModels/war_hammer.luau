@@ -20,9 +20,14 @@ local BRASS_WIRE = rgb(160, 128, 70)
 -- Head centre along Z; every head offset is HZ + dz.
 local HZ = -3.9
 
+-- Turns the beak about its own axis (X) through the head centre so its curve bends toward the butt (+Z).
+local BEAK_CURL = CFrame.new(0, 0, HZ) * CFrame.Angles(math.rad(-90), 0, 0) * CFrame.new(0, 0, -HZ)
+
 local WRAP_TILT = CFrame.Angles(math.rad(10), 0, 0)
 
 return WeaponModel.define({
+	-- Roll about the haft: the face (built at +X) points down, the beak up.
+	rotation = CFrame.Angles(0, 0, -math.pi / 2),
 	handle = {
 		size = Vector3.new(0.36, 0.36, 1.2),
 		color = LEATHER_BASE,
@@ -369,11 +374,11 @@ return WeaponModel.define({
 			reflectance = 0.15,
 		},
 
-		-- Raven's beak (-X), tapering segments curving down to a polished point
+		-- Raven's beak (-X), tapering segments curving toward the butt (+Z) to a polished point
 		{
 			name = "BeakRoot",
 			size = Vector3.new(0.42, 0.5, 0.4),
-			offset = CFrame.new(-0.59, 0, HZ),
+			offset = BEAK_CURL * CFrame.new(-0.59, 0, HZ),
 			color = FORGED_STEEL,
 			material = M.Metal,
 			reflectance = 0.08,
@@ -381,7 +386,7 @@ return WeaponModel.define({
 		{
 			name = "BeakSeg1",
 			size = Vector3.new(0.5, 0.36, 0.28),
-			offset = CFrame.new(-1, -0.03, HZ) * CFrame.Angles(0, 0, math.rad(8)),
+			offset = BEAK_CURL * CFrame.new(-1, -0.03, HZ) * CFrame.Angles(0, 0, math.rad(8)),
 			color = FORGED_STEEL,
 			material = M.Metal,
 			reflectance = 0.08,
@@ -389,17 +394,18 @@ return WeaponModel.define({
 		{
 			name = "BeakSeg2",
 			size = Vector3.new(0.4, 0.26, 0.2),
-			offset = CFrame.new(-1.38, -0.12, HZ) * CFrame.Angles(0, 0, math.rad(18)),
+			offset = BEAK_CURL * CFrame.new(-1.38, -0.12, HZ) * CFrame.Angles(0, 0, math.rad(18)),
 			color = FORGED_STEEL,
 			material = M.Metal,
 			reflectance = 0.08,
 		},
 		{
-			-- Local -Z points along world -X, tilted 28 degrees down; flat underside continues the curve.
+			-- Local -Z points along -X, tilted 28 degrees toward the butt; flat face continues the curve.
 			name = "BeakTip",
 			class = "WedgePart",
 			size = Vector3.new(0.16, 0.24, 0.5),
-			offset = CFrame.new(-1.76, -0.3, HZ)
+			offset = BEAK_CURL
+				* CFrame.new(-1.76, -0.3, HZ)
 				* CFrame.Angles(0, 0, math.rad(28))
 				* CFrame.Angles(0, math.rad(90), 0),
 			color = POLISHED_STEEL,

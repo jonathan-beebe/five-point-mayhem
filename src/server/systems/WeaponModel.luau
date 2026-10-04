@@ -24,6 +24,10 @@ export type HandleSpec = {
 export type Model = {
 	handle: HandleSpec?,
 	muzzle: CFrame?, -- where shot effects start; default (0, 0.5, -length)
+	-- Turns the whole model (pieces and muzzle) about the fist, applied after the offsets. Used to
+	-- orient a model without editing every piece, e.g. CFrame.Angles(0, 0, math.pi) to roll it
+	-- upside down.
+	rotation: CFrame?,
 	pieces: { PieceSpec },
 }
 
@@ -35,9 +39,24 @@ WeaponModel.MAX_PIECES = 80
 WeaponModel.CYLINDER_Z = CFrame.Angles(0, math.rad(90), 0)
 WeaponModel.CYLINDER_Y = CFrame.Angles(0, 0, math.rad(90))
 
+-- Validates a model and bakes its rotation into the piece offsets and muzzle.
 function WeaponModel.define(model: Model): Model
 	assert(#model.pieces <= WeaponModel.MAX_PIECES, "weapon model has too many pieces")
-	return model
+	local rotation = model.rotation
+	if not rotation then
+		return model
+	end
+	local pieces = table.create(#model.pieces)
+	for index, piece in model.pieces do
+		local turned = table.clone(piece)
+		turned.offset = rotation * piece.offset
+		pieces[index] = turned
+	end
+	return {
+		handle = model.handle,
+		muzzle = if model.muzzle then rotation * model.muzzle else nil,
+		pieces = pieces,
+	}
 end
 
 return WeaponModel

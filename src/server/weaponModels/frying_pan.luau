@@ -216,6 +216,8 @@ for i = 0, 19 do
 end
 
 return WeaponModel.define({
+	-- Roll about the handle: the cooking surface (built facing +X) faces down.
+	rotation = CFrame.Angles(0, 0, -math.pi / 2),
 	handle = {
 		size = Vector3.new(0.2, 0.36, 1.2),
 		color = castIron,
