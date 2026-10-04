@@ -26,7 +26,9 @@ local BEAK_CURL = CFrame.new(0, 0, HZ) * CFrame.Angles(math.rad(-90), 0, 0) * CF
 local WRAP_TILT = CFrame.Angles(math.rad(10), 0, 0)
 
 return WeaponModel.define({
-	-- Roll about the haft: the face (built at +X) points down, the beak up.
+	-- Held upright: the head (-Z) rises from the fist and the face strikes forward (-Y) on the swing.
+	hold = "upright",
+	-- Roll about the haft: the face (built at +X) turns to -Y, the beak to +Y.
 	rotation = CFrame.Angles(0, 0, -math.pi / 2),
 	handle = {
 		size = Vector3.new(0.36, 0.36, 1.2),

@@ -80,6 +80,10 @@ local function bladeLayer(
 end
 
 return WeaponModel.define({
+	hold = "upright",
+	-- Slide the sword 0.3 toward the kashira so the fist sits on the tsuka just below the tsuba.
+	-- The edge (convex side) is built at -Y, which the upright hold turns toward the target.
+	rotation = CFrame.new(0, 0, 0.3),
 	handle = {
 		size = Vector3.new(0.24, 0.28, 1.2),
 		color = ito,
@@ -87,7 +91,7 @@ return WeaponModel.define({
 		transparency = 1,
 	},
 	pieces = {
-		-- Tsuka: z +0.81 (kashira cap) to -0.64 (fuchi); fist at the origin, mid-grip
+		-- Tsuka: z +0.81 (kashira cap) to -0.64 (fuchi), before the 0.3 slide toward +Z
 		{
 			name = "ItoSleeve",
 			size = Vector3.new(0.25, 0.3, 1.26),

@@ -7,6 +7,7 @@ local Workspace = game:GetService("Workspace")
 
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
+local SniperScope = require(script.Parent.SniperScope)
 
 local WeaponInput = {}
 
@@ -17,10 +18,14 @@ local CROSSHAIR = "rbxasset://textures/GunCursor.png"
 
 local lastFired: { [string]: number } = {}
 
--- World point under the cursor (or the last touch), ignoring the local character.
+-- World point under the cursor (or the last touch), ignoring the local character. Through a
+-- scope it is the point under the reticle at the viewport center.
 local function aimPoint(): Vector3
 	local camera = Workspace.CurrentCamera
-	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
+	local viewport = camera.ViewportSize
+	local ray = if SniperScope.isScoped()
+		then camera:ViewportPointToRay(viewport.X / 2, viewport.Y / 2)
+		else camera:ScreenPointToRay(mouse.X, mouse.Y)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	local filter: { Instance } = {}

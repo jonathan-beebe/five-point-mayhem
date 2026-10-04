@@ -244,7 +244,9 @@ for _, theta in { 45, 135, 225, 315 } do
 end
 
 return WeaponModel.define({
-	-- Modeled standing along +Y; tip the staff forward so the head points along -Z.
+	-- Held upright: the upright grip stands model -Z up from the fist, so the head goes to -Z.
+	hold = "upright",
+	-- Modeled standing along +Y; turn it so the head points along -Z.
 	rotation = CFrame.Angles(math.rad(-90), 0, 0),
 	handle = {
 		size = Vector3.new(0.36, 1.2, 0.36),

@@ -6,8 +6,9 @@
 -- Everything is in vehicle space: the origin is on the ground under the center of the footprint,
 -- +Y is up, -Z is the front, +X is the driver's right. Scale: 4 studs = 1 meter.
 --
--- The car rides on an invisible frictionless skid (footprint x 1 stud, resting on the ground);
--- wheels and body are decoration welded to it. The collision box keeps players and the world
+-- The car rides on an invisible frictionless skid (footprint x 1 stud, resting on the ground)
+-- whose ends ramp up to 1.6 studs within 2.5 studs of the front and back, so it climbs curbs and
+-- steps; wheels and body are decoration welded to it. The collision box keeps players and the world
 -- out of the body. Seats are invisible; the seated avatar sits on top of each seat block.
 
 export type PieceSpec = {

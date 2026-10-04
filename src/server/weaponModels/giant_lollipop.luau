@@ -21,6 +21,10 @@ local WRAP_ALPHA = 0.8
 local WRAP_GLOSS = 0.15
 
 return WeaponModel.define({
+	-- Held upright: candy disc up from the fist, its flat swirl face toward the target.
+	hold = "upright",
+	-- Pieces are authored with the disc face on +-X; a quarter roll about the stick turns it to -Y.
+	rotation = CFrame.Angles(0, 0, math.rad(90)),
 	handle = {
 		size = Vector3.new(0.26, 0.26, 1.2),
 		color = stick,

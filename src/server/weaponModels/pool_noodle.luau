@@ -136,7 +136,9 @@ addRidges("NoodleA", FA, -0.69, 2.54) -- z +0.58 to -1.96
 addRidges("NoodleB", J1, -1.15, 2.42) -- local +0.06 to -2.36
 addRidges("NoodleC", J2, -1.06, 2.24) -- local +0.06 to -2.18
 
+-- Held upright: the noodle rises from the fist (-Z) and its droop (-Y) leans toward the target.
 return WeaponModel.define({
+	hold = "upright",
 	handle = {
 		size = Vector3.new(0.4, 0.4, 1.2),
 		color = foamPink,

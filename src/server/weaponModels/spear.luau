@@ -1,4 +1,6 @@
 -- Spartan Spear: 5th-century BC Greek hoplite dory (ash shaft, cast-bronze leaf head, bronze sauroter).
+-- Held upright with the fist about a third up the shaft; the leaf edges face ±Y, so one leads the
+-- downward swing.
 
 local WeaponModel = require(script.Parent.Parent.systems.WeaponModel)
 
@@ -34,6 +36,7 @@ local function ridge(name: string, z: number)
 end
 
 return WeaponModel.define({
+	hold = "upright",
 	handle = {
 		size = Vector3.new(0.24, 0.24, 1.2),
 		color = OXBLOOD_LEATHER,
@@ -41,12 +44,12 @@ return WeaponModel.define({
 		transparency = 1,
 	},
 	pieces = {
-		-- Shaft: z +1.12 to -5.45, ends buried in both sockets
+		-- Shaft: z +2.42 to -4.15, ends buried in both sockets
 		{
 			name = "Shaft",
 			shape = CYL,
 			size = Vector3.new(6.57, 0.22, 0.22),
-			offset = CFrame.new(0, 0, -2.165) * CYLINDER_Z,
+			offset = CFrame.new(0, 0, -0.865) * CYLINDER_Z,
 			color = OILED_ASH,
 			material = M.Wood,
 		},
@@ -83,12 +86,12 @@ return WeaponModel.define({
 		ridge("GripRidge5", 0.3),
 		ridge("GripRidge6", 0.5),
 
-		-- Sauroter (butt spike): z +0.80 to +1.61
+		-- Sauroter (butt spike): z +2.10 to +2.91
 		{
 			name = "SauroterMouthRing",
 			shape = CYL,
 			size = Vector3.new(0.05, 0.3, 0.3),
-			offset = CFrame.new(0, 0, 0.835) * CYLINDER_Z,
+			offset = CFrame.new(0, 0, 2.135) * CYLINDER_Z,
 			color = DARK_BRONZE_RING,
 			material = M.Metal,
 		},
@@ -96,7 +99,7 @@ return WeaponModel.define({
 			name = "SauroterSocket",
 			shape = CYL,
 			size = Vector3.new(0.35, 0.27, 0.27),
-			offset = CFrame.new(0, 0, 0.975) * CYLINDER_Z,
+			offset = CFrame.new(0, 0, 2.275) * CYLINDER_Z,
 			color = AGED_BRONZE,
 			material = M.Metal,
 			reflectance = 0.05,
@@ -105,14 +108,14 @@ return WeaponModel.define({
 			name = "SauroterCollar",
 			shape = CYL,
 			size = Vector3.new(0.05, 0.3, 0.3),
-			offset = CFrame.new(0, 0, 1.17) * CYLINDER_Z,
+			offset = CFrame.new(0, 0, 2.47) * CYLINDER_Z,
 			color = DARK_BRONZE_RING,
 			material = M.Metal,
 		},
 		{
 			name = "SauroterBody",
 			size = Vector3.new(0.17, 0.17, 0.18),
-			offset = CFrame.new(0, 0, 1.28),
+			offset = CFrame.new(0, 0, 2.58),
 			color = AGED_BRONZE,
 			material = M.Metal,
 			reflectance = 0.05,
@@ -121,7 +124,7 @@ return WeaponModel.define({
 			name = "SauroterChiselTop",
 			class = "WedgePart",
 			size = Vector3.new(0.17, 0.085, 0.24),
-			offset = CFrame.new(0, 0.0425, 1.49) * CFrame.Angles(0, pi, 0),
+			offset = CFrame.new(0, 0.0425, 2.79) * CFrame.Angles(0, pi, 0),
 			color = AGED_BRONZE,
 			material = M.Metal,
 			reflectance = 0.05,
@@ -130,7 +133,7 @@ return WeaponModel.define({
 			name = "SauroterChiselBottom",
 			class = "WedgePart",
 			size = Vector3.new(0.17, 0.085, 0.24),
-			offset = CFrame.new(0, -0.0425, 1.49) * CFrame.Angles(pi, 0, 0),
+			offset = CFrame.new(0, -0.0425, 2.79) * CFrame.Angles(pi, 0, 0),
 			color = AGED_BRONZE,
 			material = M.Metal,
 			reflectance = 0.05,
@@ -139,7 +142,7 @@ return WeaponModel.define({
 			name = "SauroterRivetR",
 			shape = BALL,
 			size = Vector3.new(0.055, 0.055, 0.055),
-			offset = CFrame.new(0.135, 0, 0.98),
+			offset = CFrame.new(0.135, 0, 2.28),
 			color = RIVET_BRONZE,
 			material = M.Metal,
 		},
@@ -147,17 +150,17 @@ return WeaponModel.define({
 			name = "SauroterRivetL",
 			shape = BALL,
 			size = Vector3.new(0.055, 0.055, 0.055),
-			offset = CFrame.new(-0.135, 0, 0.98),
+			offset = CFrame.new(-0.135, 0, 2.28),
 			color = RIVET_BRONZE,
 			material = M.Metal,
 		},
 
-		-- Head socket: z -5.05 to -5.80
+		-- Head socket: z -3.75 to -4.50
 		{
 			name = "HeadMouthRing",
 			shape = CYL,
 			size = Vector3.new(0.05, 0.31, 0.31),
-			offset = CFrame.new(0, 0, -5.085) * CYLINDER_Z,
+			offset = CFrame.new(0, 0, -3.785) * CYLINDER_Z,
 			color = DARK_BRONZE_RING,
 			material = M.Metal,
 		},
@@ -165,36 +168,36 @@ return WeaponModel.define({
 			name = "HeadSocket",
 			shape = CYL,
 			size = Vector3.new(0.5, 0.28, 0.28),
-			offset = CFrame.new(0, 0, -5.3) * CYLINDER_Z,
+			offset = CFrame.new(0, 0, -4) * CYLINDER_Z,
 			color = AGED_BRONZE,
 			material = M.Metal,
 			reflectance = 0.05,
 		},
 		{
-			-- -5.50 to -5.54; front face 0.01 behind the socket end (-5.55)
+			-- -4.20 to -4.24; front face 0.01 behind the socket end (-4.25)
 			name = "HeadTopRing",
 			shape = CYL,
 			size = Vector3.new(0.04, 0.3, 0.3),
-			offset = CFrame.new(0, 0, -5.52) * CYLINDER_Z,
+			offset = CFrame.new(0, 0, -4.22) * CYLINDER_Z,
 			color = DARK_BRONZE_RING,
 			material = M.Metal,
 		},
 		{
-			-- -5.54 to -5.69
+			-- -4.24 to -4.39
 			name = "HeadTaper",
 			shape = CYL,
 			size = Vector3.new(0.15, 0.24, 0.24),
-			offset = CFrame.new(0, 0, -5.615) * CYLINDER_Z,
+			offset = CFrame.new(0, 0, -4.315) * CYLINDER_Z,
 			color = AGED_BRONZE,
 			material = M.Metal,
 			reflectance = 0.05,
 		},
 		{
-			-- -5.68 to -5.80
+			-- -4.38 to -4.50
 			name = "HeadNeck",
 			shape = CYL,
 			size = Vector3.new(0.12, 0.19, 0.19),
-			offset = CFrame.new(0, 0, -5.74) * CYLINDER_Z,
+			offset = CFrame.new(0, 0, -4.44) * CYLINDER_Z,
 			color = POLISHED_BRONZE,
 			material = M.Metal,
 			reflectance = 0.1,
@@ -203,7 +206,7 @@ return WeaponModel.define({
 			name = "HeadRivetR",
 			shape = BALL,
 			size = Vector3.new(0.065, 0.065, 0.065),
-			offset = CFrame.new(0.14, 0, -5.2),
+			offset = CFrame.new(0.14, 0, -3.9),
 			color = RIVET_BRONZE,
 			material = M.Metal,
 		},
@@ -211,17 +214,17 @@ return WeaponModel.define({
 			name = "HeadRivetL",
 			shape = BALL,
 			size = Vector3.new(0.065, 0.065, 0.065),
-			offset = CFrame.new(-0.14, 0, -5.2),
+			offset = CFrame.new(-0.14, 0, -3.9),
 			color = RIVET_BRONZE,
 			material = M.Metal,
 		},
 
-		-- Leaf blade: core 0.06 thick, honed edges 0.04 thick; z -5.78 to -7.10
+		-- Leaf blade: core 0.06 thick, honed edges 0.04 thick; z -4.48 to -5.80
 		-- Segment 1: flare, half-width 0.09 -> 0.23
 		{
 			name = "BladeCore1",
 			size = Vector3.new(0.06, 0.18, 0.2),
-			offset = CFrame.new(0, 0, -5.88),
+			offset = CFrame.new(0, 0, -4.58),
 			color = POLISHED_BRONZE,
 			material = M.Metal,
 			reflectance = 0.1,
@@ -230,7 +233,7 @@ return WeaponModel.define({
 			name = "BladeEdge1Top",
 			class = "WedgePart",
 			size = Vector3.new(0.04, 0.14, 0.2),
-			offset = CFrame.new(0, 0.16, -5.88) * CFrame.Angles(0, pi, 0),
+			offset = CFrame.new(0, 0.16, -4.58) * CFrame.Angles(0, pi, 0),
 			color = HONED_EDGE,
 			material = M.Metal,
 			reflectance = 0.2,
@@ -239,7 +242,7 @@ return WeaponModel.define({
 			name = "BladeEdge1Bottom",
 			class = "WedgePart",
 			size = Vector3.new(0.04, 0.14, 0.2),
-			offset = CFrame.new(0, -0.16, -5.88) * CFrame.Angles(pi, 0, 0),
+			offset = CFrame.new(0, -0.16, -4.58) * CFrame.Angles(pi, 0, 0),
 			color = HONED_EDGE,
 			material = M.Metal,
 			reflectance = 0.2,
@@ -248,7 +251,7 @@ return WeaponModel.define({
 		{
 			name = "BladeCore2",
 			size = Vector3.new(0.06, 0.46, 0.22),
-			offset = CFrame.new(0, 0, -6.09),
+			offset = CFrame.new(0, 0, -4.79),
 			color = POLISHED_BRONZE,
 			material = M.Metal,
 			reflectance = 0.1,
@@ -257,7 +260,7 @@ return WeaponModel.define({
 			name = "BladeEdge2Top",
 			class = "WedgePart",
 			size = Vector3.new(0.04, 0.08, 0.22),
-			offset = CFrame.new(0, 0.27, -6.09) * CFrame.Angles(0, pi, 0),
+			offset = CFrame.new(0, 0.27, -4.79) * CFrame.Angles(0, pi, 0),
 			color = HONED_EDGE,
 			material = M.Metal,
 			reflectance = 0.2,
@@ -266,7 +269,7 @@ return WeaponModel.define({
 			name = "BladeEdge2Bottom",
 			class = "WedgePart",
 			size = Vector3.new(0.04, 0.08, 0.22),
-			offset = CFrame.new(0, -0.27, -6.09) * CFrame.Angles(pi, 0, 0),
+			offset = CFrame.new(0, -0.27, -4.79) * CFrame.Angles(pi, 0, 0),
 			color = HONED_EDGE,
 			material = M.Metal,
 			reflectance = 0.2,
@@ -275,7 +278,7 @@ return WeaponModel.define({
 		{
 			name = "BladeCore3",
 			size = Vector3.new(0.06, 0.46, 0.2),
-			offset = CFrame.new(0, 0, -6.3),
+			offset = CFrame.new(0, 0, -5),
 			color = POLISHED_BRONZE,
 			material = M.Metal,
 			reflectance = 0.1,
@@ -283,7 +286,7 @@ return WeaponModel.define({
 		{
 			name = "BladeEdge3Top",
 			size = Vector3.new(0.04, 0.08, 0.2),
-			offset = CFrame.new(0, 0.27, -6.3),
+			offset = CFrame.new(0, 0.27, -5),
 			color = HONED_EDGE,
 			material = M.Metal,
 			reflectance = 0.2,
@@ -291,7 +294,7 @@ return WeaponModel.define({
 		{
 			name = "BladeEdge3Bottom",
 			size = Vector3.new(0.04, 0.08, 0.2),
-			offset = CFrame.new(0, -0.27, -6.3),
+			offset = CFrame.new(0, -0.27, -5),
 			color = HONED_EDGE,
 			material = M.Metal,
 			reflectance = 0.2,
@@ -300,7 +303,7 @@ return WeaponModel.define({
 		{
 			name = "BladeCore4",
 			size = Vector3.new(0.06, 0.42, 0.26),
-			offset = CFrame.new(0, 0, -6.53),
+			offset = CFrame.new(0, 0, -5.23),
 			color = POLISHED_BRONZE,
 			material = M.Metal,
 			reflectance = 0.1,
@@ -309,7 +312,7 @@ return WeaponModel.define({
 			name = "BladeEdge4Top",
 			class = "WedgePart",
 			size = Vector3.new(0.04, 0.1, 0.26),
-			offset = CFrame.new(0, 0.26, -6.53),
+			offset = CFrame.new(0, 0.26, -5.23),
 			color = HONED_EDGE,
 			material = M.Metal,
 			reflectance = 0.2,
@@ -318,7 +321,7 @@ return WeaponModel.define({
 			name = "BladeEdge4Bottom",
 			class = "WedgePart",
 			size = Vector3.new(0.04, 0.1, 0.26),
-			offset = CFrame.new(0, -0.26, -6.53) * CFrame.Angles(0, 0, pi),
+			offset = CFrame.new(0, -0.26, -5.23) * CFrame.Angles(0, 0, pi),
 			color = HONED_EDGE,
 			material = M.Metal,
 			reflectance = 0.2,
@@ -327,7 +330,7 @@ return WeaponModel.define({
 		{
 			name = "BladeCore5",
 			size = Vector3.new(0.06, 0.18, 0.24),
-			offset = CFrame.new(0, 0, -6.78),
+			offset = CFrame.new(0, 0, -5.48),
 			color = POLISHED_BRONZE,
 			material = M.Metal,
 			reflectance = 0.1,
@@ -336,7 +339,7 @@ return WeaponModel.define({
 			name = "BladeEdge5Top",
 			class = "WedgePart",
 			size = Vector3.new(0.04, 0.12, 0.24),
-			offset = CFrame.new(0, 0.15, -6.78),
+			offset = CFrame.new(0, 0.15, -5.48),
 			color = HONED_EDGE,
 			material = M.Metal,
 			reflectance = 0.2,
@@ -345,17 +348,17 @@ return WeaponModel.define({
 			name = "BladeEdge5Bottom",
 			class = "WedgePart",
 			size = Vector3.new(0.04, 0.12, 0.24),
-			offset = CFrame.new(0, -0.15, -6.78) * CFrame.Angles(0, 0, pi),
+			offset = CFrame.new(0, -0.15, -5.48) * CFrame.Angles(0, 0, pi),
 			color = HONED_EDGE,
 			material = M.Metal,
 			reflectance = 0.2,
 		},
-		-- Segment 6: tip, half-width 0.09 -> 0 at z -7.10
+		-- Segment 6: tip, half-width 0.09 -> 0 at z -5.80
 		{
 			name = "BladeTipTop",
 			class = "WedgePart",
 			size = Vector3.new(0.06, 0.09, 0.2),
-			offset = CFrame.new(0, 0.045, -7),
+			offset = CFrame.new(0, 0.045, -5.7),
 			color = POLISHED_BRONZE,
 			material = M.Metal,
 			reflectance = 0.1,
@@ -364,7 +367,7 @@ return WeaponModel.define({
 			name = "BladeTipBottom",
 			class = "WedgePart",
 			size = Vector3.new(0.06, 0.09, 0.2),
-			offset = CFrame.new(0, -0.045, -7) * CFrame.Angles(0, 0, pi),
+			offset = CFrame.new(0, -0.045, -5.7) * CFrame.Angles(0, 0, pi),
 			color = POLISHED_BRONZE,
 			material = M.Metal,
 			reflectance = 0.1,
@@ -374,7 +377,7 @@ return WeaponModel.define({
 		{
 			name = "MidribRear",
 			size = Vector3.new(0.08, 0.08, 0.66),
-			offset = CFrame.new(0, 0, -6.11) * CFrame.Angles(0, 0, rad(45)),
+			offset = CFrame.new(0, 0, -4.81) * CFrame.Angles(0, 0, rad(45)),
 			color = MIDRIB_BRONZE,
 			material = M.Metal,
 			reflectance = 0.1,
@@ -382,7 +385,7 @@ return WeaponModel.define({
 		{
 			name = "MidribFront",
 			size = Vector3.new(0.06, 0.06, 0.5),
-			offset = CFrame.new(0, 0, -6.69) * CFrame.Angles(0, 0, rad(45)),
+			offset = CFrame.new(0, 0, -5.39) * CFrame.Angles(0, 0, rad(45)),
 			color = MIDRIB_BRONZE,
 			material = M.Metal,
 			reflectance = 0.1,

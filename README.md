@@ -39,6 +39,17 @@ command does nothing.
 
 Every power announces itself to all players with a banner across the top of the screen.
 
+### Back in the lobby
+
+After deploying, admins walk in and out of the lobby through any gate. Inside, they keep their
+weapons but cannot fire them, and nothing can hurt them. The armory stays closed and the server
+ignores ENTER THE MAYHEM until they respawn. Admins walk in only: vehicles stop at the gates, and
+the Teleport Wand cannot blink into the lobby.
+
+Other players get one trip out. Once they step outside the lobby the gates block them, and a
+player who gets back inside some other way is put outside the wall. They return to the lobby only
+by respawning.
+
 ### The panel
 
 Admins see a **👑 GOD MODE** button in the top-right corner. It opens the panel:
@@ -143,17 +154,42 @@ Both `<who>` and `<item>` are required. Examples: `/give all rocket`, `/give me 
 
 ## Vehicles
 
-Every vehicle parks in the motor pools along the five spoke roads outside the lobby. From any side
-of a vehicle, press **E** (or tap **Drive**) to take the driver's seat, or **F** (**Ride**) for the
-free passenger seat nearest you. A passenger can press **E** to move to the empty driver's seat.
-Wrecked or abandoned vehicles return to their spot. The ids in `src/shared/VehicleCatalog.luau`
-work with `/give`, e.g. `/give me abrams`.
+Every vehicle parks once per server at a random clear spot with a random heading, in the motor
+pools on both sides of the five spoke roads outside the lobby (75–235 studs out along a spoke, up
+to 70 studs to either side; scenery stays out). Each spot is the vehicle's home: wrecked or
+abandoned vehicles return to it. From any side of a vehicle, press **E** (or tap **Drive**) to take
+the driver's seat, or **F** (**Ride**) for the free passenger seat nearest you. A passenger can
+press **E** to move to the empty driver's seat. The ids in `src/shared/VehicleCatalog.luau` work
+with `/give`, e.g. `/give me abrams`.
+
+Vehicles climb ledges up to 1.6 studs (roads, landmark plazas and courtyards, Sakura Hall's
+steps). Walls, the lobby gates, and taller ledges stop them.
 
 Preview a vehicle model without Studio (needs `lune` from `rokit install` and Python with Pillow):
 
 ```sh
 python3 tools/preview/render.py src/server/vehicleModels/abrams.luau abrams.png
 ```
+
+## Sniper Rifle
+
+The Sniper Rifle (`sniper`) is admin-only.
+
+- Only admins see it in the lobby armory. The server refuses it in a non-admin's loadout.
+- `/give <who> sniper`, `/give <who> arsenal`, and the 🎁 panel give it to anyone.
+- One hit kills any player or monster. Shields and Studio immunity still block it.
+- Fires every 0.1 seconds.
+
+Scope (sniper in hand):
+
+| Input | Scope |
+| --- | --- |
+| Mouse | Hold right button |
+| Touch | Tap **SCOPE** (above the jump button) to toggle |
+| Gamepad | Hold left trigger |
+
+Scoped, the view zooms to a 12° field of view, mouse turning slows to match, and shots go
+where the reticle is. Unequipping, dying, or losing the tool ends the scope.
 
 ## Weapon ids
 

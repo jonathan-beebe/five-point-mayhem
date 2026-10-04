@@ -39,6 +39,7 @@ local function wireBand(index: number, z: number)
 end
 
 return WeaponModel.define({
+	hold = "upright",
 	handle = {
 		size = Vector3.new(0.28, 0.28, 1.05),
 		color = gripLeather,
@@ -46,7 +47,7 @@ return WeaponModel.define({
 		transparency = 1,
 	},
 	pieces = {
-		-- Blade: z -0.80 to -3.05, edges up/down, flats facing ±X
+		-- Blade: z -0.80 to -3.05, edges ±Y (forward/back when held upright), flats facing ±X
 		{
 			name = "BladeUpper",
 			class = "WedgePart",

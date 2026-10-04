@@ -377,6 +377,8 @@ function Weapons.createTool(weapon: Weapon): Tool
 	tool.ToolTip = weapon.description
 	tool.CanBeDropped = false
 	tool:SetAttribute("WeaponId", weapon.id)
+	-- Shot muzzles are handle.CFrame * muzzle, so they follow the grip.
+	tool.Grip = WeaponModel.grip(modelFor(weapon))
 	local handle = makeHandle(weapon)
 	handle.Parent = tool
 	for _, spec in modelFor(weapon).pieces do
@@ -385,22 +387,38 @@ function Weapons.createTool(weapon: Weapon): Tool
 	return tool
 end
 
--- An anchored copy of a weapon for display stands.
+-- An anchored copy of a weapon for display stands, pivoting about the fist. Upright weapons stand
+-- upright (as held), centered vertically on the pivot.
 function Weapons.displayModel(weaponId: string): Model?
 	local weapon = WeaponCatalog.get(weaponId)
 	if not weapon then
 		return nil
 	end
 	local SCALE = 1.6
+	local spec = modelFor(weapon)
+	local hold = WeaponModel.grip(spec):Inverse()
+	if spec.hold == "upright" then
+		local low, high = math.huge, -math.huge
+		for _, piece in spec.pieces do
+			local y = (hold * (piece.offset.Position * SCALE)).Y
+			low = math.min(low, y)
+			high = math.max(high, y)
+		end
+		if low <= high then
+			hold = CFrame.new(0, -(low + high) / 2, 0) * hold
+		end
+	end
 	local model = Instance.new("Model")
 	model.Name = weapon.name
 	local handle = makeHandle(weapon)
 	handle.Anchored = true
+	handle.CFrame = hold
+	handle.PivotOffset = hold:Inverse()
 	handle.Parent = model
-	for _, spec in modelFor(weapon).pieces do
-		local part = createPart(spec, SCALE)
+	for _, piece in spec.pieces do
+		local part = createPart(piece, SCALE)
 		part.Anchored = true
-		part.CFrame = CFrame.new(spec.offset.Position * SCALE) * spec.offset.Rotation
+		part.CFrame = hold * CFrame.new(piece.offset.Position * SCALE) * piece.offset.Rotation
 		part.Parent = model
 	end
 	handle.Size *= SCALE

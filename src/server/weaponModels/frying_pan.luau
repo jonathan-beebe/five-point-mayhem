@@ -216,7 +216,10 @@ for i = 0, 19 do
 end
 
 return WeaponModel.define({
-	-- Roll about the handle: the cooking surface (built facing +X) faces down.
+	-- Held upright: the pan (-Z) stands up from the fist and the cooking surface (-Y) faces the
+	-- target, so the downward swing lands flat side first.
+	hold = "upright",
+	-- Roll about the handle: the cooking surface (built facing +X) faces -Y.
 	rotation = CFrame.Angles(0, 0, -math.pi / 2),
 	handle = {
 		size = Vector3.new(0.2, 0.36, 1.2),

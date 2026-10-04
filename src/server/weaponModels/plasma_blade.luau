@@ -30,6 +30,8 @@ local CELL_BAR = Vector3.new(0.04, 0.04, 0.16)
 local GUARD_TIP = Vector3.new(0.30, 0.15, 0.25)
 
 return WeaponModel.define({
+	-- Held upright: blade toward -Z, edge (blade width along Y) faces -Y onto the target.
+	hold = "upright",
 	handle = {
 		size = Vector3.new(0.4, 0.4, 1.2),
 		color = ANODIZED_BLACK,

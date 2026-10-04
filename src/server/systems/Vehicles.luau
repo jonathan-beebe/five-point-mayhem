@@ -1,4 +1,4 @@
--- Arcade vehicles parked in motor pools along each spoke road. A vehicle is a frictionless skid
+-- Arcade vehicles scattered around the motor pools beside each spoke road. A vehicle is a frictionless skid
 -- carrying welded body parts, built from its model file in `src/server/vehicleModels`. The
 -- driver's client sends its stick/keys over the DriveInput remote; the server turns that into
 -- targets for velocity constraints on the skid. Constraints are simulated by whichever machine
@@ -152,6 +152,11 @@ Remotes.DriveInput.OnServerEvent:Connect(function(player, throttle, steer)
 end)
 
 local SKID_TO_GROUND = CFrame.new(0, -0.5, 0)
+-- The tallest ledge a vehicle climbs, and the longest stretch of skid that slopes up to it.
+-- World ledges: plazas and courtyards 0.6-0.8, roads 0.7, steps 1. Collision boxes start at
+-- 1.2 or higher, above the ramps' working height for those ledges.
+local RAMP_HEIGHT = 1.6
+local RAMP_LENGTH = 2.5
 
 -- Welds a part to the skid at an offset given in vehicle space (origin on the ground).
 local function attach(model: Model, skid: BasePart, part: BasePart, offset: CFrame)
@@ -252,15 +257,39 @@ local function build(id: string, cframe: CFrame): Model
 	model:SetAttribute("VehicleId", id)
 	local W, L = spec.footprint.X, spec.footprint.Y
 
-	-- The skid is the only massive part: a low, frictionless sled under the footprint.
+	-- The skid and its ramps are the only massive parts: a low, frictionless sled under the
+	-- footprint. Its ends are ramps whose undersides slope up like a sled's nose, so driving into
+	-- a ledge up to RAMP_HEIGHT (road edges, plazas, steps) lifts the vehicle onto it.
+	local ramp = math.min(RAMP_LENGTH, L / 4)
 	local skid = Instance.new("Part")
 	skid.Name = "Skid"
-	skid.Size = Vector3.new(W, 1, L)
+	skid.Size = Vector3.new(W, 1, L - ramp * 2)
 	skid.Transparency = 1
 	skid.CustomPhysicalProperties = PhysicalProperties.new(4, 0, 0, 100, 1)
 	skid.CFrame = cframe * CFrame.new(0, 0.5, 0)
 	skid.Parent = model
 	model.PrimaryPart = skid
+	-- Upside-down wedges: flat top, underside rising from the ground to RAMP_HEIGHT at the end.
+	-- Their density gives each the mass of the skid slab it replaces.
+	local rampDensity = 4 * 2 / RAMP_HEIGHT
+	for _, turn in { CFrame.identity, CFrame.Angles(0, math.pi, 0) } do
+		local wedge = Instance.new("WedgePart")
+		wedge.Name = "Ramp"
+		wedge.Size = Vector3.new(W, RAMP_HEIGHT, ramp)
+		wedge.Transparency = 1
+		wedge.CustomPhysicalProperties = PhysicalProperties.new(rampDensity, 0, 0, 100, 1)
+		local relative = SKID_TO_GROUND
+			* turn
+			* CFrame.new(0, RAMP_HEIGHT / 2, -L / 2 + ramp / 2)
+			* CFrame.Angles(0, 0, math.pi)
+		wedge.CFrame = skid.CFrame * relative
+		local weld = Instance.new("Weld")
+		weld.Part0 = skid
+		weld.Part1 = wedge
+		weld.C0 = relative
+		weld.Parent = wedge
+		wedge.Parent = model
+	end
 
 	for index, box in spec.collision :: { VehicleModel.BoxSpec } do
 		local hull = Instance.new("Part")
@@ -420,37 +449,73 @@ function Vehicles.spawnNear(position: Vector3, facing: Vector3?, id: string?): M
 	return build(kind.id, CFrame.lookAt(center, center + look))
 end
 
--- Lays every catalog vehicle out in rows on both sides of the spoke roads, in catalog order,
--- dealing them round-robin across the spokes. Each vehicle faces out toward its landmark.
-local function layOut()
-	local cursors: { { number } } = {}
-	for index = 1, #Config.REGIONS do
-		cursors[index] = { Config.PARKING_START_RADIUS, Config.PARKING_START_RADIUS }
+local placement = Random.new()
+local SPOKE_HALF_WIDTH = 11
+local CLEARANCE = 3 -- free space kept around each parked vehicle
+local CLEAR_HEIGHT = 16 -- taller than every vehicle
+local ATTEMPTS = 400
+
+-- Everything but the terrain counts as an obstacle, roads included: no vehicle parks on a road.
+local clearParams = OverlapParams.new()
+clearParams.FilterType = Enum.RaycastFilterType.Exclude
+clearParams.FilterDescendantsInstances = { workspace.Terrain }
+
+-- Whether a W x L footprint at `ground` (a ground-level CFrame) is clear of the lobby and of
+-- every part in the world, with CLEARANCE to spare.
+local function isClear(ground: CFrame, W: number, L: number): boolean
+	for _, x in { -1, 1 } do
+		for _, z in { -1, 1 } do
+			local corner = ground * Vector3.new(x * W / 2, 0, z * L / 2)
+			if Vector2.new(corner.X, corner.Z).Magnitude < Config.LOBBY_RADIUS + 10 then
+				return false
+			end
+		end
 	end
+	local size = Vector3.new(W + CLEARANCE * 2, CLEAR_HEIGHT, L + CLEARANCE * 2)
+	local box = ground * CFrame.new(0, 0.1 + CLEAR_HEIGHT / 2, 0)
+	return #workspace:GetPartBoundsInBox(box, size, clearParams) == 0
+end
+
+-- A random ground-level spot and heading in a spoke's motor pool, on either side of the road.
+local function randomSpot(spoke: number): CFrame
+	local angle = Config.regionAngle(spoke)
+	local outward = Config.pointAt(angle, 1)
+	local side = Vector3.new(-outward.Z, 0, outward.X)
+	local along = placement:NextNumber(Config.PARKING_START_RADIUS, Config.PARKING_END_RADIUS)
+	local across = placement:NextNumber(SPOKE_HALF_WIDTH, Config.PARKING_REACH)
+		* (if placement:NextNumber() < 0.5 then -1 else 1)
+	local position = Config.pointAt(angle, along) + side * across
+	return CFrame.new(position) * CFrame.Angles(0, placement:NextNumber(0, 2 * math.pi), 0)
+end
+
+-- Parks every catalog vehicle once, dealt round-robin across the spokes, each at a random clear
+-- spot with a random heading. Each vehicle is built before the next is placed, so later picks
+-- avoid it. The chosen spot is the vehicle's home for respawns.
+local function layOut()
 	for order, entry in VehicleCatalog.ALL do
 		local spoke = (order - 1) % #Config.REGIONS + 1
-		local sideIndex = (math.floor((order - 1) / #Config.REGIONS) % 2) + 1
 		local spec = specFor(entry.id)
 		local W, L = spec.footprint.X, spec.footprint.Y
-		local angle = Config.regionAngle(spoke)
-		local outward = Config.pointAt(angle, 1)
-		local side = Vector3.new(-outward.Z, 0, outward.X) * (if sideIndex == 1 then -1 else 1)
-		local along = cursors[spoke][sideIndex] + L / 2
-		cursors[spoke][sideIndex] += L + 8
-		if along + L / 2 > Config.PARKING_END_RADIUS then
-			warn("[Mayhem vehicle] motor pool overflow at " .. entry.id)
+		local ground = randomSpot(spoke)
+		local clear = isClear(ground, W, L)
+		for _ = 2, ATTEMPTS do
+			if clear then
+				break
+			end
+			ground = randomSpot(spoke)
+			clear = isClear(ground, W, L)
 		end
-		local across = 11 + 5 + W / 2
-		local position = Config.pointAt(angle, along) + side * across + Vector3.new(0, 0.2, 0)
-		table.insert(spots, { id = entry.id, cframe = CFrame.lookAt(position, position + outward) })
+		if not clear then
+			warn("[Mayhem vehicle] no clear parking spot for " .. entry.id)
+		end
+		local spot: Spot = { id = entry.id, cframe = ground + Vector3.new(0, 0.2, 0) }
+		table.insert(spots, spot)
+		park(spot)
 	end
 end
 
 function Vehicles.start()
 	layOut()
-	for _, spot in spots do
-		park(spot)
-	end
 
 	-- Return cars that were destroyed, or left idle far from home for a minute.
 	task.spawn(function()

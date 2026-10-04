@@ -289,7 +289,9 @@ table.insert(pieces, {
 })
 
 return WeaponModel.define({
-	-- Modeled standing along +Y; tip the staff forward so the head points along -Z.
+	-- Modeled standing along +Y; this turn puts the head at -Z, which the upright hold stands
+	-- straight up from the fist.
+	hold = "upright",
 	rotation = CFrame.Angles(math.rad(-90), 0, 0),
 	handle = {
 		size = Vector3.new(0.34, 1.2, 0.34),

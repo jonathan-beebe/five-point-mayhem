@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Renders a vehicle model file to a PNG contact sheet of orthographic views.
+"""Renders a vehicle or weapon model file to a PNG contact sheet of orthographic views.
 
 Usage:
   python3 tools/preview/render.py src/server/vehicleModels/<id>.luau [out.png]
       [--views front34,rear34,left,front,top,rear] [--panel 640x420]
       [--focus x,y,z,radius] [--no-overlay]
+  python3 tools/preview/render.py src/server/weaponModels/<id>.luau [out.png] [--weapon]
+      [--views left,front,top,front34] ...
+
+Files under a `weaponModels` folder render as weapons without --weapon.
 
 Needs `lune` (rokit) and Pillow. Shapes follow Roblox: Block, Ball (diameter = smallest size),
 Cylinder (axis along local X, diameter = smaller of Y and Z), WedgePart (full bottom and +Z back
@@ -15,6 +19,13 @@ Overlays, drawn on top of the model so they show through it:
   orange  collision boxes
   green   seat blocks
   red     the seated avatar envelope above each seat (torso and head, then legs forward)
+
+Weapons render in the wielder's frame after the hold (WeaponModel.grip): the tool-hold pose's
+right arm points straight ahead along -Z, +Y is up, +X is the wielder's right. "front" looks back
+at the wielder from the target. Overlays:
+  red      the fist, a 0.5 stud box at the grip origin
+  orange   the forearm, 0.5 x 0.5 x 2.5 studs running from the fist back toward the wielder (+Z)
+  magenta  the muzzle (where shot effects start), if the model sets one
 """
 
 import argparse
@@ -36,6 +47,11 @@ LIGHT = None
 # Assumed R15 proportions: hips on the seat, head top 4 studs above it, legs 2.6 studs forward.
 AVATAR_BODY = ((-1.0, 0.0, -0.5), (1.0, 4.0, 0.6))
 AVATAR_LEGS = ((-1.0, 0.0, -2.6), (1.0, 1.0, -0.5))
+
+# Wielder's fist and forearm in the grip frame (tool-hold pose: arm horizontal, pointing -Z).
+FIST = ((-0.25, -0.25, -0.25), (0.25, 0.25, 0.25))
+FOREARM = ((-0.25, -0.25, 0.25), (0.25, 0.25, 2.75))
+IDENTITY = (0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1)
 
 VIEWS = {
     "front34": ("front 3/4 (front-left)", (-1.0, 0.65, -1.0)),
@@ -292,7 +308,11 @@ def render_view(data, key, w, h, overlay, focus):
             depth = sum(dot(p, d) for p in world) / len(world)
             faces.append((depth, world, n, part))
 
+    weapon = data.get("kind") == "weapon"
     pts = [p for _, world, _, _ in faces for p in world]
+    if weapon:
+        pts += [(x, y, z) for lo, hi in (FIST, FOREARM) for x in (lo[0], hi[0]) for y in (lo[1], hi[1])
+                for z in (lo[2], hi[2])]
     if data.get("footprint"):
         fw, fl = data["footprint"]
         pts += [(sx * fw / 2, y, sz * fl / 2) for sx in (-1, 1) for sz in (-1, 1) for y in (0, 1)]
@@ -316,14 +336,14 @@ def render_view(data, key, w, h, overlay, focus):
     img = Image.new("RGBA", (W, H), (236, 238, 242, 255))
     draw = ImageDraw.Draw(img, "RGBA")
 
-    # Ground grid: 1 meter (4 studs).
-    if key not in ("top", "under") and abs(d[1]) < 0.999:
+    # Ground grid: 1 meter (4 studs). Weapons float in the wielder's frame and get none.
+    if not weapon and key not in ("top", "under") and abs(d[1]) < 0.999:
         gy = project((0, 0, 0))[1]
         if abs(d[1]) < 1e-6:
             draw.line([(0, gy), (W, gy)], fill=(120, 130, 140, 255), width=SS)
     extent = int(max(span_x, span_y) / 2 + 12)
     extent -= extent % 4
-    if key not in ("left", "right", "front", "rear"):
+    if not weapon and key not in ("left", "right", "front", "rear"):
         for t in range(-extent, extent + 1, 4):
             for a, b in (((t, 0, -extent), (t, 0, extent)), ((-extent, 0, t), (extent, 0, t))):
                 draw.line([project(a), project(b)], fill=(205, 210, 218, 255), width=SS)
@@ -355,19 +375,44 @@ def render_view(data, key, w, h, overlay, focus):
             fw, fl = data["footprint"]
             lines += [(e, (0, 170, 200, 255)) for e in box_edges((0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
                                                                     (-fw / 2, 0, -fl / 2), (fw / 2, 1, fl / 2))]
-        for box in data["collision"]:
+        for box in data.get("collision", []):
             sx, sy, sz = box["size"]
             lines += [(e, (240, 140, 0, 255)) for e in box_edges(box["cframe"], (-sx / 2, -sy / 2, -sz / 2),
                                                                    (sx / 2, sy / 2, sz / 2))]
-        for seat in data["seats"]:
+        for seat in data.get("seats", []):
             lines += [(e, (20, 170, 60, 255)) for e in box_edges(seat, (-1, -0.5, -1), (1, 0.5, 1))]
             top = list(seat)
             top_pos = transform(seat, (0, 0.5, 0))
             top[0], top[1], top[2] = top_pos
             for lo, hi in (AVATAR_BODY, AVATAR_LEGS):
                 lines += [(e, (225, 30, 30, 255)) for e in box_edges(top, lo, hi)]
+        labels = []
+        if weapon:
+            lines += [(e, (225, 30, 30, 255)) for e in box_edges(IDENTITY, *FIST)]
+            lines += [(e, (240, 140, 0, 255)) for e in box_edges(IDENTITY, *FOREARM)]
+            labels += [((0.3, 0.3, 0), "fist", (225, 30, 30, 255)),
+                       ((0.3, 0.3, 2.75), "forearm (to wielder)", (220, 120, 0, 255))]
+            if data.get("muzzle"):
+                m = tuple(data["muzzle"])
+                r = 0.25
+                for axis in ((r, 0, 0), (0, r, 0), (0, 0, r)):
+                    lines.append(((sub(m, axis), add(m, axis)), (210, 0, 210, 255)))
+                labels.append((add(m, (0.3, 0.3, 0)), "muzzle", (190, 0, 190, 255)))
         for (a, b), color in lines:
             draw.line([project(a), project(b)], fill=color, width=SS)
+        small = ImageFont.load_default(size=12 * SS)
+        placed = []
+        for p, text, color in labels:
+            x, y = project(p)
+            left, top, right_, bottom = draw.textbbox((0, 0), text, font=small)
+            x = min(x + 3 * SS, W - (right_ - left) - 4 * SS)
+            y -= 14 * SS
+            box = (x, y, x + right_ - left, y + bottom - top)
+            # Skip a label that would land on one already drawn (e.g. the forearm seen end-on).
+            if any(box[0] < o[2] and o[0] < box[2] and box[1] < o[3] and o[1] < box[3] for o in placed):
+                continue
+            placed.append(box)
+            draw.text((x, y), text, fill=color, font=small)
 
     font = ImageFont.load_default(size=14 * SS)
     draw.text((8 * SS, 6 * SS), f"{label}   {s / SS:.1f} px/stud", fill=(30, 30, 40, 255), font=font)
@@ -378,20 +423,25 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("file")
     parser.add_argument("out", nargs="?")
-    parser.add_argument("--views", default="front34,rear34,left,front,top,rear")
+    parser.add_argument("--views", help="default: front34,rear34,left,front,top,rear for vehicles, "
+                        "left,front,top,front34 for weapons")
+    parser.add_argument("--weapon", action="store_true", help="render a weapon model file")
     parser.add_argument("--panel", default="640x420")
     parser.add_argument("--focus", help="x,y,z,radius in vehicle space")
     parser.add_argument("--no-overlay", action="store_true")
     args = parser.parse_args()
 
-    result = subprocess.run(["lune", "run", EXPORT, args.file], capture_output=True, text=True, cwd=ROOT)
+    command = ["lune", "run", EXPORT, args.file] + (["--weapon"] if args.weapon else [])
+    result = subprocess.run(command, capture_output=True, text=True, cwd=ROOT)
     if result.returncode != 0:
         sys.stderr.write(result.stderr or result.stdout)
         sys.exit(1)
     data = json.loads(result.stdout)
 
     w, h = (int(v) for v in args.panel.split("x"))
-    keys = [k.strip() for k in args.views.split(",") if k.strip()]
+    weapon = data.get("kind") == "weapon"
+    views = args.views or ("left,front,top,front34" if weapon else "front34,rear34,left,front,top,rear")
+    keys = [k.strip() for k in views.split(",") if k.strip()]
     for k in keys:
         if k not in VIEWS:
             sys.exit(f"unknown view {k}; choose from {', '.join(VIEWS)}")
@@ -405,9 +455,15 @@ def main():
         sheet.paste(panel, ((i % cols) * w, header + (i // cols) * h))
     draw = ImageDraw.Draw(sheet)
     font = ImageFont.load_default(size=16)
-    fw, fl = data.get("footprint") or (0, 0)
-    title = (f"{data.get('name')}  |  {len(data['parts'])} pieces  |  footprint {fw} x {fl} studs  |  "
-             f"speed {data.get('speed')}  |  seats {len(data['seats'])}")
+    if weapon:
+        muzzle = data.get("muzzle")
+        title = (f"{data.get('name')}  |  {len(data['parts']) - 1} pieces  |  hold {data.get('hold')}  |  "
+                 f"muzzle {tuple(round(v, 2) for v in muzzle) if muzzle else 'default'}  |  "
+                 "wielder frame: -Z forward, +Y up")
+    else:
+        fw, fl = data.get("footprint") or (0, 0)
+        title = (f"{data.get('name')}  |  {len(data['parts'])} pieces  |  footprint {fw} x {fl} studs  |  "
+                 f"speed {data.get('speed')}  |  seats {len(data['seats'])}")
     draw.text((10, 4), title, fill=(0, 0, 0), font=font)
     problems = data.get("problems") or []
     draw.text((10, 24), ("PROBLEMS: " + "; ".join(problems)) if problems else "no problems found",

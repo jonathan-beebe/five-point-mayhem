@@ -24,10 +24,13 @@ Config.OUTER_ROAD_RADIUS = 720
 Config.WORLD_RADIUS = 1000
 Config.SPOKE_END_RADIUS = 420
 
--- Motor pools: vehicles park in rows along both sides of each spoke road, from the lobby out.
-Config.PARKING_START_RADIUS = 90
-Config.PARKING_END_RADIUS = 250
-Config.PARKING_REACH = 48 -- from the spoke's center line; scenery stays out of this band
+-- Motor pools: vehicles park at random clear spots on both sides of each spoke road. A parked
+-- vehicle's center lies PARKING_START_RADIUS..PARKING_END_RADIUS along the spoke and up to
+-- PARKING_REACH from its center line. Scenery stays out of the pool plus PARKING_MARGIN.
+Config.PARKING_START_RADIUS = 75
+Config.PARKING_END_RADIUS = 235
+Config.PARKING_REACH = 70
+Config.PARKING_MARGIN = 14
 
 Config.NORMAL_GRAVITY = 196.2
 Config.MOON_GRAVITY = 38
@@ -86,9 +89,9 @@ function Config.isInParking(position: Vector3): boolean
 		local along = position.X * math.cos(angle) + position.Z * math.sin(angle)
 		local across = -position.X * math.sin(angle) + position.Z * math.cos(angle)
 		if
-			along > Config.PARKING_START_RADIUS - 10
-			and along < Config.PARKING_END_RADIUS + 10
-			and math.abs(across) < Config.PARKING_REACH
+			along > Config.PARKING_START_RADIUS - Config.PARKING_MARGIN
+			and along < Config.PARKING_END_RADIUS + Config.PARKING_MARGIN
+			and math.abs(across) < Config.PARKING_REACH + Config.PARKING_MARGIN
 		then
 			return true
 		end

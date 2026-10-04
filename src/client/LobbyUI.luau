@@ -288,10 +288,27 @@ local deployButton = create("TextButton", {
 
 local cards: { [string]: TextButton } = {}
 
+-- Admin-only weapons are listed for admins only. The server refuses them for everyone else.
+local function isAvailable(weapon: WeaponCatalog.Weapon): boolean
+	return not weapon.adminOnly or player:GetAttribute("IsAdmin") == true
+end
+
 local function refresh()
+	local available = 0
+	for _, weapon in WeaponCatalog.ALL do
+		if isAvailable(weapon) then
+			available += 1
+		end
+	end
+	for index = #selected, 1, -1 do
+		local weapon = WeaponCatalog.get(selected[index])
+		if not weapon or not isAvailable(weapon) then
+			table.remove(selected, index)
+		end
+	end
 	counter.Text = string.format(
 		"%d weapons in the armory · pick %d · %d chosen",
-		#WeaponCatalog.ALL,
+		available,
 		Config.LOADOUT_SIZE,
 		#selected
 	)
@@ -302,7 +319,7 @@ local function refresh()
 		stroke.Enabled = isSelected
 		check.Visible = isSelected
 		local weapon = WeaponCatalog.get(id) :: WeaponCatalog.Weapon
-		card.Visible = category == "All" or weapon.category == category
+		card.Visible = isAvailable(weapon) and (category == "All" or weapon.category == category)
 	end
 	for index, slot in slots do
 		local weapon = selected[index] and WeaponCatalog.get(selected[index])
@@ -491,6 +508,7 @@ function LobbyUI.start()
 		updateVisibility()
 	end)
 	player:GetPropertyChangedSignal("Team"):Connect(refresh)
+	player:GetAttributeChangedSignal("IsAdmin"):Connect(refresh)
 	Teams.ChildAdded:Connect(refresh)
 	player.CharacterAdded:Connect(function(character)
 		hiddenByChoice = false

@@ -297,6 +297,7 @@ for _, s in { 1, -1 } do
 end
 
 return WeaponModel.define({
+	hold = "upright", -- held by the ankles, body up from the fist, belly toward the target
 	handle = {
 		size = Vector3.new(0.4, 0.4, 1.2),
 		color = legOrange,

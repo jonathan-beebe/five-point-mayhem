@@ -12,6 +12,7 @@
 --   push       cone blast that throws enemies away
 --
 -- effect: burn | freeze | slow | knockback | launch | float
+-- adminOnly: hidden from non-admins in the armory and refused in their loadout; /give still works
 
 export type Weapon = {
 	id: string,
@@ -41,6 +42,7 @@ export type Weapon = {
 	effect: string?,
 	power: number?,
 	sound: string?,
+	adminOnly: boolean?,
 }
 
 local SLASH = "rbxasset://sounds/swordslash.wav"
@@ -330,9 +332,11 @@ local WEAPONS: { Weapon } = {
 		name = "Sniper Rifle",
 		category = "Guns",
 		kind = "hitscan",
-		description = "Hit anything, anywhere.",
-		damage = 90,
-		cooldown = 2,
+		description = "Admin only. One shot kills. Right-click to scope.",
+		-- Above every max health (players 100, the biggest monster 400).
+		damage = 10000,
+		cooldown = 0.1,
+		adminOnly = true,
 		range = 1500,
 		spread = 0,
 		color = rgb(45, 60, 45),

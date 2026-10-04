@@ -34,7 +34,10 @@ local EDGE_SIZE = Vector3.new(1.85, 0.20, 0.08)
 local SPIKE_SIZE = Vector3.new(0.16, 0.60, 0.15)
 
 return WeaponModel.define({
-	-- Roll 180 degrees about the haft: the bit (built at +Y) faces down, the back spike up.
+	-- Held upright: the head points up out of the fist and the haft's butt sits just below it.
+	hold = "upright",
+	-- Roll 180 degrees about the haft: the bit (built at +Y) faces -Y, which the upright hold turns
+	-- forward so the edge leads the downward swing; the back spike faces the wielder.
 	rotation = CFrame.Angles(0, 0, math.pi),
 	handle = {
 		size = Vector3.new(0.3, 0.3, 1.2),

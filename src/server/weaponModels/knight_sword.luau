@@ -22,8 +22,10 @@ local CHAPPE_LEATHER = rgb(96, 44, 28)
 
 -- Blade stations along Z: root -0.70 (inside the guard), fuller -0.84 to -2.90, point section -3.80 to tip -4.60.
 -- Edges face +Y/-Y, flats face +X/-X. Taper wedges are full height at the root and thin toward the tip.
+-- Held upright: the blade stands up from the fist and the -Y edge leads the downward swing.
 
 return WeaponModel.define({
+	hold = "upright",
 	handle = {
 		size = Vector3.new(0.24, 0.24, 1.0),
 		color = GRIP_LEATHER,

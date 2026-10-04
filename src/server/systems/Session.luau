@@ -15,13 +15,22 @@ local Weapons = require(script.Parent.Weapons)
 local Session = {}
 
 -- Collision groups: lobby gates stop undeployed players (and creatures) but let deployed ones out.
+-- Once a deployed non-admin has left the lobby they are LockedOut: the gates stop them again, so
+-- only admins can walk back in.
 function Session.registerCollisionGroups()
-	for _, group in { "LobbyPlayers", "DeployedPlayers", "LobbyGate" } do
+	for _, group in { "LobbyPlayers", "DeployedPlayers", "LockedOutPlayers", "LobbyGate" } do
 		if not PhysicsService:IsCollisionGroupRegistered(group) then
 			PhysicsService:RegisterCollisionGroup(group)
 		end
 	end
 	PhysicsService:CollisionGroupSetCollidable("LobbyGate", "DeployedPlayers", false)
+end
+
+local function groupFor(player: Player): string
+	if not player:GetAttribute("Deployed") then
+		return "LobbyPlayers"
+	end
+	return if player:GetAttribute("LockedOut") then "LockedOutPlayers" else "DeployedPlayers"
 end
 
 local function setCollisionGroup(character: Model, group: string)
@@ -71,12 +80,11 @@ end
 
 local function onCharacter(player: Player, character: Model)
 	player:SetAttribute("Deployed", false)
+	player:SetAttribute("LockedOut", false)
 	setCollisionGroup(character, "LobbyPlayers")
 	character.DescendantAdded:Connect(function(descendant)
 		if descendant:IsA("BasePart") then
-			descendant.CollisionGroup = if player:GetAttribute("Deployed")
-				then "DeployedPlayers"
-				else "LobbyPlayers"
+			descendant.CollisionGroup = groupFor(player)
 		end
 	end)
 	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
@@ -103,9 +111,11 @@ local function deploy(player: Player, ids: any)
 	if typeof(ids) ~= "table" or #ids ~= Config.LOADOUT_SIZE or player:GetAttribute("Deployed") then
 		return
 	end
+	local isAdmin = player:GetAttribute("IsAdmin") == true
 	local seen = {}
 	for _, id in ids do
-		if typeof(id) ~= "string" or not WeaponCatalog.get(id) or seen[id] then
+		local weapon = typeof(id) == "string" and WeaponCatalog.get(id)
+		if not weapon or seen[id] or (weapon.adminOnly and not isAdmin) then
 			return
 		end
 		seen[id] = true
@@ -147,8 +157,52 @@ local function chooseTeam(player: Player, teamName: any)
 	end
 end
 
+-- Locks deployed non-admins out once they leave the lobby, and puts any who get back inside (a
+-- teleport, a shove through a gate) just outside the wall again.
+local LOCKOUT_CHECK_INTERVAL = 0.25
+
+local function enforceLockout()
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if
+			not character
+			or not humanoid
+			or not root
+			or humanoid.Health <= 0
+			or not player:GetAttribute("Deployed")
+			or player:GetAttribute("IsAdmin")
+		then
+			continue
+		end
+		local position = root.Position
+		local flat = Vector2.new(position.X, position.Z)
+		if not player:GetAttribute("LockedOut") then
+			if flat.Magnitude > Config.LOBBY_RADIUS + 4 then
+				player:SetAttribute("LockedOut", true)
+				setCollisionGroup(character, "LockedOutPlayers")
+			end
+		elseif Config.isInLobby(position) then
+			if humanoid.SeatPart then
+				humanoid.Sit = false
+			end
+			local outward = if flat.Magnitude > 0.1 then flat.Unit else Vector2.new(0, 1)
+			local outside = outward * (Config.LOBBY_RADIUS + 8)
+			local spot = Vector3.new(outside.X, position.Y, outside.Y)
+			character:PivotTo(CFrame.lookAt(spot, spot + Vector3.new(outward.X, 0, outward.Y)))
+		end
+	end
+end
+
 function Session.start()
 	createTeams()
+	task.spawn(function()
+		while true do
+			task.wait(LOCKOUT_CHECK_INTERVAL)
+			enforceLockout()
+		end
+	end)
 	Players.PlayerAdded:Connect(onPlayer)
 	for _, player in Players:GetPlayers() do
 		task.spawn(onPlayer, player)
