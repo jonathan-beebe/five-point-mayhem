@@ -6,6 +6,7 @@ local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 
@@ -47,13 +48,16 @@ function Combat.canDamage(attacker: Player?, character: Model, humanoid: Humanoi
 	if root and Config.isInLobby(root.Position) then
 		return false
 	end
+	local victim = Players:GetPlayerFromCharacter(character)
+	if victim and Config.STUDIO_IMMUNE and RunService:IsStudio() then
+		return false
+	end
 	if not attacker then
 		return true
 	end
 	if character == attacker.Character then
 		return false
 	end
-	local victim = Players:GetPlayerFromCharacter(character)
 	return victim == nil or not Combat.areAllies(attacker, victim)
 end
 

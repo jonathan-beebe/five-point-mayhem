@@ -8,6 +8,10 @@ Config.ADMIN_USER_IDS = {} :: { number }
 
 Config.LOADOUT_SIZE = 3
 
+-- Players take no weapon or monster damage in Studio test sessions. MAYHEM still kills.
+-- Has no effect on live servers.
+Config.STUDIO_IMMUNE = true
+
 -- Lobby: a glass-domed safe room at the world origin.
 Config.LOBBY_RADIUS = 56
 Config.LOBBY_WALL_HEIGHT = 26
