@@ -13,6 +13,9 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 local Combat = require(script.Parent.Combat)
+local WeaponModel = require(script.Parent.WeaponModel)
+
+local modelFiles = script.Parent.Parent:FindFirstChild("weaponModels")
 
 type Weapon = WeaponCatalog.Weapon
 
@@ -29,18 +32,12 @@ effectsFolder.Parent = workspace
 
 -- Tool models ---------------------------------------------------------------------------------
 
-type PieceSpec = {
-	size: Vector3,
-	offset: CFrame,
-	color: Color3,
-	material: Enum.Material?,
-	shape: Enum.PartType?,
-}
+type PieceSpec = WeaponModel.PieceSpec
 
-local CYLINDER_Z = CFrame.Angles(0, math.rad(90), 0) -- turns a cylinder's X axis onto Z
-local CYLINDER_Y = CFrame.Angles(0, 0, math.rad(90))
+local CYLINDER_Z = WeaponModel.CYLINDER_Z
+local CYLINDER_Y = WeaponModel.CYLINDER_Y
 
--- Weapon pieces in handle space. The hand holds the handle; local -Z points away from the wielder.
+-- Fallback pieces for weapons without a file in `weaponModels`, in handle space. The hand holds the handle; local -Z points away from the wielder.
 local function pieces(weapon: Weapon): { PieceSpec }
 	local c = weapon.color
 	local glow = if weapon.neon then M.Neon else M.Metal
@@ -307,18 +304,43 @@ local function pieces(weapon: Weapon): { PieceSpec }
 	return {}
 end
 
-local function attach(handle: BasePart, spec: PieceSpec, parent: Instance)
-	local part = Instance.new("Part")
-	if spec.shape then
+-- A weapon's file in `weaponModels`, or a model built from its catalog shape.
+local models: { [string]: WeaponModel.Model } = {}
+local function modelFor(weapon: Weapon): WeaponModel.Model
+	local model = models[weapon.id]
+	if model then
+		return model
+	end
+	local file = modelFiles and modelFiles:FindFirstChild(weapon.id)
+	model = if file
+		then require(file :: ModuleScript) :: WeaponModel.Model
+		else { pieces = pieces(weapon) }
+	models[weapon.id] = model
+	return model
+end
+
+local function createPart(spec: PieceSpec, scale: number): BasePart
+	local part = Instance.new(spec.class or "Part") :: BasePart
+	if spec.shape and part:IsA("Part") then
 		part.Shape = spec.shape
 	end
-	part.Size = spec.size
+	if spec.name then
+		part.Name = spec.name
+	end
+	part.Size = spec.size * scale
 	part.Color = spec.color
 	part.Material = spec.material or M.SmoothPlastic
+	part.Transparency = spec.transparency or 0
+	part.Reflectance = spec.reflectance or 0
 	part.CanCollide = false
 	part.CanQuery = false
 	part.CanTouch = false
 	part.Massless = true
+	return part
+end
+
+local function attach(handle: BasePart, spec: PieceSpec, parent: Instance)
+	local part = createPart(spec, 1)
 	part.CFrame = handle.CFrame * spec.offset
 	local weld = Instance.new("Weld")
 	weld.Part0 = handle
@@ -329,11 +351,13 @@ local function attach(handle: BasePart, spec: PieceSpec, parent: Instance)
 end
 
 local function makeHandle(weapon: Weapon): Part
+	local spec = modelFor(weapon).handle or {}
 	local handle = Instance.new("Part")
 	handle.Name = "Handle"
-	handle.Size = Vector3.new(0.4, 0.4, 1.2)
-	handle.Color = GRIP
-	handle.Material = M.SmoothPlastic
+	handle.Size = spec.size or Vector3.new(0.4, 0.4, 1.2)
+	handle.Color = spec.color or GRIP
+	handle.Material = spec.material or M.SmoothPlastic
+	handle.Transparency = spec.transparency or 0
 	handle.CanCollide = false
 	handle.CanQuery = false
 	handle.Massless = true
@@ -355,7 +379,7 @@ function Weapons.createTool(weapon: Weapon): Tool
 	tool:SetAttribute("WeaponId", weapon.id)
 	local handle = makeHandle(weapon)
 	handle.Parent = tool
-	for _, spec in pieces(weapon) do
+	for _, spec in modelFor(weapon).pieces do
 		attach(handle, spec, tool)
 	end
 	return tool
@@ -367,25 +391,19 @@ function Weapons.displayModel(weaponId: string): Model?
 	if not weapon then
 		return nil
 	end
+	local SCALE = 1.6
 	local model = Instance.new("Model")
 	model.Name = weapon.name
 	local handle = makeHandle(weapon)
 	handle.Anchored = true
 	handle.Parent = model
-	for _, spec in pieces(weapon) do
-		local part = Instance.new("Part")
-		if spec.shape then
-			part.Shape = spec.shape
-		end
-		part.Size = spec.size * 1.6
-		part.Color = spec.color
-		part.Material = spec.material or M.SmoothPlastic
+	for _, spec in modelFor(weapon).pieces do
+		local part = createPart(spec, SCALE)
 		part.Anchored = true
-		part.CanCollide = false
-		part.CFrame = CFrame.new(spec.offset.Position * 1.6) * spec.offset.Rotation
+		part.CFrame = CFrame.new(spec.offset.Position * SCALE) * spec.offset.Rotation
 		part.Parent = model
 	end
-	handle.Size *= 1.6
+	handle.Size *= SCALE
 	model.PrimaryPart = handle
 	return model
 end
@@ -970,7 +988,11 @@ Remotes.FireWeapon.OnServerEvent:Connect(function(player, weaponId, aim)
 		root = root,
 		origin = origin,
 		muzzle = if handle
-			then (handle.CFrame * CFrame.new(0, 0.5, -(weapon.length or 2))).Position
+			then (handle.CFrame * (modelFor(weapon).muzzle or CFrame.new(
+				0,
+				0.5,
+				-(weapon.length or 2)
+			))).Position
 			else origin,
 		aim = aimPoint,
 	})
