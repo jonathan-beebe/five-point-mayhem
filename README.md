@@ -205,7 +205,8 @@ press **E** to move to the empty driver's seat. The ids in `src/shared/VehicleCa
 with `/give`, e.g. `/give me abrams`.
 
 Vehicles climb ledges up to 1.6 studs (roads, landmark plazas and courtyards, Sakura Hall's
-steps). Walls, the lobby gates, and taller ledges stop them.
+steps). Walls, the lobby gates, and taller ledges stop them. Walkers also climb walls up to 14
+studs (see OG).
 
 ### OG
 
@@ -223,6 +224,13 @@ and works with `/give <who> mech`.
 - **In the cab**: press **E** (or tap **Drive**) to sit back down, or **Q** (**Climb out**) to
   climb out onto the ground behind the mech.
 - With nobody in it, the mech's brake holds it in place when bumped.
+- **Climb**: drive into a wall up to 14 studs tall with room on top, such as a Jaguar Pyramid
+  tier, and the mech lifts itself up at 8 studs/s with its legs stepping, then steps onto the top.
+  It climbs the pyramid tier by tier, or its front staircase, to the summit; the east and west
+  faces stop one tier short, where the temple leaves too little room. Let go of the throttle to
+  hang on the wall; push forward to keep climbing; reverse to let go and drop. It does not turn
+  while climbing. Taller walls, the lobby, other vehicles and players are not climbed. Every
+  walker climbs.
 
 The legs and arms are decoration and do not collide; the cab walls, floor and roof, the hips and
 the back pods do. The cab's furniture does not. Gates, walls and building doors stop it.
@@ -252,6 +260,13 @@ Passengers look out in first person like the pilot.
   home, the rider is put on the ground behind the legs before it docks.
 - Nobody else can get into the pod while it flies. Anyone standing in the cab at launch is put
   outside.
+
+Check the walkers' walk cycle and climb assist without Studio (needs `lune`):
+
+```sh
+lune run tools/tests/mech_gait.luau
+lune run tools/tests/mech_climb.luau
+```
 
 Preview a vehicle model without Studio (needs `lune` from `rokit install` and Python with Pillow):
 

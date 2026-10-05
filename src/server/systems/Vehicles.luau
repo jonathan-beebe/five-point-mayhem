@@ -5,7 +5,9 @@
 -- owns the vehicle's physics, so this works under any ownership. Wrecked or abandoned vehicles
 -- return to their parking spot. A driven vehicle hurts whoever it touches (cars ram, walkers
 -- stomp), shoves the vehicles it hits, and fells trees. A walker with a pod (spec.pod) can send
--- its cab flying (PodFlight); while the pod is away its legs park.
+-- its cab flying (PodFlight); while the pod is away its legs park. A driven walker climbs walls up
+-- to MechClimb.MAX_RISE: it senses them with rays, MechClimb decides, and a vertical velocity
+-- constraint (the "Climber") lifts it; the model's "Climbing" attribute says when.
 
 local CollectionService = game:GetService("CollectionService")
 local PhysicsService = game:GetService("PhysicsService")
@@ -14,6 +16,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local MechClimb = require(ReplicatedStorage.Shared.MechClimb)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
 local Combat = require(script.Parent.Combat)
@@ -84,6 +87,7 @@ local COASTING = 30
 local TURN_RATE = 2.4 -- default
 local SETTLING = 45 -- studs/s^2 an empty vehicle slows by, frictionless skid and all
 local SPIN_SETTLING = 4 -- rad/s^2 an empty vehicle's yaw spin slows by
+local CLIMB_LIFT = 60 -- studs/s^2 the climber can accelerate a walker by, beyond gravity
 
 type Car = {
 	seat: VehicleSeat,
@@ -113,6 +117,11 @@ type Car = {
 	steer: number,
 	pod: PodFlight.Pod?, -- a walker whose cab flies (spec.pod)
 	legsSeat: VehicleSeat?, -- drives the legs while the pod is away (spec.pod.legsSeat)
+	model: Model,
+	climber: LinearVelocity?, -- vertical lift for the climb assist; nil when it does not climb
+	climbRays: MechClimb.Rays?,
+	climb: MechClimb.State,
+	climbing: boolean, -- mirrors the model's "Climbing" attribute
 }
 
 -- Every live car, by model.
@@ -135,6 +144,117 @@ local function setLimits(car: Car, force: number, torque: number)
 	end
 end
 
+-- Climb assist (walkers) -------------------------------------------------------------------------
+
+local climbParams = RaycastParams.new()
+climbParams.FilterType = Enum.RaycastFilterType.Exclude
+climbParams.FilterDescendantsInstances = { folder }
+climbParams.CollisionGroup = "Walkers"
+climbParams.RespectCanCollide = true
+
+-- Terrain and anchored parts are climbable, unless they or a parent are tagged NoClimb.
+local function climbable(hit: RaycastResult): boolean
+	local instance = hit.Instance
+	if not instance:IsA("Terrain") and not (instance:IsA("BasePart") and instance.Anchored) then
+		return false
+	end
+	local node: Instance? = instance
+	while node and node ~= workspace do
+		if CollectionService:HasTag(node, "NoClimb") then
+			return false
+		end
+		node = node.Parent
+	end
+	return true
+end
+
+-- Casts the climb rays (MechClimb.rays) from `ground`, a level frame on the skid's underside.
+local function senseClimb(rays: MechClimb.Rays, ground: CFrame): MechClimb.Probe
+	local function cast(ray: MechClimb.Ray, down: boolean): RaycastResult?
+		local origin = ground * Vector3.new(ray.x, ray.y, ray.z)
+		local direction = if down
+			then Vector3.new(0, -ray.length, 0)
+			else ground.LookVector * ray.length
+		local hit = workspace:Raycast(origin, direction, climbParams)
+		return if hit and climbable(hit) then hit else nil
+	end
+	local wall: { distance: number }? = nil
+	for _, ray in rays.walls do
+		local hit = cast(ray, false)
+		if hit and math.abs(hit.Normal.Y) < MechClimb.WALL_MAX_NORMAL_Y then
+			local distance = hit.Distance - (ray.z - rays.front) -- from the skid's front
+			if not wall or distance < wall.distance then
+				wall = { distance = distance }
+			end
+		end
+	end
+	local bottom = ground.Position.Y
+	local top = cast(rays.ledge, true)
+	local foot = cast(rays.foot, true)
+	return {
+		wall = wall,
+		ledge = if top then { height = top.Position.Y - bottom, normalY = top.Normal.Y } else nil,
+		headroom = cast(rays.headroom, false) == nil,
+		foot = if foot then foot.Position.Y - bottom else nil,
+	}
+end
+
+local function setClimbing(car: Car, climbing: boolean)
+	if car.climbing ~= climbing then
+		car.climbing = climbing
+		car.model:SetAttribute("Climbing", climbing)
+	end
+end
+
+-- Ends any climb: the climber lets go and the walker falls or stands where it is.
+local function stopClimb(car: Car)
+	local climber = car.climber
+	if climber and climber.Enabled then
+		climber.Enabled = false
+	end
+	if car.climb.mode ~= "walk" then
+		car.climb = MechClimb.new()
+	end
+	setClimbing(car, false)
+end
+
+-- Runs the climb assist for a driven walker. Returns the command, whose `press` replaces the
+-- forward speed; nil for a vehicle that does not climb.
+local function climbStep(car: Car, forward: Vector3, dt: number): MechClimb.Command?
+	local climber, rays = car.climber, car.climbRays
+	if not climber or not rays then
+		return nil
+	end
+	local skid = car.skid
+	local underside = (skid.CFrame * CFrame.new(0, -skid.Size.Y / 2, 0)).Position
+	local ground = CFrame.lookAt(underside, underside + forward)
+	local velocity = skid.AssemblyLinearVelocity
+	local command = MechClimb.step(car.climb, {
+		throttle = car.throttle,
+		bottom = underside.Y,
+		vy = velocity.Y,
+		speed = velocity:Dot(forward),
+		probe = if car.throttle > 0 then senseClimb(rays, ground) else nil,
+		dt = dt,
+	})
+	local lift = command.lift
+	if lift then
+		-- Sized every frame: /gravity changes, and a seated driver adds mass.
+		local force = skid.AssemblyMass * (workspace.Gravity + CLIMB_LIFT)
+		if math.abs(climber.MaxForce - force) > 1 then
+			climber.MaxForce = force
+		end
+		if climber.LineVelocity ~= lift then
+			climber.LineVelocity = lift
+		end
+		climber.Enabled = true
+	elseif climber.Enabled then
+		climber.Enabled = false
+	end
+	setClimbing(car, command.climbing)
+	return command
+end
+
 -- The seat that drives the legs: the driver seat, or while a pod is away the legs seat (its pilot
 -- flies the pod, PodFlight).
 local function legsDriverSeat(car: Car): VehicleSeat?
@@ -149,6 +269,7 @@ local function drive(car: Car, dt: number)
 	if os.clock() < car.stunnedUntil then
 		car.mover.Enabled = false
 		car.turner.Enabled = false
+		stopClimb(car)
 		return
 	end
 	-- Without a driver, ordinary physics has the car while it is at rest; when it moves (shoved,
@@ -157,6 +278,7 @@ local function drive(car: Car, dt: number)
 	-- control off jumps.
 	if not occupant then
 		car.yaw = 0
+		stopClimb(car)
 		local velocity = skid.AssemblyLinearVelocity
 		local flat = Vector2.new(velocity.X, velocity.Z)
 		local spin = skid.AssemblyAngularVelocity.Y
@@ -196,10 +318,14 @@ local function drive(car: Car, dt: number)
 		elseif math.sign(target) ~= math.sign(speed) and math.abs(speed) > 1 then car.braking
 		else car.acceleration
 	local newSpeed = moveToward(speed, target, rate * dt)
+	local climb = climbStep(car, forward, dt)
+	if climb and climb.press then
+		newSpeed = climb.press
+	end
 
 	car.mover.PlaneVelocity = Vector2.new(forward.X * newSpeed, forward.Z * newSpeed)
 	local grip = if car.turnInPlace then 1 else math.clamp(newSpeed / 20, -1, 1)
-	local yaw = -car.steer * car.turnRate * grip
+	local yaw = if climb and climb.climbing then 0 else -car.steer * car.turnRate * grip
 	if car.turnAcceleration then
 		yaw = moveToward(car.yaw, yaw, car.turnAcceleration * dt)
 	end
@@ -1086,6 +1212,19 @@ local function build(id: string, cframe: CFrame): Model
 	turner.MaxTorque = 1e6 * leverage
 	turner.Enabled = false
 	turner.Parent = skid
+	-- Climb assist: a vertical velocity on the same attachment, off until a climb (climbStep).
+	local climbs = spec.gait ~= nil and spec.climbs ~= false
+	local climber: LinearVelocity? = nil
+	if climbs then
+		climber = Instance.new("LinearVelocity")
+		climber.Name = "Climber"
+		climber.Attachment0 = driveAttachment
+		climber.RelativeTo = Enum.ActuatorRelativeTo.World
+		climber.VelocityConstraintMode = Enum.VelocityConstraintMode.Line
+		climber.LineDirection = Vector3.yAxis
+		climber.Enabled = false
+		climber.Parent = skid
+	end
 
 	local ram = spec.ram or 1
 	local car: Car = {
@@ -1114,6 +1253,11 @@ local function build(id: string, cframe: CFrame): Model
 		yaw = 0,
 		throttle = 0,
 		steer = 0,
+		model = model,
+		climber = climber,
+		climbRays = if climbs then MechClimb.rays(W, L) else nil,
+		climb = MechClimb.new(),
+		climbing = false,
 	}
 	-- While someone drives, the server simulates the car (and the seated driver with it). When
 	-- they get out, hand their character's physics back to them. A driver getting out of a cab
@@ -1125,6 +1269,7 @@ local function build(id: string, cframe: CFrame): Model
 			if seat == legsDriverSeat(car) then
 				car.throttle = 0
 				car.steer = 0
+				stopClimb(car)
 			end
 			local occupant = seat.Occupant
 			if occupant then

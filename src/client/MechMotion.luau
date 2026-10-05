@@ -1,12 +1,13 @@
 -- Animates every walker (a vehicle model with attribute Gait = "mech") near this client. Motor6D
 -- Transforms do not replicate, so each client poses each mech itself from the skid's replicated
--- velocity (src/shared/MechGait.luau); clients need not agree on the phase. Heel strikes kick up
--- dust and fire `MechMotion.footfall` (model, foot "L" | "R", strength 0..1), which MechCamera
--- turns into a shake for the driver and VehicleSounds into a footstep. Smokestacks (Attachments
--- named "Smoke", from the model's `smoke` spec) trail smoke while the walker moves and puff on
--- every step. Hydraulic bones (Bone_ parts with an "Aim" attribute) track their partner every frame
--- (MechGait.aim); steering wheels (a "Steer" axis attribute) turn with the walker (MechGait.steer);
--- springy parts (a "Wobble" attribute) wobble as it walks (MechGait.wobble).
+-- velocity (src/shared/MechGait.luau); clients need not agree on the phase. While the walker
+-- climbs (the model's "Climbing" attribute, Vehicles), the legs step at its rising speed. Heel
+-- strikes kick up dust and fire `MechMotion.footfall` (model, foot "L" | "R", strength 0..1), which
+-- MechCamera turns into a shake for the driver and VehicleSounds into a footstep. Smokestacks
+-- (Attachments named "Smoke", from the model's `smoke` spec) trail smoke while the walker moves and
+-- puff on every step. Hydraulic bones (Bone_ parts with an "Aim" attribute) track their partner
+-- every frame (MechGait.aim); steering wheels (a "Steer" axis attribute) turn with the walker
+-- (MechGait.steer); springy parts (a "Wobble" attribute) wobble as it walks (MechGait.wobble).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -212,8 +213,10 @@ local function animate(mech: Mech, dt: number, viewer: Vector3)
 	local look = skid.CFrame.LookVector
 	local flat = Vector3.new(look.X, 0, look.Z)
 	local forward = if flat.Magnitude > 0.01 then flat.Unit else Vector3.zAxis
+	local velocity = skid.AssemblyLinearVelocity
 	local footfalls = MechGait.step(state, {
-		forward = skid.AssemblyLinearVelocity:Dot(forward),
+		forward = velocity:Dot(forward),
+		climb = if mech.model:GetAttribute("Climbing") then math.max(velocity.Y, 0) else 0,
 		yawRate = skid.AssemblyAngularVelocity.Y,
 		occupied = seat.Occupant ~= nil or legsRidden(mech.model),
 		topSpeed = (seat:GetAttribute("TopSpeed") :: number?) or 18,
