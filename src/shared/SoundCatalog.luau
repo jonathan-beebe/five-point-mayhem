@@ -964,25 +964,25 @@ local MECHS: { [string]: MechSounds } = {
 		},
 		powerUp = { key = "MECH_POWER_UP", volume = 0.24, pitch = 0.65, jitter = { 0.03, 0 } },
 	}),
-	-- Smooth and quiet: a higher, cleaner hum and soft steps.
+	-- Smooth: a higher, cleaner hum and lighter steps, as loud as OG's.
 	aurora = mechVariant({
 		hum = {
 			key = "MECH_HUM",
 			pitch = { 0.8, 0.95 },
-			volume = { 0.06, 0.1 },
+			volume = { 0.08, 0.13 },
 			curve = 1,
 			effects = { eq(0, 0, -6) },
 		},
-		servo = { key = "MECH_SERVO", pitch = { 1.1, 1.4 }, volume = { 0, 0.07 }, curve = 1 },
+		servo = { key = "MECH_SERVO", pitch = { 1.1, 1.4 }, volume = { 0, 0.12 }, curve = 1 },
 		step = {
 			key = "MECH_STEP",
-			volume = 0.24,
+			volume = 0.38,
 			pitch = 1.1,
 			jitter = { 0.07, 0.15 },
 			range = "footfall",
 			effects = { eq(2, 0, -6) },
 		},
-		powerUp = { key = "MECH_POWER_UP", volume = 0.2, pitch = 1.1, jitter = { 0.03, 0 } },
+		powerUp = { key = "MECH_POWER_UP", volume = 0.22, pitch = 1.1, jitter = { 0.03, 0 } },
 	}),
 }
 
