@@ -232,13 +232,20 @@ for side = -1, 1, 2 do
 	ball(T, "ExhaustGlow", 1.6, V(side * 3, 21.5, 10.2), GLOW)
 end
 
--- Crown: a hatch dome, a white collar and a bent antenna with a ball tip.
+-- Crown: a hatch dome, a white collar and a bent antenna with a ball tip (its own bone; it wobbles
+-- as Cherry Bomb walks).
 ball(T, "Hatch", 6, V(0, 33.2, 1.5), DEEP_RED)
 cyl(T, "HatchCollar", V(0.6, 6.4, 6.4), C(0, 33.6, 1.5) * CYLINDER_Y, WHITE)
 ball(T, "HatchKnob", 1.2, V(0, 36.3, 1.5), WHITE)
 cyl(T, "AntennaBase", V(0.8, 1.6, 1.6), C(4, 32.7, 4) * CYLINDER_Y, JOINT)
-cyl(T, "Antenna", V(6, 0.3, 0.3), C(4.6, 36, 4.6) * A(rad(-12), 0, rad(-10)) * CYLINDER_Y, JOINT)
-ball(T, "AntennaTip", 1, V(5.1, 38.9, 5.2), GLOW)
+cyl(
+	"antenna",
+	"Antenna",
+	V(6, 0.3, 0.3),
+	C(4.6, 36, 4.6) * A(rad(-12), 0, rad(-10)) * CYLINDER_Y,
+	JOINT
+)
+ball("antenna", "AntennaTip", 1, V(5.1, 38.9, 5.2), GLOW)
 
 -- Cab interior --------------------------------------------------------------------------------
 -- Seat block (invisible) at (0, 23, 1.2); the pilot's eye is near (0, 26.8, 1.4).
@@ -320,6 +327,7 @@ local bones = {
 	{ name = "foreArm_L", parent = "upperArm_L", pivot = V(-11.8, 20, 0) },
 	{ name = "upperArm_R", parent = "torso", pivot = V(10.8, 25, 0) },
 	{ name = "foreArm_R", parent = "upperArm_R", pivot = V(11.8, 20, 0) },
+	{ name = "antenna", parent = "torso", pivot = V(4, 33.1, 4), wobble = true },
 }
 for _, bone in legBones do
 	table.insert(bones, bone)

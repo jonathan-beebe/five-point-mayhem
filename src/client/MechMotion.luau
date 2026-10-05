@@ -4,7 +4,9 @@
 -- dust and fire `MechMotion.footfall` (model, foot "L" | "R", strength 0..1), which MechCamera
 -- turns into a shake for the driver and VehicleSounds into a footstep. Smokestacks (Attachments
 -- named "Smoke", from the model's `smoke` spec) trail smoke while the walker moves and puff on
--- every step.
+-- every step. Hydraulic bones (Bone_ parts with an "Aim" attribute) track their partner every frame
+-- (MechGait.aim); steering wheels (a "Steer" axis attribute) turn with the walker (MechGait.steer);
+-- springy parts (a "Wobble" attribute) wobble as it walks (MechGait.wobble).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -33,6 +35,9 @@ type Mech = {
 	skid: BasePart?,
 	seat: VehicleSeat?,
 	joints: { [string]: Motor6D }?,
+	bones: { MechGait.AimBone }?, -- parents first
+	wheels: { [string]: Vector3 }?, -- steering wheel bone -> axis
+	wobbles: { [string]: MechGait.Wobble }?, -- springy bone -> its spring
 	state: MechGait.State?,
 	dust: ParticleEmitter?,
 	smoke: { ParticleEmitter },
@@ -54,6 +59,9 @@ local function resolve(mech: Mech): boolean
 	end
 	local joints: { [string]: Motor6D } = {}
 	local pivots: { [string]: Vector3 } = {}
+	local bones: { MechGait.AimBone } = {}
+	local wheels: { [string]: Vector3 } = {}
+	local wobbles: { [string]: MechGait.Wobble } = {}
 	-- Rest pivots in vehicle space: each joint's C0 sits at its pivot in the parent bone's frame
 	-- (bones have the vehicle's axes); the root joints' C0 is in the skid's frame.
 	local pending = {}
@@ -74,15 +82,31 @@ local function resolve(mech: Mech): boolean
 			local name = string.sub(joint.Name, 7)
 			local parent = joint.Part0
 			local pivot: Vector3? = nil
+			local parentName: string? = nil
 			if parent == skid then
 				pivot = (SKID_TO_GROUND:Inverse() * joint.C0).Position
 			elseif parent and string.sub(parent.Name, 1, 5) == "Bone_" then
-				local base = pivots[string.sub(parent.Name, 6)]
+				parentName = string.sub(parent.Name, 6)
+				local base = pivots[parentName :: string]
 				pivot = base and base + joint.C0.Position
 			end
 			if pivot then
 				pivots[name] = pivot
 				joints[name] = joint
+				local steer = joint.Parent and joint.Parent:GetAttribute("Steer")
+				if typeof(steer) == "Vector3" then
+					wheels[name] = steer
+				end
+				if joint.Parent and joint.Parent:GetAttribute("Wobble") then
+					wobbles[name] = MechGait.newWobble()
+				end
+				local aim = joint.Parent and joint.Parent:GetAttribute("Aim")
+				table.insert(bones, {
+					name = name,
+					parent = parentName,
+					pivot = pivot,
+					aim = if typeof(aim) == "string" then aim else nil,
+				})
 				table.remove(pending, index)
 				progress = true
 			end
@@ -95,6 +119,9 @@ local function resolve(mech: Mech): boolean
 	mech.skid = skid
 	mech.seat = seat :: VehicleSeat
 	mech.joints = joints
+	mech.bones = bones
+	mech.wheels = wheels
+	mech.wobbles = wobbles
 	mech.state = MechGait.new(rig)
 
 	local attachment = Instance.new("Attachment")
@@ -188,6 +215,13 @@ local function animate(mech: Mech, dt: number, viewer: Vector3)
 		time = os.clock(),
 	}, dt)
 	local poses = MechGait.pose(state)
+	MechGait.aim(mech.bones :: { MechGait.AimBone }, poses)
+	for name, axis in mech.wheels :: { [string]: Vector3 } do
+		poses[name] = MechGait.steer(state, axis)
+	end
+	for name, wobble in mech.wobbles :: { [string]: MechGait.Wobble } do
+		poses[name] = MechGait.wobble(wobble, state, footfalls, dt)
+	end
 	for name, joint in mech.joints :: { [string]: Motor6D } do
 		local pose = poses[name]
 		if pose then

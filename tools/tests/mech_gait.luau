@@ -8,6 +8,7 @@
 --   - every channel stays inside the bone limits before clamping
 --   - the feet settle under the hips and the phase parks after a stop
 --   - heel strikes fire while walking
+--   - a wobble (antenna spring) moves while walking and settles after a stop
 
 local fs = require("@lune/fs")
 local luau = require("@lune/luau")
@@ -125,6 +126,8 @@ local function run(
 	local last = {}
 	local footfalls = 0
 	local maxSkate = 0
+	local wobble = MechGait.newWobble()
+	local maxWobble = 0
 	local t = 0
 	while t < seconds do
 		local v, omega = drive(t)
@@ -138,12 +141,14 @@ local function run(
 		}, DT)
 		footfalls += #events
 		local poses = MechGait.pose(state)
+		MechGait.wobble(wobble, state, events, DT)
 		local checking = t >= (warmup or 0)
 		if not checking then
 			t += DT
 			continue
 		end
 		checkLimits(state, string.format("%s t=%.2f", label, t))
+		maxWobble = math.max(maxWobble, math.abs(wobble.x), math.abs(wobble.z))
 		for _, side in { "L", "R" } do
 			local hipX = PIVOTS["thigh_" .. side].X
 			travelled[side] += (v - omega * hipX) * DT
@@ -189,8 +194,16 @@ local function run(
 		end
 		t += DT
 	end
-	print(string.format("%-28s footfalls %3d  max skate %.4f", label, footfalls, maxSkate))
-	return state, footfalls
+	print(
+		string.format(
+			"%-28s footfalls %3d  max skate %.4f  max wobble %4.1f deg",
+			label,
+			footfalls,
+			maxSkate,
+			math.deg(maxWobble)
+		)
+	)
+	return state, footfalls, wobble, maxWobble
 end
 
 local function ramp(t: number, start: number, rise: number): number
@@ -203,19 +216,24 @@ for _, walker in walkers do
 	walkerFailures = 0
 	print(walker.name)
 	-- Steady walk at top speed (a jump to full speed, so checks start once the stride settles).
-	local _, walkSteps = run("walk at top speed", 12, function()
+	local _, walkSteps, _, walkWobble = run("walk at top speed", 12, function()
 		return TOP, 0
 	end, 3)
 	check(walkSteps >= 12, "walking at top speed should give heel strikes, got " .. walkSteps)
+	check(walkWobble > math.rad(2), "a wobble should move while walking")
 
 	-- Start from rest at the walker's acceleration, walk, coast to a stop, settle.
-	local stopped = run("start, walk, stop", 16, function(t)
+	local stopped, _, stoppedWobble = run("start, walk, stop", 16, function(t)
 		if t < 8 then
 			return TOP * ramp(t, 0, RISE), 0
 		end
 		return TOP * (1 - ramp(t, 8, FALL)), 0
 	end)
 	check(stopped.rate == 0, "phase should park after stopping")
+	check(
+		math.abs(stoppedWobble.x) < math.rad(0.5) and math.abs(stoppedWobble.z) < math.rad(0.5),
+		"a wobble should settle after stopping"
+	)
 	for _, side in { "L", "R" } do
 		check(
 			math.abs(stopped.feet[side].z) <= MechGait.SETTLED * stopped.rig.scale,

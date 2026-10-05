@@ -157,7 +157,9 @@ if options.phase and spec.gait == "mech" then
 			break
 		end
 	end
-	for name, pose in MechGait.pose(state) do
+	local poses = MechGait.pose(state)
+	MechGait.aim(spec.bones, poses)
+	for name, pose in poses do
 		transforms[name] = pose
 	end
 end

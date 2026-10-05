@@ -292,6 +292,15 @@ local function buildBones(
 			then CFrame.new(parent.pivot):Inverse() * CFrame.new(boneSpec.pivot)
 			else SKID_TO_GROUND * CFrame.new(boneSpec.pivot)
 		joint.Parent = part
+		if boneSpec.aim then
+			part:SetAttribute("Aim", boneSpec.aim)
+		end
+		if boneSpec.steer then
+			part:SetAttribute("Steer", boneSpec.steer)
+		end
+		if boneSpec.wobble then
+			part:SetAttribute("Wobble", true)
+		end
 		part.Parent = model
 		bones[boneSpec.name] = { part = part, pivot = boneSpec.pivot }
 	end

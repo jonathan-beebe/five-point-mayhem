@@ -34,6 +34,15 @@ export type BoneSpec = {
 	name: string,
 	parent: string?, -- an earlier bone; nil = the skid
 	pivot: Vector3, -- joint center in the rest pose; joint axes are the vehicle axes
+	-- A hydraulic end: clients turn this bone so it keeps pointing at the `aim` bone's pivot
+	-- (MechGait.aim). A barrel and a rod aim at each other across a joint.
+	aim: string?,
+	-- A steering wheel: clients turn this bone about this axis (vehicle space, pointing at the
+	-- driver) as the walker turns (MechGait.steer).
+	steer: Vector3?,
+	-- A springy part (an antenna): clients wobble this bone about its pivot as the walker steps,
+	-- speeds up, brakes and turns (MechGait.wobble).
+	wobble: boolean?,
 }
 
 -- A climbable TrussPart (2 x height x 2) welded to the skid.
@@ -129,6 +138,16 @@ function VehicleModel.define(model: Model): Model
 				model.name .. ": bone " .. bone.name .. "'s parent must be an earlier bone"
 			)
 			bones[bone.name] = true
+		end
+		for _, bone in model.bones do
+			assert(
+				bone.aim == nil or (bones[bone.aim] and bone.aim ~= bone.name),
+				model.name .. ": bone " .. bone.name .. " aims at an unknown bone"
+			)
+			assert(
+				bone.steer == nil or bone.steer.Magnitude > 0,
+				model.name .. ": bone " .. bone.name .. " needs a nonzero steer axis"
+			)
 		end
 	end
 	for _, stack in model.smoke or {} do

@@ -469,4 +469,99 @@ function MechGait.pose(state: State): { [string]: CFrame }
 	return poses
 end
 
+-- Hydraulics: a bone with `aim` (a barrel or a rod) turns about its pivot so the line from its
+-- pivot to the aimed bone's pivot keeps the direction it has in the rest pose. Pair a barrel and a
+-- rod that aim at each other, on bones either side of a joint, and the rod slides in the barrel as
+-- the joint moves. `bones` lists every bone, parents first; `poses` holds the gait's Transforms
+-- and gains one for each aiming bone.
+export type AimBone = { name: string, parent: string?, pivot: Vector3, aim: string? }
+
+-- The rotation that turns unit vector `from` onto unit vector `to`.
+local function turn(from: Vector3, to: Vector3): CFrame
+	local axis = from:Cross(to)
+	local sin = axis.Magnitude
+	if sin < 1e-6 then
+		return CFrame.new()
+	end
+	return CFrame.fromAxisAngle(axis / sin, math.atan2(sin, from:Dot(to)))
+end
+
+function MechGait.aim(bones: { AimBone }, poses: { [string]: CFrame })
+	local pivots: { [string]: Vector3 } = {}
+	local frames: { [string]: CFrame } = {} -- vehicle space, posed
+	local function unturned(bone: AimBone): CFrame
+		local parentFrame = if bone.parent then frames[bone.parent] else CFrame.new()
+		local parentPivot = if bone.parent then pivots[bone.parent] else Vector3.new()
+		return parentFrame * CFrame.new(bone.pivot - parentPivot)
+	end
+	for _, bone in bones do
+		pivots[bone.name] = bone.pivot
+		frames[bone.name] = unturned(bone) * (poses[bone.name] or CFrame.new())
+	end
+	for _, bone in bones do
+		local target = bone.aim and frames[bone.aim]
+		if target then
+			local frame = unturned(bone)
+			local rest = (pivots[bone.aim :: string] - bone.pivot).Unit
+			local now = frame:VectorToObjectSpace((target.Position - frame.Position).Unit)
+			poses[bone.name] = turn(rest, now)
+		end
+	end
+end
+
+-- A steering wheel's Transform: a turn about `axis` (rest pose, vehicle space) that follows the
+-- walker's yaw rate, to WHEEL_LOCK at the full turn rate. Turning left turns the wheel
+-- counterclockwise as seen from the tip of `axis`.
+MechGait.WHEEL_LOCK = rad(120)
+
+function MechGait.steer(state: State, axis: Vector3): CFrame
+	local lock = math.clamp(state.yawRate / state.turnRate, -1, 1)
+	return CFrame.fromAxisAngle(axis.Unit, MechGait.WHEEL_LOCK * lock)
+end
+
+-- Wobble: a springy part (an antenna) tips about its pivot on a damped spring. Each heel strike
+-- kicks it, speeding up tips it back and braking forward, and a turn sways it outward. Angles are
+-- Transform angles about X (+ tips an upright part's top back) and Z (+ tips it toward -X).
+MechGait.WOBBLE_STIFFNESS = 70 -- 1/s^2: about 1.3 swings a second
+MechGait.WOBBLE_DAMPING = 3 -- 1/s: rings for about 2 seconds
+MechGait.WOBBLE_KICK = rad(60) -- rad/s added per heel strike at full strength
+MechGait.WOBBLE_ACCEL = rad(6) -- lean at 10 studs/s^2 of acceleration
+MechGait.WOBBLE_TURN = rad(5) -- lean at the full turn rate
+MechGait.WOBBLE_LIMIT = rad(15)
+
+export type Wobble = { x: number, z: number, vx: number, vz: number }
+
+function MechGait.newWobble(): Wobble
+	return { x = 0, z = 0, vx = 0, vz = 0 }
+end
+
+-- Advances `wobble` by `dt` after a MechGait.step that returned `footfalls`; returns its
+-- Transform.
+function MechGait.wobble(wobble: Wobble, state: State, footfalls: { Footfall }, dt: number): CFrame
+	for _, footfall in footfalls do
+		local side = if footfall.foot == "L" then 1 else -1
+		wobble.vx -= MechGait.WOBBLE_KICK * footfall.strength
+		wobble.vz += side * 0.5 * MechGait.WOBBLE_KICK * footfall.strength
+	end
+	local leanX = MechGait.WOBBLE_ACCEL * math.clamp(state.accel / 10, -1, 1)
+	local leanZ = -MechGait.WOBBLE_TURN * math.clamp(state.yawRate / state.turnRate, -1, 1)
+	local k, c, limit = MechGait.WOBBLE_STIFFNESS, MechGait.WOBBLE_DAMPING, MechGait.WOBBLE_LIMIT
+	-- Semi-implicit Euler in steps of at most 1/60 s, so a slow frame stays stable.
+	local steps = math.max(1, math.ceil(dt * 60))
+	local h = dt / steps
+	for _ = 1, steps do
+		wobble.vx += (k * (leanX - wobble.x) - c * wobble.vx) * h
+		wobble.vz += (k * (leanZ - wobble.z) - c * wobble.vz) * h
+		wobble.x += wobble.vx * h
+		wobble.z += wobble.vz * h
+		if math.abs(wobble.x) > limit then
+			wobble.x, wobble.vx = math.sign(wobble.x) * limit, 0
+		end
+		if math.abs(wobble.z) > limit then
+			wobble.z, wobble.vz = math.sign(wobble.z) * limit, 0
+		end
+	end
+	return CFrame.Angles(wobble.x, 0, wobble.z)
+end
+
 return MechGait

@@ -226,7 +226,7 @@ for side = -1, 1, 2 do
 end
 part(T, "Sill", V(12, 0.8, 1.2), C(0, 30.6, -6.9), FRAME)
 
--- Deck: hatch rim, walkway, hazard edge, antenna.
+-- Deck: hatch rim, walkway, hazard edge, antenna (its own bone; it wobbles as OG walks).
 part(T, "HatchRimFront", V(5, 0.3, 0.5), C(0, 40.1, 0.25), FRAME)
 part(T, "HatchRimBack", V(5, 0.3, 0.5), C(0, 40.1, 4.75), FRAME)
 for side = -1, 1, 2 do
@@ -241,8 +241,8 @@ for side = -1, 1, 2 do
 	part(T, "DeckVent", V(3, 0.2, 2.4), C(side * 5.5, 40.1, -3), FRAME)
 end
 part(T, "AntennaBase", V(1, 0.6, 1), C(-8.2, 40.3, 5.6), FRAME)
-cyl(T, "Antenna", V(5.4, 0.25, 0.25), C(-8.2, 43.3, 5.6) * CYLINDER_Y, FRAME)
-ball(T, "AntennaTip", V(0.45, 0.45, 0.45), C(-8.2, 45.8, 5.6), BUTTON)
+cyl("antenna", "Antenna", V(5.4, 0.25, 0.25), C(-8.2, 43.3, 5.6) * CYLINDER_Y, FRAME)
+ball("antenna", "AntennaTip", V(0.45, 0.45, 0.45), C(-8.2, 45.8, 5.6), BUTTON)
 
 -- Reactor pack: two pods with a channel between them (x -3..3), stacks above.
 for side = -1, 1, 2 do
@@ -408,6 +408,7 @@ return {
 		{ name = "pelvis", pivot = V(0, 20, 0.4) },
 		{ name = "torso", parent = "pelvis", pivot = V(0, 23.5, 0.4) },
 		{ name = "hatch", parent = "torso", pivot = V(0, 40.5, 0.5) },
+		{ name = "antenna", parent = "torso", pivot = V(-8.2, 40.6, 5.6), wobble = true },
 		{ name = "upperArm_L", parent = "torso", pivot = V(-11, 36, 0) },
 		{ name = "foreArm_L", parent = "upperArm_L", pivot = V(-11, 27, 0) },
 		{ name = "upperArm_R", parent = "torso", pivot = V(11, 36, 0) },
