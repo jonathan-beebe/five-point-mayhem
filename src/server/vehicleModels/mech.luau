@@ -1,4 +1,4 @@
--- Titan Mech: two-legged industrial walker with a cab in the chest, a back ladder and a deck hatch.
+-- OG: two-legged industrial walker with a cab in the chest and a deck hatch.
 -- Scale: 4 studs = 1 m. Rest pose = parked pose (knees bent). Hip pivots y 20, deck y 40, cab
 -- cavity x -5.5..5.5, y 26.5..38.5, z -6..5.5 (only `In*` pieces inside it). The cavity is the
 -- walkable cab: the torso's collision is a hollow shell around it.
@@ -163,7 +163,6 @@ for k = -1, 1 do
 end
 wedge("pelvis", "CodpieceChin", V(5, 1.2, 1.2), C(0, 17.8, -4) * DOWN_FRONT, YELLOW)
 part("pelvis", "PelvisBelly", V(5, 0.8, 5), C(0, 18.1, 0.4), ARMOR)
-part("pelvis", "LadderReceiver", V(2.4, 1.4, 0.6), C(0, 19, 4.5), FRAME)
 
 -- Torso shell ---------------------------------------------------------------------------------
 -- Every wall the pilot can see is the inward face of its own plate (Roblox draws no back faces).
@@ -189,7 +188,7 @@ for side = -1, 1, 2 do
 	part(T, "BackArmor", V(2.5, 12.3, 0.5), C(side * 4.25, 32.35, 6.25), ARMOR)
 end
 part(T, "RoofFront", V(18, 1.5, 7), C(0, 39.25, -3), ARMOR)
--- The roof's back edge steps in 0.5 over the ladder top so a backward lean clears the truss.
+-- The roof's back edge steps in 0.5 (it once cleared a back ladder).
 part(T, "RoofBack", V(18, 1.5, 1.5), C(0, 39.25, 5.25), ARMOR)
 for side = -1, 1, 2 do
 	part(T, "RoofBackCorner", V(7.4, 1.5, 0.5), C(side * 5.3, 39.25, 6.25), ARMOR)
@@ -227,7 +226,7 @@ for side = -1, 1, 2 do
 end
 part(T, "Sill", V(12, 0.8, 1.2), C(0, 30.6, -6.9), FRAME)
 
--- Deck: hatch rim, walkway, hazard edge, handrails at the ladder top, antenna.
+-- Deck: hatch rim, walkway, hazard edge, antenna.
 part(T, "HatchRimFront", V(5, 0.3, 0.5), C(0, 40.1, 0.25), FRAME)
 part(T, "HatchRimBack", V(5, 0.3, 0.5), C(0, 40.1, 4.75), FRAME)
 for side = -1, 1, 2 do
@@ -240,14 +239,12 @@ for k = -1, 1 do
 end
 for side = -1, 1, 2 do
 	part(T, "DeckVent", V(3, 0.2, 2.4), C(side * 5.5, 40.1, -3), FRAME)
-	part(T, "RailPost", V(0.3, 2.6, 0.3), C(side * 2.4, 41.3, 6.2), YELLOW)
-	part(T, "Rail", V(0.3, 0.3, 2.4), C(side * 2.4, 42.45, 5.15), YELLOW)
 end
 part(T, "AntennaBase", V(1, 0.6, 1), C(-8.2, 40.3, 5.6), FRAME)
 cyl(T, "Antenna", V(5.4, 0.25, 0.25), C(-8.2, 43.3, 5.6) * CYLINDER_Y, FRAME)
 ball(T, "AntennaTip", V(0.45, 0.45, 0.45), C(-8.2, 45.8, 5.6), BUTTON)
 
--- Reactor pack: two pods with the ladder channel between them (x -3..3), stacks above.
+-- Reactor pack: two pods with a channel between them (x -3..3), stacks above.
 for side = -1, 1, 2 do
 	local px = side * 5.75
 	part(T, "Pod", V(5.5, 10.6, 2.1), C(px, 31.5, 7.55), FRAME)
@@ -390,21 +387,8 @@ do
 	end
 end
 
--- Ladder brackets (skid; they hold the TrussPart, which Vehicles builds from `ladders`) -------
--- Each clamp wraps the truss (x -1..1, z 6.5..8.5). The low one reaches forward toward the pelvis;
--- the high one stops at the truss so the back wall can lean back without touching it.
-for _, y in { 18, 35 } do
-	part(nil, "LadderClampBack", V(2.8, 0.6, 0.4), C(0, y, 8.7), FRAME)
-	for side = -1, 1, 2 do
-		part(nil, "LadderClamp", V(0.4, 0.6, 2.4), C(side * 1.2, y, 7.5), FRAME)
-		if y < 20 then
-			part(nil, "LadderStrut", V(0.4, 0.6, 1.4), C(side * 1.2, y, 5.6), FRAME)
-		end
-	end
-end
-
 return {
-	name = "Titan Mech",
+	name = "OG",
 	speed = 18,
 	turnRate = 0.7,
 	footprint = Vector2.new(20, 18),
@@ -436,10 +420,8 @@ return {
 		{ name = "foot_R", parent = "shin_R", pivot = V(7, 2.780, -0.023) },
 	},
 	seatBone = "torso",
-	ladders = { { base = V(0, 2, 7.5), height = 38 } }, -- y 2..40, between the pods
-	prompt = { position = V(0, 41.5, 2.5), reach = 8 }, -- over the hatch
 	cab = { center = V(0, 32.5, -0.25), size = V(11, 12, 11.5) },
-	exit = C(0, 43, 5.5) * A(0, math.pi, 0), -- on the deck behind the hatch, facing the ladder
+	exit = C(0, 3, 13) * A(0, math.pi, 0), -- on the ground behind, facing away
 	cameraFocus = V(0, 46, 0),
 	cockpitCamera = true,
 	gait = "mech",

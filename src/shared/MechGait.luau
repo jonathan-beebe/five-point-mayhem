@@ -1,6 +1,6 @@
 -- Walk cycle for every walker's bones: pure math, no services, so Lune can load it for tests and
 -- the preview renderer. The legs are decoration driven by the skid's measured velocity; nothing
--- here touches physics. Stride lengths and heights are the Titan Mech's (legs 19 studs long),
+-- here touches physics. Stride lengths and heights are OG's (legs 19 studs long),
 -- scaled by each rig's leg length.
 --
 -- Everything is in vehicle space (origin on the ground, +Y up, -Z front, +X right). A foot's `z` is
@@ -421,7 +421,7 @@ function MechGait.pose(state: State): { [string]: CFrame }
 		-LEAN_SPEED * state.forward / state.topSpeed
 			- LEAN_ACCEL * math.clamp(state.accel / 10, -1, 1),
 		rad(-7),
-		rad(1.5) -- leaning back further pushes the deck edge into the ladder
+		rad(1.5) -- set when OG had a back ladder: further back pushed the deck edge into it
 	)
 	local torsoPitch = channel("torso", "x", w * lean + still * rad(0.5) * math.sin(breath + 0.6))
 	local torsoYaw = channel("torso", "y", w * TORSO_YAW * stride)

@@ -168,7 +168,7 @@ local PALETTE: { [string]: { id: number, duration: number } } = {
 	START_GAS = { id = 9112983172, duration = 2.1 },
 	START_DIESEL = { id = 9125347271, duration = 3.7 },
 	START_EV = { id = 9125981170, duration = 1.8 },
-	-- Titan Mech
+	-- OG (the mech)
 	MECH_HUM = { id = 9112889082, duration = 36.0 }, -- Transformer Hum 1: steady buzz, loop
 	MECH_SERVO = { id = 9112838167, duration = 36.0 }, -- Oil Pump Rhythmic Whine Whir 1: loop
 	MECH_POWER_UP = { id = 9114583503, duration = 4.9 }, -- Giant Servo Motor Powering Up 2

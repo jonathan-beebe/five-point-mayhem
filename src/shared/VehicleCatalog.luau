@@ -47,7 +47,7 @@ local VEHICLES: { Vehicle } = {
 	{ id = "abrams", name = "M1 Abrams Tank", icon = "💥" },
 	{ id = "tiger", name = "Tiger I Tank", icon = "💥" },
 	-- Walkers (they stand guard around the lobby)
-	{ id = "mech", name = "Titan Mech", icon = "🤖", mech = true },
+	{ id = "mech", name = "OG", icon = "🤖", mech = true },
 	{ id = "cherry_bomb", name = "Cherry Bomb", icon = "🍒", mech = true },
 	{ id = "heron", name = "Heron", icon = "🦩", mech = true },
 	{ id = "rustbucket", name = "Rustbucket", icon = "⚙", mech = true },

@@ -7,7 +7,7 @@
 -- pieces inside it).
 --
 -- Rig: every piece belongs to one bone. Leg pieces are authored in their bone's bind frame (thigh
--- tilted 25 degrees forward, shin 25 degrees back, foot flat), like the Titan Mech's.
+-- tilted 25 degrees forward, shin 25 degrees back, foot flat), like OG's.
 
 local rgb = Color3.fromRGB
 local M = Enum.Material
