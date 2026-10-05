@@ -994,6 +994,36 @@ local EXPLOSION = { key = "EXPL_MED", base = 0.35, perRadius = 0.01, max = 0.6, 
 -- built-in boom turns out to be silent.
 local EXPLOSION_GAIN = 0.5
 
+-- The map's NUKE (client NukeStrike). Each plays for everyone at full volume, wherever they are.
+-- The palette has no bomb whistle: `whistle` slows the slide whistle to last the whole fall
+-- (NukeStrike sets its speed) and the pitch shift lifts it back up an octave; it swells from
+-- `swell` x volume to full as the bomb drops. `rush` plays `rushLead` seconds before impact so its
+-- pass-by peak lands on the blast.
+local NUKE = {
+	whistle = {
+		key = "SLIDE_WHISTLE",
+		volume = 0.9,
+		jitter = { 0, 0 },
+		range = "large",
+		effects = { { class = "PitchShiftSoundEffect", Octave = 2 } },
+	} :: Cue,
+	swell = 0.05,
+	rush = { key = "FIREBALL_BY", volume = 0.6, pitch = 0.6, jitter = { 0, 0 }, range = "large" } :: Cue,
+	rushLead = 2.3,
+	blast = {
+		key = "EXPL_LARGE",
+		volume = 1,
+		pitch = 0.5,
+		jitter = { 0, 0 },
+		range = "large",
+		effects = { reverb(5, -6) },
+		layers = {
+			{ key = "THUNDER", volume = 0.6, pitch = 0.55 },
+			{ key = "EXPL_MED", volume = 0.6, pitch = 0.4 },
+		},
+	} :: Cue,
+}
+
 -- Validates keys and fills each layer's range and jitter from its cue.
 local function check(cue: Cue?, where: string)
 	if not cue then
@@ -1037,6 +1067,9 @@ for id, entry in VEHICLES do
 		check(entry.start, id .. ".start")
 	end
 end
+for _, event in { "whistle", "rush", "blast" } do
+	check((NUKE :: any)[event], "nuke." .. event)
+end
 for id, profile in MECHS do
 	for _, loop in { profile.hum, profile.servo } do
 		assert(PALETTE[loop.key], id .. ": unknown sound " .. loop.key)
@@ -1063,4 +1096,5 @@ return {
 	MECHS = MECHS,
 	EXPLOSION = EXPLOSION,
 	EXPLOSION_GAIN = EXPLOSION_GAIN,
+	NUKE = NUKE,
 }

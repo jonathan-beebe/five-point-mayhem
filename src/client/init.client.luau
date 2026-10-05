@@ -10,6 +10,7 @@ local SniperScope = require(script.SniperScope)
 local MechMotion = require(script.MechMotion)
 local MechCamera = require(script.MechCamera)
 local VehicleSounds = require(script.VehicleSounds)
+local NukeStrike = require(script.NukeStrike)
 
 for _, feature in
 	{
@@ -23,6 +24,7 @@ for _, feature in
 		MechMotion,
 		MechCamera,
 		VehicleSounds,
+		NukeStrike,
 	}
 do
 	task.spawn(feature.start)

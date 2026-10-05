@@ -11,6 +11,7 @@ local NAMES = {
 	"AdminCommand", -- client -> server: command, target, item
 	"MapCommand", -- client -> server: action ("sniper" or "nuke")
 	"Announce", -- server -> client: text, color, seconds, style
+	"Nuke", -- server -> client: the map's NUKE is falling (Config.NUKE_GROUND)
 }
 
 local folder: Instance

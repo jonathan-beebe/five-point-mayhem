@@ -98,9 +98,12 @@ with the space above it empty). It opens a small panel:
 └──────────────────────────────────┘
 ```
 
-**☢ NUKE SERVER** counts down 3, 2, 1 like MAYHEM, then kills every player, in the lobby too,
-except the one who pressed it, and every monster. Shields do not help. Only one MAYHEM or NUKE
-countdown runs at a time.
+**☢ NUKE SERVER** drops a giant bomb on the lobby. It falls for 6 seconds, whistling louder as it
+drops, with a 3, 2, 1 countdown at the end. On impact a blast wave rings out across the board and a
+mushroom cloud rises over the lobby. The wave kills every player it reaches, in the lobby too,
+except the one who pressed it; then every monster dies. Shields do not help. Only one MAYHEM or
+NUKE countdown runs at a time. Timing lives in `Config.NUKE_*`; the client draws the strike
+(`src/client/NukeStrike.luau`).
 
 - Admins always have the map.
 - Players without the map see **🔒 MAP**, and the panel opens with a lock over it.

@@ -73,60 +73,101 @@ end
 -- One countdown at a time, shared by MAYHEM and NUKE.
 local doomRunning = false
 
--- Counts down, then kills every player (except `spare`) and every monster. MAYHEM spares the
--- lobby; NUKE does not.
-local function doom(countdown: string, title: string, lobbySafe: boolean, spare: Player?)
+local function redSky(): ColorCorrectionEffect
+	local sky = Instance.new("ColorCorrectionEffect")
+	sky.TintColor = rgb(255, 120, 120)
+	sky.Parent = Lighting
+	return sky
+end
+
+local function clearSky(sky: ColorCorrectionEffect)
+	TweenService:Create(sky, TweenInfo.new(3), { TintColor = rgb(255, 255, 255) }):Play()
+	Debris:AddItem(sky, 3)
+end
+
+-- Kills through shields.
+local function obliterate(character: Model, humanoid: Humanoid, root: BasePart)
+	local blast = Instance.new("Explosion")
+	blast.Position = root.Position
+	blast.BlastPressure = 0
+	blast.BlastRadius = 12
+	blast.DestroyJointRadiusPercent = 0
+	blast.Parent = workspace
+	local shield = character:FindFirstChildOfClass("ForceField")
+	if shield then
+		shield:Destroy()
+	end
+	humanoid.Health = 0
+end
+
+-- Counts down, then kills every player outside the lobby and every monster.
+local function mayhem()
 	if doomRunning then
 		return
 	end
 	doomRunning = true
-	local sky = Instance.new("ColorCorrectionEffect")
-	sky.TintColor = rgb(255, 120, 120)
-	sky.Parent = Lighting
+	local sky = redSky()
 	for count = 3, 1, -1 do
-		announce(countdown .. count .. " ☢", rgb(255, 50, 50), 1, "alarm")
+		announce("☢ TOTAL MAYHEM IN " .. count .. " ☢", rgb(255, 50, 50), 1, "alarm")
 		task.wait(1)
 	end
-	announce(title, rgb(255, 50, 50), 3, "mayhem")
+	announce("☢ MAYHEM ☢", rgb(255, 50, 50), 3, "mayhem")
 	for _, player in Players:GetPlayers() do
 		local character, humanoid, root = characterParts(player)
-		if
-			character
-			and humanoid
-			and root
-			and player ~= spare
-			and not (lobbySafe and Config.isInLobby(root.Position))
-		then
-			local blast = Instance.new("Explosion")
-			blast.Position = root.Position
-			blast.BlastPressure = 0
-			blast.BlastRadius = 12
-			blast.DestroyJointRadiusPercent = 0
-			blast.Parent = workspace
-			local shield = character:FindFirstChildOfClass("ForceField")
-			if shield then
-				shield:Destroy()
-			end
-			humanoid.Health = 0
+		if character and humanoid and root and not Config.isInLobby(root.Position) then
+			obliterate(character, humanoid, root)
 		end
 	end
 	Creatures.killAll()
-	TweenService:Create(sky, TweenInfo.new(3), { TintColor = rgb(255, 255, 255) }):Play()
-	Debris:AddItem(sky, 3)
+	clearSky(sky)
 	doomRunning = false
 end
 
-local function mayhem()
-	doom("☢ TOTAL MAYHEM IN ", "☢ MAYHEM ☢", true)
-end
-
+-- A bomb falls on the lobby (each client draws it: client NukeStrike), then the blast wave kills
+-- every player but the caller as it reaches them, lobby included, and finally every monster.
 local function nuke(caller: Player)
-	doom(
-		"☢ NUKE INCOMING ",
+	if doomRunning then
+		return
+	end
+	doomRunning = true
+	local sky = redSky()
+	local ground = Config.NUKE_GROUND
+	Remotes.Nuke:FireAllClients(ground)
+	announce("☢ NUKE INCOMING ☢", rgb(255, 50, 50), Config.NUKE_FALL_SECONDS - 3, "alarm")
+	task.wait(Config.NUKE_FALL_SECONDS - 3)
+	for count = 3, 1, -1 do
+		announce("☢ NUKE INCOMING " .. count .. " ☢", rgb(255, 50, 50), 1, "alarm")
+		task.wait(1)
+	end
+	announce(
 		"☢ NUKED BY " .. string.upper(caller.DisplayName) .. " ☢",
-		false,
-		caller
+		rgb(255, 50, 50),
+		3,
+		"mayhem"
 	)
+	-- Each player is struck once, so nobody who respawns in the lobby dies again.
+	local struck: { [Player]: boolean } = { [caller] = true }
+	local function sweep(radius: number)
+		for _, player in Players:GetPlayers() do
+			local character, humanoid, root = characterParts(player)
+			if character and humanoid and root and not struck[player] then
+				local offset = root.Position - ground
+				if Vector2.new(offset.X, offset.Z).Magnitude <= radius then
+					struck[player] = true
+					obliterate(character, humanoid, root)
+				end
+			end
+		end
+	end
+	local impact = os.clock()
+	while os.clock() - impact < Config.NUKE_WAVE_SECONDS do
+		sweep(Config.nukeWaveRadius(os.clock() - impact))
+		task.wait()
+	end
+	sweep(math.huge)
+	Creatures.killAll()
+	clearSky(sky)
+	doomRunning = false
 end
 
 -- 2. GIVE ------------------------------------------------------------------------------------

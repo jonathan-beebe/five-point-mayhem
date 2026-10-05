@@ -32,6 +32,20 @@ Config.PARKING_END_RADIUS = 235
 Config.PARKING_REACH = 70
 Config.PARKING_MARGIN = 14
 
+-- The map's NUKE: a bomb falls on the lobby floor, then a blast wave sweeps out across the board
+-- and kills whoever it reaches. The server times the kills from these; each client draws the
+-- strike (client NukeStrike).
+Config.NUKE_GROUND = Vector3.new(0, 1, 0) -- the lobby floor, inside the ring of spawn pads
+Config.NUKE_FALL_SECONDS = 6
+Config.NUKE_WAVE_SECONDS = 4
+Config.NUKE_WAVE_RADIUS = Config.WORLD_RADIUS + 20
+
+-- How far the blast wave has spread `elapsed` seconds after impact: fast at first, slowing.
+function Config.nukeWaveRadius(elapsed: number): number
+	local t = math.clamp(elapsed / Config.NUKE_WAVE_SECONDS, 0, 1)
+	return Config.NUKE_WAVE_RADIUS * (1 - (1 - t) ^ 2)
+end
+
 Config.NORMAL_GRAVITY = 196.2
 Config.MOON_GRAVITY = 38
 
