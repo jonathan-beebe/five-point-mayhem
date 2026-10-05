@@ -19,7 +19,8 @@ MapPanel.GAP = 6
 MapPanel.PANEL_TOP = MapPanel.TOGGLE_TOP + 2 * (MapPanel.TOGGLE_HEIGHT + MapPanel.GAP)
 
 local PANEL_WIDTH = 300
-local PANEL_HEIGHT = 96
+local PANEL_HEIGHT = 142
+local CONFIRM_SECONDS = 3
 
 -- Fires when the map panel opens, so the GOD MODE panel can close and not overlap it.
 local openedEvent = Instance.new("BindableEvent")
@@ -114,6 +115,40 @@ local function build()
 		if hasMap() then
 			Remotes.MapCommand:FireServer("sniper")
 		end
+	end)
+
+	-- Two taps: the first arms it for CONFIRM_SECONDS, the second fires.
+	local NUKE_TEXT = "☢ NUKE SERVER"
+	local nuke = create("TextButton", {
+		Position = UDim2.fromOffset(10, 88),
+		Size = UDim2.fromOffset(PANEL_WIDTH - 20, 40),
+		BackgroundColor3 = rgb(200, 20, 30),
+		Text = NUKE_TEXT,
+		TextColor3 = rgb(255, 255, 255),
+		TextSize = 16,
+		Font = Enum.Font.LuckiestGuy,
+		Parent = frame,
+	}, { corner() })
+	local armedAt: number? = nil
+	nuke.Activated:Connect(function()
+		if not hasMap() then
+			return
+		end
+		if armedAt and os.clock() - armedAt < CONFIRM_SECONDS then
+			armedAt = nil
+			nuke.Text = NUKE_TEXT
+			Remotes.MapCommand:FireServer("nuke")
+			return
+		end
+		local stamp = os.clock()
+		armedAt = stamp
+		nuke.Text = "TAP AGAIN TO NUKE EVERYONE"
+		task.delay(CONFIRM_SECONDS, function()
+			if armedAt == stamp then
+				armedAt = nil
+				nuke.Text = NUKE_TEXT
+			end
+		end)
 	end)
 
 	-- Covers the whole panel and swallows taps while the player has no map.

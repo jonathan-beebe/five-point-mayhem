@@ -94,8 +94,13 @@ with the space above it empty). It opens a small panel:
 ┌──────────────────────────────────┐
 │ 🗺 MAP                            │
 │ 🎯 Give me the Sniper Rifle       │
+│ ☢ NUKE SERVER                     │  tap twice within 3 seconds
 └──────────────────────────────────┘
 ```
+
+**☢ NUKE SERVER** counts down 3, 2, 1 like MAYHEM, then kills every player, in the lobby too,
+except the one who pressed it, and every monster. Shields do not help. Only one MAYHEM or NUKE
+countdown runs at a time.
 
 - Admins always have the map.
 - Players without the map see **🔒 MAP**, and the panel opens with a lock over it.

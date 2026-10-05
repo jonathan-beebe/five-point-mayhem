@@ -2,15 +2,13 @@
 -- anyone else with `/give <who> map` (this server session) or `/give <who> map permanent` (saved
 -- in a DataStore, loaded on every join).
 --
--- The HasMap attribute on the player tells the client whether to unlock the panel.
+-- The HasMap attribute on the player tells the client whether to unlock the panel. The panel's
+-- buttons run in Admin (mapCommand), which checks HasMap.
 
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Session = require(script.Parent.Session)
-local Weapons = require(script.Parent.Weapons)
 
 local MapAccess = {}
 
@@ -64,21 +62,11 @@ local function onPlayer(player: Player)
 	end
 end
 
-local function command(player: Player, action: any)
-	if not MapAccess.has(player) then
-		return
-	end
-	if action == "sniper" then
-		Weapons.give(player, "sniper")
-	end
-end
-
 function MapAccess.start()
 	Players.PlayerAdded:Connect(onPlayer)
 	for _, player in Players:GetPlayers() do
 		task.spawn(onPlayer, player)
 	end
-	Remotes.MapCommand.OnServerEvent:Connect(command)
 end
 
 return MapAccess

@@ -68,26 +68,35 @@ local function characterParts(player: Player): (Model?, Humanoid?, BasePart?)
 	return nil, nil, nil
 end
 
--- 1. MAYHEM ----------------------------------------------------------------------------------
+-- 1. MAYHEM (and the map's NUKE) -------------------------------------------------------------
 
-local mayhemRunning = false
+-- One countdown at a time, shared by MAYHEM and NUKE.
+local doomRunning = false
 
-local function mayhem()
-	if mayhemRunning then
+-- Counts down, then kills every player (except `spare`) and every monster. MAYHEM spares the
+-- lobby; NUKE does not.
+local function doom(countdown: string, title: string, lobbySafe: boolean, spare: Player?)
+	if doomRunning then
 		return
 	end
-	mayhemRunning = true
+	doomRunning = true
 	local sky = Instance.new("ColorCorrectionEffect")
 	sky.TintColor = rgb(255, 120, 120)
 	sky.Parent = Lighting
 	for count = 3, 1, -1 do
-		announce("☢ TOTAL MAYHEM IN " .. count .. " ☢", rgb(255, 50, 50), 1, "alarm")
+		announce(countdown .. count .. " ☢", rgb(255, 50, 50), 1, "alarm")
 		task.wait(1)
 	end
-	announce("☢ MAYHEM ☢", rgb(255, 50, 50), 3, "mayhem")
+	announce(title, rgb(255, 50, 50), 3, "mayhem")
 	for _, player in Players:GetPlayers() do
 		local character, humanoid, root = characterParts(player)
-		if character and humanoid and root and not Config.isInLobby(root.Position) then
+		if
+			character
+			and humanoid
+			and root
+			and player ~= spare
+			and not (lobbySafe and Config.isInLobby(root.Position))
+		then
 			local blast = Instance.new("Explosion")
 			blast.Position = root.Position
 			blast.BlastPressure = 0
@@ -104,7 +113,20 @@ local function mayhem()
 	Creatures.killAll()
 	TweenService:Create(sky, TweenInfo.new(3), { TintColor = rgb(255, 255, 255) }):Play()
 	Debris:AddItem(sky, 3)
-	mayhemRunning = false
+	doomRunning = false
+end
+
+local function mayhem()
+	doom("☢ TOTAL MAYHEM IN ", "☢ MAYHEM ☢", true)
+end
+
+local function nuke(caller: Player)
+	doom(
+		"☢ NUKE INCOMING ",
+		"☢ NUKED BY " .. string.upper(caller.DisplayName) .. " ☢",
+		false,
+		caller
+	)
 end
 
 -- 2. GIVE ------------------------------------------------------------------------------------
@@ -321,7 +343,20 @@ function Admin.run(caller: Player, command: string, first: string?, second: stri
 	end
 end
 
+-- The map panel's buttons. Anyone with the map may use them.
+local function mapCommand(caller: Player, action: any)
+	if not MapAccess.has(caller) then
+		return
+	end
+	if action == "sniper" then
+		Weapons.give(caller, "sniper")
+	elseif action == "nuke" then
+		task.spawn(nuke, caller)
+	end
+end
+
 function Admin.start()
+	Remotes.MapCommand.OnServerEvent:Connect(mapCommand)
 	Remotes.AdminCommand.OnServerEvent:Connect(function(player, command, first, second)
 		if typeof(command) ~= "string" then
 			return
