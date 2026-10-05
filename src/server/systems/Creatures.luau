@@ -300,6 +300,14 @@ end
 
 -- Brains -------------------------------------------------------------------------------------
 
+-- Whether the humanoid sits in a vehicle (any seat under workspace.Vehicles): creatures ignore
+-- players in vehicles.
+local function inVehicle(humanoid: Humanoid): boolean
+	local seat = humanoid.SeatPart
+	local vehicles = workspace:FindFirstChild("Vehicles")
+	return seat ~= nil and vehicles ~= nil and seat:IsDescendantOf(vehicles)
+end
+
 local function nearestPlayer(creature: Creature): (Model?, BasePart?, number)
 	local best, bestRoot, bestDistance = nil, nil, creature.kind.aggro
 	for _, player in Players:GetPlayers() do
@@ -312,6 +320,7 @@ local function nearestPlayer(creature: Creature): (Model?, BasePart?, number)
 			and humanoid.Health > 0
 			and player:GetAttribute("Deployed")
 			and not Config.isInLobby(root.Position)
+			and not inVehicle(humanoid)
 		then
 			local distance = (root.Position - creature.root.Position).Magnitude
 			if distance < bestDistance then
