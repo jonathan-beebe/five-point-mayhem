@@ -9,6 +9,7 @@ local NAMES = {
 	"FireWeapon", -- client -> server: weaponId, aimPosition
 	"DriveInput", -- client -> server: throttle, steer (each -1..1)
 	"AdminCommand", -- client -> server: command, target, item
+	"MapCommand", -- client -> server: action ("sniper")
 	"Announce", -- server -> client: text, color, seconds, style
 }
 

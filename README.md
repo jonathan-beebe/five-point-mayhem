@@ -65,17 +65,43 @@ Admins see a **👑 GOD MODE** button in the top-right corner. It opens the pane
 │   👹 HORDE     │   🌓 NIGHT      │
 ├────────────────┴─────────────────┤
 │ 🎁 GIVE TO TARGET                 │
+│   🔫 WEAPONS  ›                   │  opens a menu of all 52 weapons
+│   🚙 VEHICLES  ›                  │  opens a menu of every vehicle except mechs
+│   🤖 MECHS  ›                     │  opens a menu of the walkers
 │   🧰 EVERY WEAPON                 │
 │   🎯 Sniper Rifle                 │
 │   ❤ Full heal                     │
-│   🛡 Shield (30s)                 │  gifts, then all 52 weapons;
-│   👟 Super speed                  │  tap one to give it to the target
+│   🛡 Shield (30s)                 │  tap one to give it to the target
+│   👟 Super speed                  │
 │   🦘 Mega jump                    │
 │   🗿 Giant                        │
 │   🚙 Random vehicle               │
-│   Knight Sword …                  │
 └──────────────────────────────────┘
 ```
+
+In the WEAPONS, VEHICLES and MECHS menus, tap an item to give it to the target, or **‹ BACK** to return
+to the gifts. The heading shows which menu is open.
+
+### The map
+
+Every player sees a **🗺 MAP** button under **👑 GOD MODE** (non-admins see it in the same spot,
+with the space above it empty). It opens a small panel:
+
+```
+┌──────────────────────────────────┐
+│ 🗺 MAP                            │
+│ 🎯 Give me the Sniper Rifle       │
+└──────────────────────────────────┘
+```
+
+- Admins always have the map.
+- Players without the map see **🔒 MAP**, and the panel opens with a lock over it.
+- An admin gives the map with `/give <who> map` (until the player leaves the server) or
+  `/give <who> map permanent` (saved, loaded every time they join).
+- Permanent maps live in the `MapAccess` DataStore. In Studio this needs **Enable Studio Access
+  to API Services**; without it a permanent grant unlocks the map for the session only, and the
+  banner says **MAP NOT SAVED**.
+- Opening the map closes the GOD MODE panel, and the other way round.
 
 ### Chat commands
 
@@ -110,6 +136,8 @@ Both `<who>` and `<item>` are required. Examples: `/give all rocket`, `/give me 
 | Item | Effect | Lasts |
 | --- | --- | --- |
 | `arsenal` | All 52 weapons into the backpack | Until death |
+| `map` | The 🗺 MAP panel | Until the player leaves the server |
+| `map permanent` | The 🗺 MAP panel | Saved for good |
 | `heal` | Full health | — |
 | `shield` | Force field: immune to all damage except MAYHEM | 30 seconds |
 | `speed` | Walk speed 40 (normal is 16) | Until death |

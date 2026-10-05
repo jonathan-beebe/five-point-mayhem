@@ -5,6 +5,7 @@ export type Vehicle = {
 	id: string,
 	name: string,
 	icon: string,
+	mech: boolean?, -- a walker (its model has a gait); the admin panel lists these under MECHS
 }
 
 local VEHICLES: { Vehicle } = {
@@ -46,11 +47,11 @@ local VEHICLES: { Vehicle } = {
 	{ id = "abrams", name = "M1 Abrams Tank", icon = "💥" },
 	{ id = "tiger", name = "Tiger I Tank", icon = "💥" },
 	-- Walkers (they stand guard around the lobby)
-	{ id = "mech", name = "Titan Mech", icon = "🤖" },
-	{ id = "cherry_bomb", name = "Cherry Bomb", icon = "🍒" },
-	{ id = "heron", name = "Heron", icon = "🦩" },
-	{ id = "rustbucket", name = "Rustbucket", icon = "⚙" },
-	{ id = "aurora", name = "Aurora", icon = "✨" },
+	{ id = "mech", name = "Titan Mech", icon = "🤖", mech = true },
+	{ id = "cherry_bomb", name = "Cherry Bomb", icon = "🍒", mech = true },
+	{ id = "heron", name = "Heron", icon = "🦩", mech = true },
+	{ id = "rustbucket", name = "Rustbucket", icon = "⚙", mech = true },
+	{ id = "aurora", name = "Aurora", icon = "✨", mech = true },
 }
 
 local byId: { [string]: Vehicle } = {}

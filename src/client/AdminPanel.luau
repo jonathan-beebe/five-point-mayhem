@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
+local MapPanel = require(script.Parent.MapPanel)
 
 local AdminPanel = {}
 
@@ -101,8 +102,8 @@ local function build()
 	})
 	local toggle = create("TextButton", {
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -12, 0, 60),
-		Size = UDim2.fromOffset(130, 40),
+		Position = UDim2.new(1, -12, 0, MapPanel.TOGGLE_TOP),
+		Size = UDim2.fromOffset(130, MapPanel.TOGGLE_HEIGHT),
 		BackgroundColor3 = rgb(255, 200, 40),
 		Text = "👑 GOD MODE",
 		TextColor3 = rgb(40, 20, 0),
@@ -113,7 +114,7 @@ local function build()
 
 	local panel = create("Frame", {
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -12, 0, 106),
+		Position = UDim2.new(1, -12, 0, MapPanel.PANEL_TOP),
 		Size = UDim2.fromOffset(300, 470),
 		BackgroundColor3 = rgb(20, 16, 10),
 		BackgroundTransparency = 0.1,
@@ -169,11 +170,10 @@ local function build()
 		end)
 	end
 
-	create("TextLabel", {
+	local heading = create("TextLabel", {
 		Position = UDim2.fromOffset(10, 194),
 		Size = UDim2.fromOffset(280, 22),
 		BackgroundTransparency = 1,
-		Text = "🎁 GIVE TO TARGET",
 		TextColor3 = rgb(255, 210, 60),
 		TextSize = 16,
 		Font = Enum.Font.LuckiestGuy,
@@ -181,53 +181,102 @@ local function build()
 		Parent = panel,
 	})
 
-	local list = create("ScrollingFrame", {
-		Position = UDim2.fromOffset(10, 220),
-		Size = UDim2.fromOffset(280, 240),
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		ScrollBarThickness = 6,
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		CanvasSize = UDim2.new(),
-		Parent = panel,
-	}, {
-		create(
-			"UIListLayout",
-			{ Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }
-		),
-	})
+	-- The menus share the space under the heading: WEAPONS, VEHICLES and MECHS buttons above
+	-- the gifts, and one menu for each of those. Only one shows at a time.
+	local menus: { [string]: ScrollingFrame } = {}
+	local HEADINGS = {
+		gifts = "🎁 GIVE TO TARGET",
+		weapons = "🎁 GIVE TO TARGET › WEAPONS",
+		vehicles = "🎁 GIVE TO TARGET › VEHICLES",
+		mechs = "🎁 GIVE TO TARGET › MECHS",
+	}
 
-	local entries = table.clone(GIFTS)
-	for _, vehicle in VehicleCatalog.ALL do
-		table.insert(entries, { id = vehicle.id, label = vehicle.icon .. " " .. vehicle.name })
-	end
-	local gifted = {}
-	for _, gift in GIFTS do
-		gifted[gift.id] = true
-	end
-	for _, weapon in WeaponCatalog.ALL do
-		if not gifted[weapon.id] then
-			table.insert(entries, { id = weapon.id, label = weapon.name })
+	local function show(name: string)
+		for each, menu in menus do
+			menu.Visible = each == name
 		end
+		menus[name].CanvasPosition = Vector2.zero
+		heading.Text = HEADINGS[name]
 	end
-	for order, entry in entries do
-		local button = create("TextButton", {
+
+	local function button(menu: ScrollingFrame, order: number, label: string, color: Color3)
+		return create("TextButton", {
 			LayoutOrder = order,
 			Size = UDim2.new(1, -8, 0, 30),
-			BackgroundColor3 = if order <= #GIFTS then rgb(90, 70, 20) else rgb(45, 40, 35),
-			Text = entry.label,
+			BackgroundColor3 = color,
+			Text = label,
 			TextColor3 = rgb(255, 255, 255),
 			TextSize = 14,
 			Font = Enum.Font.GothamBold,
-			Parent = list,
+			Parent = menu,
 		}, { corner() })
-		button.Activated:Connect(function()
-			Remotes.AdminCommand:FireServer("give", target, entry.id)
+	end
+
+	local function menu(name: string, entries: { { id: string, label: string } }, color: Color3)
+		local list = create("ScrollingFrame", {
+			Position = UDim2.fromOffset(10, 220),
+			Size = UDim2.fromOffset(280, 240),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			ScrollBarThickness = 6,
+			AutomaticCanvasSize = Enum.AutomaticSize.Y,
+			CanvasSize = UDim2.new(),
+			Visible = false,
+			Parent = panel,
+		}, {
+			create(
+				"UIListLayout",
+				{ Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }
+			),
+		})
+		menus[name] = list
+		for order, entry in entries do
+			button(list, order, entry.label, color).Activated:Connect(function()
+				Remotes.AdminCommand:FireServer("give", target, entry.id)
+			end)
+		end
+		return list
+	end
+
+	local weapons = {}
+	for _, weapon in WeaponCatalog.ALL do
+		table.insert(weapons, { id = weapon.id, label = weapon.name })
+	end
+	local vehicles, mechs = {}, {}
+	for _, vehicle in VehicleCatalog.ALL do
+		table.insert(
+			if vehicle.mech then mechs else vehicles,
+			{ id = vehicle.id, label = vehicle.icon .. " " .. vehicle.name }
+		)
+	end
+	local submenus = {
+		{ name = "weapons", label = "🔫 WEAPONS  ›", entries = weapons },
+		{ name = "vehicles", label = "🚙 VEHICLES  ›", entries = vehicles },
+		{ name = "mechs", label = "🤖 MECHS  ›", entries = mechs },
+	}
+
+	local gifts = menu("gifts", GIFTS, rgb(90, 70, 20))
+	for offset, submenu in submenus do
+		button(gifts, offset - #submenus, submenu.label, rgb(70, 60, 110)).Activated:Connect(
+			function()
+				show(submenu.name)
+			end
+		)
+		local list = menu(submenu.name, submenu.entries, rgb(45, 40, 35))
+		button(list, 0, "‹  BACK", rgb(70, 60, 110)).Activated:Connect(function()
+			show("gifts")
 		end)
 	end
+	show("gifts")
 
 	toggle.Activated:Connect(function()
 		panel.Visible = not panel.Visible
+		if panel.Visible then
+			MapPanel.close()
+		end
+	end)
+	MapPanel.opened:Connect(function()
+		panel.Visible = false
 	end)
 end
 

@@ -3,6 +3,7 @@
 --   /mayhem                    destroy everyone outside the lobby
 --   /give <who> <item>         any weapon or vehicle id, or: speed, jump, giant, heal, shield,
 --                              car (a random vehicle), arsenal
+--   /give <who> map [permanent] the map panel, for this session or saved for good
 --   /meteors [seconds]         meteor storm across the board
 --   /gravity                   toggle moon gravity
 --   /freeze <who>              freeze players solid for 10 seconds
@@ -24,6 +25,7 @@ local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 local Combat = require(script.Parent.Combat)
 local Creatures = require(script.Parent.Creatures)
+local MapAccess = require(script.Parent.MapAccess)
 local Session = require(script.Parent.Session)
 local Vehicles = require(script.Parent.Vehicles)
 local Weapons = require(script.Parent.Weapons)
@@ -149,11 +151,37 @@ local function gift(player: Player, item: string): boolean
 	return true
 end
 
-local function give(caller: Player, who: string?, item: string?)
+local function giveMap(caller: Player, who: string?, duration: string?)
+	local permanent = duration ~= nil and string.lower(duration) == "permanent"
+	local names, unsaved = {}, {}
+	for _, player in resolveTargets(caller, who) do
+		table.insert(
+			if MapAccess.grant(player, permanent) then names else unsaved,
+			player.DisplayName
+		)
+	end
+	if #names > 0 then
+		local label = if permanent then "🗺 MAP (PERMANENT)" else "🗺 MAP"
+		announce("🎁 " .. label .. " → " .. table.concat(names, ", "), rgb(255, 220, 80), 3)
+	end
+	if #unsaved > 0 then
+		announce(
+			"⚠ MAP NOT SAVED, THIS SESSION ONLY → " .. table.concat(unsaved, ", "),
+			rgb(255, 140, 60),
+			4
+		)
+	end
+end
+
+local function give(caller: Player, who: string?, item: string?, extra: string?)
 	if not item then
 		return
 	end
 	local query = string.lower(item)
+	if query == "map" then
+		giveMap(caller, who, extra)
+		return
+	end
 	local weapon = WeaponCatalog.find(query)
 	local vehicle = VehicleCatalog.get(query)
 	local label = if table.find(Admin.GIFTS, query)
@@ -271,7 +299,7 @@ end
 
 -- Dispatch -----------------------------------------------------------------------------------
 
-function Admin.run(caller: Player, command: string, first: string?, second: string?)
+function Admin.run(caller: Player, command: string, first: string?, second: string?, third: string?)
 	if not Session.isAdmin(caller) then
 		return
 	end
@@ -279,7 +307,7 @@ function Admin.run(caller: Player, command: string, first: string?, second: stri
 	if command == "mayhem" then
 		task.spawn(mayhem)
 	elseif command == "give" then
-		give(caller, first, second)
+		give(caller, first, second, third)
 	elseif command == "meteors" then
 		meteors(math.clamp(tonumber(first) or 30, 5, 120))
 	elseif command == "gravity" then
@@ -320,7 +348,7 @@ function Admin.start()
 				return
 			end
 			local words = string.split(text, " ")
-			Admin.run(player, name, words[2], words[3])
+			Admin.run(player, name, words[2], words[3], words[4])
 		end)
 	end
 end
