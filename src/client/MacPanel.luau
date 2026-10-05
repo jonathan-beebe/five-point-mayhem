@@ -1,5 +1,5 @@
--- The map: a mini admin panel below the GOD MODE button. Every player sees it. Players without
--- the map (the server's HasMap attribute) see it locked. The server re-checks HasMap on every
+-- The MAC (mini admin console): a panel below the GOD MODE button. Every player sees it. Players
+-- without the MAC (the server's HasMac attribute) see it locked. The server re-checks HasMac on every
 -- command.
 
 local Players = game:GetService("Players")
@@ -7,24 +7,24 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
-local MapPanel = {}
+local MacPanel = {}
 
 local player = Players.LocalPlayer
 local rgb = Color3.fromRGB
 
--- Right-edge column of toggles: GOD MODE on top, MAP below it, open panels below both.
-MapPanel.TOGGLE_TOP = 60
-MapPanel.TOGGLE_HEIGHT = 40
-MapPanel.GAP = 6
-MapPanel.PANEL_TOP = MapPanel.TOGGLE_TOP + 2 * (MapPanel.TOGGLE_HEIGHT + MapPanel.GAP)
+-- Right-edge column of toggles: GOD MODE on top, MAC below it, open panels below both.
+MacPanel.TOGGLE_TOP = 60
+MacPanel.TOGGLE_HEIGHT = 40
+MacPanel.GAP = 6
+MacPanel.PANEL_TOP = MacPanel.TOGGLE_TOP + 2 * (MacPanel.TOGGLE_HEIGHT + MacPanel.GAP)
 
 local PANEL_WIDTH = 300
 local PANEL_HEIGHT = 142
 local CONFIRM_SECONDS = 3
 
--- Fires when the map panel opens, so the GOD MODE panel can close and not overlap it.
+-- Fires when the MAC opens, so the GOD MODE panel can close and not overlap it.
 local openedEvent = Instance.new("BindableEvent")
-MapPanel.opened = openedEvent.Event
+MacPanel.opened = openedEvent.Event
 
 local panel: Frame? = nil
 
@@ -47,11 +47,11 @@ local function corner(): UICorner
 	return create("UICorner", { CornerRadius = UDim.new(0, 8) })
 end
 
-local function hasMap(): boolean
-	return player:GetAttribute("HasMap") == true
+local function hasMac(): boolean
+	return player:GetAttribute("HasMac") == true
 end
 
-function MapPanel.close()
+function MacPanel.close()
 	if panel then
 		panel.Visible = false
 	end
@@ -59,7 +59,7 @@ end
 
 local function build()
 	local gui = create("ScreenGui", {
-		Name = "MayhemMap",
+		Name = "MayhemMac",
 		ResetOnSpawn = false,
 		DisplayOrder = 15,
 		Parent = player:WaitForChild("PlayerGui"),
@@ -70,9 +70,9 @@ local function build()
 			1,
 			-12,
 			0,
-			MapPanel.TOGGLE_TOP + MapPanel.TOGGLE_HEIGHT + MapPanel.GAP
+			MacPanel.TOGGLE_TOP + MacPanel.TOGGLE_HEIGHT + MacPanel.GAP
 		),
-		Size = UDim2.fromOffset(130, MapPanel.TOGGLE_HEIGHT),
+		Size = UDim2.fromOffset(130, MacPanel.TOGGLE_HEIGHT),
 		TextSize = 16,
 		Font = Enum.Font.LuckiestGuy,
 		Parent = gui,
@@ -80,7 +80,7 @@ local function build()
 
 	local frame = create("Frame", {
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -12, 0, MapPanel.PANEL_TOP),
+		Position = UDim2.new(1, -12, 0, MacPanel.PANEL_TOP),
 		Size = UDim2.fromOffset(PANEL_WIDTH, PANEL_HEIGHT),
 		BackgroundColor3 = rgb(10, 18, 24),
 		BackgroundTransparency = 0.1,
@@ -93,7 +93,7 @@ local function build()
 		Position = UDim2.fromOffset(10, 8),
 		Size = UDim2.fromOffset(PANEL_WIDTH - 20, 22),
 		BackgroundTransparency = 1,
-		Text = "🗺 MAP",
+		Text = "🖥 MINI ADMIN CONSOLE",
 		TextColor3 = rgb(120, 210, 255),
 		TextSize = 16,
 		Font = Enum.Font.LuckiestGuy,
@@ -112,8 +112,8 @@ local function build()
 		Parent = frame,
 	}, { corner() })
 	sniper.Activated:Connect(function()
-		if hasMap() then
-			Remotes.MapCommand:FireServer("sniper")
+		if hasMac() then
+			Remotes.MacCommand:FireServer("sniper")
 		end
 	end)
 
@@ -131,13 +131,13 @@ local function build()
 	}, { corner() })
 	local armedAt: number? = nil
 	nuke.Activated:Connect(function()
-		if not hasMap() then
+		if not hasMac() then
 			return
 		end
 		if armedAt and os.clock() - armedAt < CONFIRM_SECONDS then
 			armedAt = nil
 			nuke.Text = NUKE_TEXT
-			Remotes.MapCommand:FireServer("nuke")
+			Remotes.MacCommand:FireServer("nuke")
 			return
 		end
 		local stamp = os.clock()
@@ -151,13 +151,13 @@ local function build()
 		end)
 	end)
 
-	-- Covers the whole panel and swallows taps while the player has no map.
+	-- Covers the whole panel and swallows taps while the player has no MAC.
 	local lock = create("TextButton", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundColor3 = rgb(0, 0, 0),
 		BackgroundTransparency = 0.25,
 		AutoButtonColor = false,
-		Text = "🔒 LOCKED\nAsk an admin for the map",
+		Text = "🔒 LOCKED\nAsk an admin for the MAC",
 		TextColor3 = rgb(230, 230, 230),
 		TextSize = 16,
 		Font = Enum.Font.GothamBold,
@@ -166,13 +166,13 @@ local function build()
 	}, { corner() })
 
 	local function refresh()
-		local unlocked = hasMap()
+		local unlocked = hasMac()
 		lock.Visible = not unlocked
-		toggle.Text = if unlocked then "🗺 MAP" else "🔒 MAP"
+		toggle.Text = if unlocked then "🖥 MAC" else "🔒 MAC"
 		toggle.BackgroundColor3 = if unlocked then rgb(80, 190, 255) else rgb(90, 90, 100)
 		toggle.TextColor3 = if unlocked then rgb(0, 25, 45) else rgb(200, 200, 200)
 	end
-	player:GetAttributeChangedSignal("HasMap"):Connect(refresh)
+	player:GetAttributeChangedSignal("HasMac"):Connect(refresh)
 	refresh()
 
 	toggle.Activated:Connect(function()
@@ -183,8 +183,8 @@ local function build()
 	end)
 end
 
-function MapPanel.start()
+function MacPanel.start()
 	build()
 end
 
-return MapPanel
+return MacPanel

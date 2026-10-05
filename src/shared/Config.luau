@@ -32,7 +32,7 @@ Config.PARKING_END_RADIUS = 235
 Config.PARKING_REACH = 70
 Config.PARKING_MARGIN = 14
 
--- The map's NUKE: a bomb falls on the lobby floor, then a blast wave sweeps out across the board
+-- The MAC's NUKE: a bomb falls on the lobby floor, then a blast wave sweeps out across the board
 -- and kills whoever it reaches. The server times the kills from these; each client draws the
 -- strike (client NukeStrike).
 Config.NUKE_GROUND = Vector3.new(0, 1, 0) -- the lobby floor, inside the ring of spawn pads

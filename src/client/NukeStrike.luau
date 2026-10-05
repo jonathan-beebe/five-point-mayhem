@@ -1,4 +1,4 @@
--- The map's NUKE, drawn on each client when the server fires Remotes.Nuke: a giant bomb falls on
+-- The MAC's NUKE, drawn on each client when the server fires Remotes.Nuke: a giant bomb falls on
 -- the lobby floor, whistling louder as it drops. On impact a white flash swells, the view shakes, a
 -- blast wave rings out across the board, and a mushroom cloud rises over the lobby and fades. The
 -- server kills players as the wave reaches them (Admin) on the same timing (Config.NUKE_*).

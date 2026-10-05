@@ -7,7 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
-local MapPanel = require(script.Parent.MapPanel)
+local MacPanel = require(script.Parent.MacPanel)
 
 local AdminPanel = {}
 
@@ -102,8 +102,8 @@ local function build()
 	})
 	local toggle = create("TextButton", {
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -12, 0, MapPanel.TOGGLE_TOP),
-		Size = UDim2.fromOffset(130, MapPanel.TOGGLE_HEIGHT),
+		Position = UDim2.new(1, -12, 0, MacPanel.TOGGLE_TOP),
+		Size = UDim2.fromOffset(130, MacPanel.TOGGLE_HEIGHT),
 		BackgroundColor3 = rgb(255, 200, 40),
 		Text = "👑 GOD MODE",
 		TextColor3 = rgb(40, 20, 0),
@@ -116,8 +116,8 @@ local function build()
 	-- a short (phone) screen every part of it stays reachable.
 	local panel = create("ScrollingFrame", {
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -12, 0, MapPanel.PANEL_TOP),
-		Size = UDim2.new(0, 300, 1, -(MapPanel.PANEL_TOP + 12)),
+		Position = UDim2.new(1, -12, 0, MacPanel.PANEL_TOP),
+		Size = UDim2.new(0, 300, 1, -(MacPanel.PANEL_TOP + 12)),
 		BackgroundColor3 = rgb(20, 16, 10),
 		BackgroundTransparency = 0.1,
 		BorderSizePixel = 0,
@@ -302,10 +302,10 @@ local function build()
 	toggle.Activated:Connect(function()
 		panel.Visible = not panel.Visible
 		if panel.Visible then
-			MapPanel.close()
+			MacPanel.close()
 		end
 	end)
-	MapPanel.opened:Connect(function()
+	MacPanel.opened:Connect(function()
 		panel.Visible = false
 	end)
 end

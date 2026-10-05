@@ -85,14 +85,14 @@ to the gifts. The heading shows which menu is open.
 The panel is never taller than the space below the buttons (at most 470 pixels), and its whole
 contents scroll together, so every part is reachable on a phone.
 
-### The map
+### The MAC (mini admin console)
 
-Every player sees a **🗺 MAP** button under **👑 GOD MODE** (non-admins see it in the same spot,
+Every player sees a **🖥 MAC** button under **👑 GOD MODE** (non-admins see it in the same spot,
 with the space above it empty). It opens a small panel:
 
 ```
 ┌──────────────────────────────────┐
-│ 🗺 MAP                            │
+│ 🖥 MINI ADMIN CONSOLE             │
 │ 🎯 Give me the Sniper Rifle       │
 │ ☢ NUKE SERVER                     │  tap twice within 3 seconds
 └──────────────────────────────────┘
@@ -105,14 +105,14 @@ except the one who pressed it; then every monster dies. Shields do not help. Onl
 NUKE countdown runs at a time. Timing lives in `Config.NUKE_*`; the client draws the strike
 (`src/client/NukeStrike.luau`).
 
-- Admins always have the map.
-- Players without the map see **🔒 MAP**, and the panel opens with a lock over it.
-- An admin gives the map with `/give <who> map` (until the player leaves the server) or
-  `/give <who> map permanent` (saved, loaded every time they join).
-- Permanent maps live in the `MapAccess` DataStore. In Studio this needs **Enable Studio Access
-  to API Services**; without it a permanent grant unlocks the map for the session only, and the
-  banner says **MAP NOT SAVED**.
-- Opening the map closes the GOD MODE panel, and the other way round.
+- Admins always have the MAC.
+- Players without the MAC see **🔒 MAC**, and the panel opens with a lock over it.
+- An admin gives the MAC with `/give <who> mac` (until the player leaves the server) or
+  `/give <who> mac permanent` (saved, loaded every time they join).
+- Permanent grants live in the `MapAccess` DataStore (the MAC's old name, kept so saved grants still load). In Studio this needs **Enable Studio Access
+  to API Services**; without it a permanent grant unlocks the MAC for the session only, and the
+  banner says **MAC NOT SAVED**.
+- Opening the MAC closes the GOD MODE panel, and the other way round.
 
 ### Chat commands
 
@@ -147,8 +147,8 @@ Both `<who>` and `<item>` are required. Examples: `/give all rocket`, `/give me 
 | Item | Effect | Lasts |
 | --- | --- | --- |
 | `arsenal` | All 52 weapons into the backpack | Until death |
-| `map` | The 🗺 MAP panel | Until the player leaves the server |
-| `map permanent` | The 🗺 MAP panel | Saved for good |
+| `mac` | The 🖥 MAC panel | Until the player leaves the server |
+| `mac permanent` | The 🖥 MAC panel | Saved for good |
 | `heal` | Full health | — |
 | `shield` | Force field: immune to all damage except MAYHEM | 30 seconds |
 | `speed` | Walk speed 40 (normal is 16) | Until death |

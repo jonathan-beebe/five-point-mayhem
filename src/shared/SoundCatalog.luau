@@ -994,7 +994,7 @@ local EXPLOSION = { key = "EXPL_MED", base = 0.35, perRadius = 0.01, max = 0.6, 
 -- built-in boom turns out to be silent.
 local EXPLOSION_GAIN = 0.5
 
--- The map's NUKE (client NukeStrike). Each plays for everyone at full volume, wherever they are.
+-- The MAC's NUKE (client NukeStrike). Each plays for everyone at full volume, wherever they are.
 -- The palette has no bomb whistle: `whistle` slows the slide whistle to last the whole fall
 -- (NukeStrike sets its speed) and the pitch shift lifts it back up an octave; it swells from
 -- `swell` x volume to full as the bomb drops. `rush` plays `rushLead` seconds before impact so its

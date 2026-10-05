@@ -9,9 +9,9 @@ local NAMES = {
 	"FireWeapon", -- client -> server: weaponId, aimPosition
 	"DriveInput", -- client -> server: throttle, steer (each -1..1)
 	"AdminCommand", -- client -> server: command, target, item
-	"MapCommand", -- client -> server: action ("sniper" or "nuke")
+	"MacCommand", -- client -> server: action ("sniper" or "nuke")
 	"Announce", -- server -> client: text, color, seconds, style
-	"Nuke", -- server -> client: the map's NUKE is falling (Config.NUKE_GROUND)
+	"Nuke", -- server -> client: the MAC's NUKE is falling (Config.NUKE_GROUND)
 }
 
 local folder: Instance
