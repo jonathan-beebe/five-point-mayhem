@@ -11,9 +11,11 @@ local MechMotion = require(script.MechMotion)
 local MechCamera = require(script.MechCamera)
 local VehicleSounds = require(script.VehicleSounds)
 local NukeStrike = require(script.NukeStrike)
+local SoundProbe = require(script.SoundProbe) -- TEMPORARY
 
 for _, feature in
 	{
+		SoundProbe, -- TEMPORARY
 		Announcer,
 		LobbyUI,
 		WeaponInput,
