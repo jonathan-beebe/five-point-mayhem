@@ -82,6 +82,9 @@ Admins see a **👑 GOD MODE** button in the top-right corner. It opens the pane
 In the WEAPONS, VEHICLES and MECHS menus, tap an item to give it to the target, or **‹ BACK** to return
 to the gifts. The heading shows which menu is open.
 
+The panel is never taller than the space below the buttons (at most 470 pixels), and its whole
+contents scroll together, so every part is reachable on a phone.
+
 ### The map
 
 Every player sees a **🗺 MAP** button under **👑 GOD MODE** (non-admins see it in the same spot,
@@ -196,13 +199,12 @@ with `/give`, e.g. `/give me abrams`.
 Vehicles climb ledges up to 1.6 studs (roads, landmark plazas and courtyards, Sakura Hall's
 steps). Walls, the lobby gates, and taller ledges stop them.
 
-### Titan Mech
+### OG
 
-The Titan Mech (`mech`, 🤖) is a two-legged walker, 46 studs tall. It parks with the other vehicles
+OG (`mech`, 🤖) is the original two-legged walker, 46 studs tall. It parks with the other vehicles
 and works with `/give <who> mech`.
 
-- **Get in**: climb the ladder on its back to the deck on top, then press **E** (or tap **Drive**)
-  at the hatch. The prompt shows only on the deck.
+- **Get in**: from any side, press **E** (or tap **Drive**), the same as every other vehicle.
 - **Drive**: the same controls as every car (WASD/arrows, thumbstick, gamepad). It walks at 18
   studs/s, turns in place, and backs up slowly. It speeds up, stops, and turns slowly.
 - **View**: you start in the cockpit, looking out the chest window. **V**, gamepad **Y**, or the
@@ -211,7 +213,7 @@ and works with `/give <who> mech`.
   and stand in the cab, still in first person, and can walk around inside it. The mech stays where
   it is, and it does not return to its parking spot while you are inside.
 - **In the cab**: press **E** (or tap **Drive**) to sit back down, or **Q** (**Climb out**) to
-  climb out onto the deck behind the hatch; the ladder is behind you.
+  climb out onto the ground behind the mech.
 - With nobody in it, the mech's brake holds it in place when bumped.
 
 The legs and arms are decoration and do not collide; the cab walls, floor and roof, the hips and

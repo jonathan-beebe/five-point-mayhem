@@ -112,15 +112,24 @@ local function build()
 		Parent = gui,
 	}, { corner() })
 
-	local panel = create("Frame", {
+	-- The whole panel scrolls as one, and is never taller than the space below the toggles, so on
+	-- a short (phone) screen every part of it stays reachable.
+	local panel = create("ScrollingFrame", {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -12, 0, MapPanel.PANEL_TOP),
-		Size = UDim2.fromOffset(300, 470),
+		Size = UDim2.new(0, 300, 1, -(MapPanel.PANEL_TOP + 12)),
 		BackgroundColor3 = rgb(20, 16, 10),
 		BackgroundTransparency = 0.1,
+		BorderSizePixel = 0,
+		ScrollBarThickness = 6,
+		CanvasSize = UDim2.new(),
 		Visible = false,
 		Parent = gui,
-	}, { corner(), create("UIStroke", { Color = rgb(255, 200, 40), Thickness = 2 }) })
+	}, {
+		corner(),
+		create("UIStroke", { Color = rgb(255, 200, 40), Thickness = 2 }),
+		create("UISizeConstraint", { MaxSize = Vector2.new(300, 470) }),
+	})
 
 	local targetButton = create("TextButton", {
 		Position = UDim2.fromOffset(10, 10),
@@ -182,8 +191,13 @@ local function build()
 	})
 
 	-- The menus share the space under the heading: WEAPONS, VEHICLES and MECHS buttons above
-	-- the gifts, and one menu for each of those. Only one shows at a time.
-	local menus: { [string]: ScrollingFrame } = {}
+	-- the gifts, and one menu for each of those. One shows at a time. Menus grow to fit
+	-- their items; the panel scrolls them.
+	local menus: { [string]: Frame } = {}
+	local layouts: { [string]: UIListLayout } = {}
+	local current = "gifts"
+	local MENU_TOP = 220
+	local MENU_BOTTOM_PADDING = 10
 	local HEADINGS = {
 		gifts = "🎁 GIVE TO TARGET",
 		weapons = "🎁 GIVE TO TARGET › WEAPONS",
@@ -191,15 +205,29 @@ local function build()
 		mechs = "🎁 GIVE TO TARGET › MECHS",
 	}
 
+	-- The canvas is sized from the open menu's measured height. AutomaticCanvasSize left the
+	-- canvas at the window's size, so there was nothing to scroll.
+	local function fitCanvas()
+		local height = layouts[current].AbsoluteContentSize.Y
+		panel.CanvasSize = UDim2.fromOffset(0, MENU_TOP + height + MENU_BOTTOM_PADDING)
+	end
+
 	local function show(name: string)
+		current = name
 		for each, menu in menus do
 			menu.Visible = each == name
 		end
-		menus[name].CanvasPosition = Vector2.zero
 		heading.Text = HEADINGS[name]
+		fitCanvas()
 	end
 
-	local function button(menu: ScrollingFrame, order: number, label: string, color: Color3)
+	-- Switches menu and scrolls the panel so the heading is at the top.
+	local function open(name: string)
+		show(name)
+		panel.CanvasPosition = Vector2.new(0, heading.Position.Y.Offset - 8)
+	end
+
+	local function button(menu: Frame, order: number, label: string, color: Color3)
 		return create("TextButton", {
 			LayoutOrder = order,
 			Size = UDim2.new(1, -8, 0, 30),
@@ -213,23 +241,25 @@ local function build()
 	end
 
 	local function menu(name: string, entries: { { id: string, label: string } }, color: Color3)
-		local list = create("ScrollingFrame", {
-			Position = UDim2.fromOffset(10, 220),
-			Size = UDim2.fromOffset(280, 240),
+		local layout = create(
+			"UIListLayout",
+			{ Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }
+		)
+		local list = create("Frame", {
+			Position = UDim2.fromOffset(10, MENU_TOP),
+			Size = UDim2.fromOffset(280, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
 			BackgroundTransparency = 1,
-			BorderSizePixel = 0,
-			ScrollBarThickness = 6,
-			AutomaticCanvasSize = Enum.AutomaticSize.Y,
-			CanvasSize = UDim2.new(),
 			Visible = false,
 			Parent = panel,
-		}, {
-			create(
-				"UIListLayout",
-				{ Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }
-			),
-		})
+		}, { layout })
 		menus[name] = list
+		layouts[name] = layout
+		layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+			if current == name then
+				fitCanvas()
+			end
+		end)
 		for order, entry in entries do
 			button(list, order, entry.label, color).Activated:Connect(function()
 				Remotes.AdminCommand:FireServer("give", target, entry.id)
@@ -259,12 +289,12 @@ local function build()
 	for offset, submenu in submenus do
 		button(gifts, offset - #submenus, submenu.label, rgb(70, 60, 110)).Activated:Connect(
 			function()
-				show(submenu.name)
+				open(submenu.name)
 			end
 		)
 		local list = menu(submenu.name, submenu.entries, rgb(45, 40, 35))
 		button(list, 0, "‹  BACK", rgb(70, 60, 110)).Activated:Connect(function()
-			show("gifts")
+			open("gifts")
 		end)
 	end
 	show("gifts")

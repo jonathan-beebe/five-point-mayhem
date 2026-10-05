@@ -1,4 +1,6 @@
 -- Big banner text across the top of the screen, plus a red flash for alarms and MAYHEM.
+-- The overlay and banner are hidden between announcements, and a new announcement cancels the
+-- previous one's fade.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -20,6 +22,7 @@ overlay.Size = UDim2.fromScale(1, 1)
 overlay.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
 overlay.BackgroundTransparency = 1
 overlay.BorderSizePixel = 0
+overlay.Visible = false
 overlay.Parent = gui
 
 local banner = Instance.new("TextLabel")
@@ -32,36 +35,66 @@ banner.TextScaled = true
 banner.TextStrokeTransparency = 0
 banner.TextTransparency = 1
 banner.TextStrokeColor3 = Color3.new(0, 0, 0)
+banner.Visible = false
 banner.Parent = gui
 
 local showId = 0
 
+local fades: { [GuiObject]: Tween } = {}
+
+-- Stops an object's running fade so a new announcement shows at full strength and stays visible.
+local function stopFade(object: GuiObject)
+	local fade = fades[object]
+	if fade then
+		fade:Cancel()
+		fades[object] = nil
+	end
+end
+
+-- Plays a fade, then hides the object unless the fade was stopped first.
+local function fadeOut(object: GuiObject, info: TweenInfo, goal: { [string]: any })
+	stopFade(object)
+	local tween = TweenService:Create(object, info, goal)
+	fades[object] = tween
+	tween.Completed:Connect(function(state)
+		if state == Enum.PlaybackState.Completed then
+			object.Visible = false
+			fades[object] = nil
+		end
+	end)
+	tween:Play()
+end
+
 function Announcer.show(text: string, color: Color3?, seconds: number?, style: string?)
 	showId += 1
 	local id = showId
+	stopFade(banner)
 	banner.Text = text
 	banner.TextColor3 = color or Color3.new(1, 1, 1)
 	banner.TextTransparency = 0
 	banner.TextStrokeTransparency = 0
+	banner.Visible = true
 	if style == "alarm" then
 		overlay.BackgroundTransparency = 0.6
-		TweenService:Create(overlay, TweenInfo.new(0.8), { BackgroundTransparency = 1 }):Play()
+		overlay.Visible = true
+		fadeOut(overlay, TweenInfo.new(0.8), { BackgroundTransparency = 1 })
 	elseif style == "mayhem" then
 		overlay.BackgroundColor3 = Color3.new(1, 1, 1)
 		overlay.BackgroundTransparency = 0
-		TweenService:Create(
+		overlay.Visible = true
+		fadeOut(
 			overlay,
 			TweenInfo.new(2.5),
 			{ BackgroundTransparency = 1, BackgroundColor3 = Color3.fromRGB(255, 0, 0) }
-		):Play()
+		)
 	end
 	task.delay(seconds or 3, function()
 		if id == showId then
-			TweenService:Create(
+			fadeOut(
 				banner,
 				TweenInfo.new(0.5),
 				{ TextTransparency = 1, TextStrokeTransparency = 1 }
-			):Play()
+			)
 		end
 	end)
 end
