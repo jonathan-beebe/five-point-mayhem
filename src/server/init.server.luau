@@ -20,6 +20,7 @@ local Roads = require(World.Roads)
 local Admin = require(Systems.Admin)
 local Combat = require(Systems.Combat)
 local Creatures = require(Systems.Creatures)
+local DayNight = require(Systems.DayNight)
 local MacAccess = require(Systems.MacAccess)
 local Session = require(Systems.Session)
 local Vehicles = require(Systems.Vehicles)
@@ -48,7 +49,6 @@ local function clearTemplate()
 end
 
 local function atmosphere()
-	Lighting.ClockTime = 14
 	Lighting.Brightness = 2.5
 	Lighting.EnvironmentDiffuseScale = 1
 	Lighting.EnvironmentSpecularScale = 1
@@ -90,6 +90,7 @@ Session.registerCollisionGroups()
 Vehicles.registerCollisionGroups()
 Combat.setBarrelFactory(Landscape.explosiveBarrel)
 atmosphere()
+DayNight.start()
 workspace.Gravity = Config.NORMAL_GRAVITY
 buildWorld()
 

@@ -52,17 +52,23 @@ local POWERS = {
 		targeted = true,
 	},
 	{
+		command = "day",
+		label = "☀ DAY",
+		color = rgb(220, 170, 40),
+		hint = "Jump to morning",
+	},
+	{
+		command = "night",
+		label = "🌑 NIGHT",
+		color = rgb(50, 40, 90),
+		hint = "Jump to nightfall",
+	},
+	{
 		command = "horde",
 		label = "👹 HORDE",
 		color = rgb(60, 140, 50),
 		hint = "Summon monsters",
 		targeted = true,
-	},
-	{
-		command = "night",
-		label = "🌓 NIGHT",
-		color = rgb(50, 40, 90),
-		hint = "Toggle day and night",
 	},
 }
 
@@ -157,12 +163,21 @@ local function build()
 	end)
 	refreshTarget()
 
+	-- Powers sit two to a row under the target button. An odd last power fills its row.
+	local GRID_TOP = targetButton.Position.Y.Offset + targetButton.Size.Y.Offset + 8
+	local CELL_WIDTH, CELL_HEIGHT = 138, 40
+	local COLUMN_PITCH, ROW_PITCH = 142, 46
+	local rows = math.ceil(#POWERS / 2)
 	for index, power in POWERS do
 		local column = (index - 1) % 2
 		local row = math.floor((index - 1) / 2)
+		local alone = index == #POWERS and column == 0
 		local button = create("TextButton", {
-			Position = UDim2.fromOffset(10 + column * 142, 52 + row * 46),
-			Size = UDim2.fromOffset(138, 40),
+			Position = UDim2.fromOffset(10 + column * COLUMN_PITCH, GRID_TOP + row * ROW_PITCH),
+			Size = UDim2.fromOffset(
+				if alone then COLUMN_PITCH + CELL_WIDTH else CELL_WIDTH,
+				CELL_HEIGHT
+			),
 			BackgroundColor3 = power.color,
 			Text = power.label,
 			TextColor3 = rgb(255, 255, 255),
@@ -180,7 +195,7 @@ local function build()
 	end
 
 	local heading = create("TextLabel", {
-		Position = UDim2.fromOffset(10, 194),
+		Position = UDim2.fromOffset(10, GRID_TOP + rows * ROW_PITCH + 4),
 		Size = UDim2.fromOffset(280, 22),
 		BackgroundTransparency = 1,
 		TextColor3 = rgb(255, 210, 60),
@@ -196,7 +211,7 @@ local function build()
 	local menus: { [string]: Frame } = {}
 	local layouts: { [string]: UIListLayout } = {}
 	local current = "gifts"
-	local MENU_TOP = 220
+	local MENU_TOP = heading.Position.Y.Offset + heading.Size.Y.Offset + 4
 	local MENU_BOTTOM_PADDING = 10
 	local HEADINGS = {
 		gifts = "🎁 GIVE TO TARGET",

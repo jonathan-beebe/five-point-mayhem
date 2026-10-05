@@ -7,6 +7,7 @@ Roblox arena game. The entire world is built from code at server start (`src/ser
 ```sh
 rokit install
 rojo serve      # then connect from the Rojo plugin in Studio and press Play
+lune run tools/tests/day_night.luau   # day/night clock math, no Studio needed
 ```
 
 ## Layout
@@ -62,8 +63,10 @@ Admins see a **👑 GOD MODE** button in the top-right corner. It opens the pane
 ├────────────────┬─────────────────┤
 │   ☢ MAYHEM     │   ☄ METEORS     │
 │   🌙 GRAVITY   │   ❄ FREEZE      │  FREEZE and HORDE use the target
-│   👹 HORDE     │   🌓 NIGHT      │
+│   ☀ DAY        │   🌑 NIGHT      │
 ├────────────────┴─────────────────┤
+│            👹 HORDE              │
+├──────────────────────────────────┤
 │ 🎁 GIVE TO TARGET                 │
 │   🔫 WEAPONS  ›                   │  opens a menu of all 52 weapons
 │   🚙 VEHICLES  ›                  │  opens a menu of every vehicle except mechs
@@ -127,7 +130,8 @@ or display name, case-insensitive. The first matching player wins.
 | `/gravity` | 🌙 GRAVITY | Toggle moon gravity |
 | `/freeze [who]` | ❄ FREEZE | Freeze players in ice |
 | `/horde [who]` | 👹 HORDE | Summon a monster horde |
-| `/night` | 🌓 NIGHT | Toggle day and night |
+| `/day` | ☀ DAY | Jump to morning |
+| `/night` | 🌑 NIGHT | Jump to nightfall |
 
 ### The powers
 
@@ -190,9 +194,14 @@ Both `<who>` and `<item>` are required. Examples: `/give all rocket`, `/give me 
 - Mostly zombies, with goblins, slimes, brutes, and every landmark monster mixed in.
 - Summoned monsters do not respawn. The game caps monsters at 170 alive.
 
-**🌓 NIGHT** — `/night`
+**☀ DAY / 🌑 NIGHT** — `/day`, `/night`
 
-- Fades to midnight over 3 seconds, or back to mid-afternoon.
+- Day and night cycle on their own: a full day plus night lasts 5 minutes, 2½ minutes each. A
+  server starts mid-afternoon.
+- DAY fades to just after sunrise over 3 seconds; NIGHT fades to just after dusk. The cycle
+  carries on from there.
+- Pressing the phase it already is (DAY by day, NIGHT by night) restarts that phase.
+- Tunables are `Config.DAY_NIGHT_*`.
 
 ## Vehicles
 
