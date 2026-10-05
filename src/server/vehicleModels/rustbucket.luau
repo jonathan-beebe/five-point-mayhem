@@ -1,10 +1,12 @@
--- Rustbucket: an old, rust-eaten brute of a walker. A squat riveted hull with a vision slit, a
--- boiler and two crooked smokestacks on its back, patched plates in faded paint, stumpy elephant
--- legs, and huge gorilla arms whose fists hang near the ground. Slow, and it creaks
--- (SoundCatalog.MECHS.rustbucket), but it shoves like nothing else (`ram`).
+-- Rustbucket: an old, rust-eaten brute of a walker. A squat riveted hull with a vision slit
+-- between two barred corner windows and a porthole in each flank, a boiler and two crooked
+-- smokestacks on its back (they smoke while it walks), patched plates in faded paint, stumpy
+-- elephant legs, and huge gorilla arms whose fists hang near the ground. Inside, a steam-age
+-- console: brass gauges, valve wheels, toggles, copper pipes and a speaking tube. Slow, and it
+-- creaks (SoundCatalog.MECHS.rustbucket), but it shoves like nothing else (`ram`).
 -- Scale: 4 studs = 1 m. Rest pose = parked pose (knees bent). Hip pivots y 17.7, hull
--- x -11..11, y 19.5..32.5, z -7..6.5, cab cavity x -4.5..4.5, y 21..29, z -5..3.5 (only `In*`
--- pieces inside it).
+-- x -11..11, y 19.5..32.5, z -7..6.5, cab cavity x -9.5..9.5, y 21..29, z -5..3.5 (only `In*`
+-- pieces inside it). Windows: y 25.5..28.
 --
 -- Rig: every piece belongs to one bone. Leg pieces are authored in their bone's bind frame (thigh
 -- tilted 25 degrees forward, shin 25 degrees back, foot flat), like OG's.
@@ -34,6 +36,11 @@ local LAMP = { rgb(255, 196, 110), M.Neon }
 local DEAD_LAMP = { rgb(60, 56, 46), M.Glass, 0.1 }
 local SEAT = { rgb(86, 60, 40), M.Leather }
 local GAUGE = { rgb(220, 210, 170), M.SmoothPlastic }
+local BRASS = { rgb(196, 154, 72), M.Metal, 0.25 }
+local COPPER = { rgb(172, 98, 60), M.Metal, 0.15 }
+local NEEDLE = { rgb(120, 20, 16), M.SmoothPlastic }
+local AMBER = { rgb(255, 168, 60), M.Neon }
+local RED_LAMP = { rgb(255, 60, 40), M.Neon }
 
 local pieces = {}
 
@@ -157,29 +164,49 @@ plate("pelvis", "PelvisPlate", V(7, 3, 0.5), C(0, 17.8, -4) * A(0, 0, rad(3)), R
 part("pelvis", "Grease", V(3, 0.2, 2), C(0, 15.75, 1), SOOT)
 
 -- Hull ----------------------------------------------------------------------------------------
--- Walls around the cab, with a vision slit across the front.
+-- Walls around the cab: 1.5 thick at the flanks, 2 at the front and back. The front has a vision
+-- slit (x -4.5..4.5) between pillars, and a barred window at each corner (x 5.5..9.5); each
+-- flank has a porthole just forward of the shoulder (z -5..-3.4). All windows span y 25.5..28.
 local T = "torso"
 part(T, "HullFloor", V(22, 1.5, 13.5), C(0, 20.25, -0.25), RUST_DARK)
 part(T, "HullRoof", V(22, 3.5, 13.5), C(0, 30.75, -0.25), RUST)
-for side = -1, 1, 2 do
-	part(T, "HullSide", V(6.5, 8, 13.5), C(side * 7.75, 25, -0.25), RUST)
-end
-part(T, "HullBack", V(9, 8, 3), C(0, 25, 5), RUST_DARK)
-part(T, "HullFront", V(9, 4.5, 2), C(0, 23.25, -6), RUST)
-part(T, "SlitTop", V(9, 1, 2), C(0, 28.5, -6), RUST)
+part(T, "HullBack", V(19, 8, 3), C(0, 25, 5), RUST_DARK)
+part(T, "HullFront", V(19, 4.5, 2), C(0, 23.25, -6), RUST)
+part(T, "SlitTop", V(19, 1, 2), C(0, 28.5, -6), RUST)
 part(T, "Slit", V(9, 2.6, 0.2), C(0, 26.75, -5.6), GRIME)
 part(T, "SlitHood", V(11, 1.2, 2.6), C(0, 29.4, -7) * A(rad(-14), 0, 0), RUST_ORANGE)
+for side = -1, 1, 2 do
+	part(T, "Pillar", V(1, 2.5, 2), C(side * 5, 26.75, -6), RUST)
+	part(T, "CornerWindow", V(4, 2.6, 0.2), C(side * 7.5, 26.75, -5.6), GRIME)
+	part(T, "WindowBar", V(0.25, 2.5, 0.25), C(side * 7.5, 26.75, -6.6), IRON)
+	part(T, "WindowSill", V(4.4, 0.4, 0.8), C(side * 7.5, 25.4, -7.2), IRON)
 
--- Patched armor on the front and flanks, each a little crooked.
-plate(T, "Glacis", V(6.6, 8, 0.8), C(-7.75, 25, -7.3) * A(0, 0, rad(2)), RUST_ORANGE)
-plate(T, "Glacis", V(6.6, 7.4, 0.8), C(7.75, 24.6, -7.3) * A(0, 0, rad(-4)), OLD_YELLOW)
+	-- Flank wall, built around the porthole.
+	local x = side * 10.25
+	part(T, "HullSide", V(1.5, 4.5, 13.5), C(x, 23.25, -0.25), RUST)
+	part(T, "HullSide", V(1.5, 1, 13.5), C(x, 28.5, -0.25), RUST)
+	part(T, "HullSide", V(1.5, 2.5, 2), C(x, 26.75, -6), RUST)
+	part(T, "HullSide", V(1.5, 2.5, 9.9), C(x, 26.75, 1.55), RUST)
+	part(T, "Porthole", V(0.2, 2.5, 1.6), C(side * 10.6, 26.75, -4.2), GRIME)
+	for _, y in { 25.35, 28.15 } do
+		part(T, "PortholeFrame", V(0.3, 0.3, 2.2), C(side * 11.1, y, -4.2), BRASS)
+	end
+	for _, z in { -5.15, -3.25 } do
+		part(T, "PortholeFrame", V(0.3, 3.1, 0.3), C(side * 11.1, 26.75, z), BRASS)
+	end
+end
+
+-- Patched armor on the front and flanks, each a little crooked. The glacis plates stop under the
+-- corner windows.
+plate(T, "Glacis", V(6.6, 4.6, 0.8), C(-7.75, 23.2, -7.3) * A(0, 0, rad(2)), RUST_ORANGE)
+plate(T, "Glacis", V(6.6, 4.2, 0.8), C(7.75, 23, -7.3) * A(0, 0, rad(-4)), OLD_YELLOW)
 plate(T, "ChinPlate", V(8, 2.6, 0.8), C(0, 22.4, -7.3) * A(0, 0, rad(-3)), OLD_GREEN)
 for side = -1, 1, 2 do
 	plate(
 		T,
 		"FlankPatch",
 		V(0.6, 5, 6),
-		C(side * 11.2, 25.5, -1) * A(rad(side * 5), 0, 0),
+		C(side * 11.2, 25.5, 0.4) * A(rad(side * 5), 0, 0),
 		RUST_ORANGE
 	)
 	plate(
@@ -220,14 +247,16 @@ for k = -1, 1 do
 end
 plate(T, "BoilerPatch", V(3.6, 2.6, 0.4), C(-3, 38.5, -2.1) * A(rad(-30), 0, rad(8)), OLD_GREEN)
 
--- Two crooked smokestacks with sooty lips, and a bent antenna.
+-- Two crooked smokestacks with sooty lips, and a bent antenna. Smoke rises from each lip.
 local stacks = { { -4, 4.4, 10, 2.4, rad(-4), rad(5) }, { 4.6, 4.8, 7, 2, rad(-7), rad(-8) } }
+local smoke = {}
 for _, stack in stacks do
 	local base = C(stack[1], 39, stack[2]) * A(stack[5], 0, stack[6])
 	local h, d = stack[3], stack[4]
 	cyl(T, "Stack", V(h, d, d), base * C(0, h / 2, 0) * CYLINDER_Y, RUST_DARK)
 	cyl(T, "StackBand", V(0.6, d + 0.3, d + 0.3), base * C(0, h * 0.4, 0) * CYLINDER_Y, IRON)
 	cyl(T, "StackLip", V(0.8, d + 0.6, d + 0.6), base * C(0, h, 0) * CYLINDER_Y, SOOT)
+	table.insert(smoke, { position = (base * C(0, h + 0.5, 0)).Position, bone = T })
 end
 cyl(T, "AntennaStub", V(2, 0.4, 0.4), C(-9, 33.5, -4) * CYLINDER_Y, IRON)
 cyl(T, "Antenna", V(4, 0.25, 0.25), C(-8.3, 35.6, -4) * A(0, 0, rad(-30)) * CYLINDER_Y, IRON)
@@ -239,21 +268,56 @@ local IN = "torso"
 part(IN, "InSeatPost", V(1.2, 1.6, 1.2), C(0, 21.8, 0.9), IRON)
 part(IN, "InSeat", V(2.8, 0.6, 2.6), C(0, 22.7, 0.8), SEAT)
 part(IN, "InSeatBack", V(2.8, 3.6, 0.6), C(0, 24.8, 2.2) * A(rad(6), 0, 0), SEAT)
+-- Steam-age console: a dash of brass-rimmed gauges (needles at different pressures), warning
+-- lamps and toggles; a side console under each corner window with a valve wheel and a dial;
+-- copper pipes up the flanks into one across the back; a speaking tube from the roof.
 part(IN, "InDash", V(8, 2.4, 1.4), C(0, 23.4, -4.2), IRON)
 for k = -1, 1 do
-	cyl(
+	local face = C(k * 2.4, 24.4, -3.55) * A(rad(-15), 0, 0)
+	cyl(IN, "InGaugeRim", V(0.12, 1.6, 1.6), face * C(0, 0, 0.03) * CYLINDER_Z, BRASS)
+	cyl(IN, "InGauge", V(0.2, 1.3, 1.3), face * CYLINDER_Z, GAUGE)
+	local needle = face * C(0, 0, 0.12) * A(0, 0, rad(50 - k * 55))
+	part(IN, "InNeedle", V(0.08, 0.5, 0.04), needle * C(0, 0.22, 0), NEEDLE)
+	ball(IN, "InNeedleCap", 0.18, (face * C(0, 0, 0.13)).Position, BRASS)
+end
+for index, x in { -3.6, -1.2, 1.2 } do
+	ball(IN, "InLamp", 0.35, V(x, 24.7, -4.4), if index == 1 then RED_LAMP else AMBER)
+end
+for k = -1, 1 do
+	part(
 		IN,
-		"InGauge",
-		V(0.2, 1.3, 1.3),
-		C(k * 2.4, 24.4, -3.55) * A(rad(-15), 0, 0) * CYLINDER_Z,
-		GAUGE
+		"InToggle",
+		V(0.14, 0.5, 0.14),
+		C(k * 0.7, 22.9, -3.4) * A(rad(k * 25 + 20), 0, 0),
+		BRASS
 	)
 end
 for side = -1, 1, 2 do
 	part(IN, "InLever", V(0.3, 2.6, 0.3), C(side * 1.9, 23.8, -1) * A(rad(-15), 0, 0), IRON)
-	ball(IN, "InKnob", 0.7, V(side * 1.9, 25.1, -1.35), SOOT)
+	ball(IN, "InKnob", 0.7, V(side * 1.9, 25.1, -1.35), BRASS)
+
+	part(IN, "InSideConsole", V(4, 2.2, 1.4), C(side * 7.3, 23.3, -4.2), IRON)
+	-- Valve wheel: a hub, two spokes and a rim of brass beads.
+	local hub = V(side * 6.4, 23.4, -3.3)
+	ball(IN, "InValveHub", 0.35, hub, BRASS)
+	part(IN, "InValveSpoke", V(1.4, 0.14, 0.14), C(hub) * A(0, 0, rad(side * 20)), BRASS)
+	part(IN, "InValveSpoke", V(0.14, 1.4, 0.14), C(hub) * A(0, 0, rad(side * 20)), BRASS)
+	for j = 0, 5 do
+		local a = rad(j * 60)
+		ball(IN, "InValveRim", 0.3, hub + V(math.cos(a) * 0.7, math.sin(a) * 0.7, 0), BRASS)
+	end
+	local dial = C(side * 8.4, 23.6, -3.45) * CYLINDER_Z
+	cyl(IN, "InDialRim", V(0.12, 1.1, 1.1), dial, BRASS)
+	cyl(IN, "InDial", V(0.15, 0.85, 0.85), dial * C(-0.03, 0, 0), GAUGE)
+
+	-- A copper pipe up the flank, bending back along the wall to the pipe across the back.
+	cyl(IN, "InPipe", V(7.4, 0.5, 0.5), C(side * 9.1, 24.7, -2.6) * CYLINDER_Y, COPPER)
+	ball(IN, "InPipeElbow", 0.7, V(side * 9.1, 28.4, -2.6), COPPER)
+	cyl(IN, "InPipe", V(5.6, 0.5, 0.5), C(side * 9.1, 28.4, 0.2) * CYLINDER_Z, COPPER)
 end
-cyl(IN, "InPipe", V(8.6, 0.6, 0.6), C(0, 28.4, 3), RUST_DARK)
+cyl(IN, "InPipe", V(18.6, 0.6, 0.6), C(0, 28.4, 3), COPPER)
+cyl(IN, "InSpeakingTube", V(0.9, 0.3, 0.3), C(-3, 28.55, -1.5) * CYLINDER_Y, BRASS)
+ball(IN, "InSpeakingHorn", 0.6, V(-3, 28.1, -1.5), BRASS)
 
 -- Arms (decorative) ---------------------------------------------------------------------------
 -- Huge arms with fists near the ground; pivots at x +-16 so the fists clear the wide feet.
@@ -306,7 +370,7 @@ for _, bone in legBones do
 	table.insert(bones, bone)
 end
 
-local CAB_LO, CAB_HI = V(-4.5, 21, -5), V(4.5, 29, 3.5)
+local CAB_LO, CAB_HI = V(-9.5, 21, -5), V(9.5, 29, 3.5)
 local collision = shell(V(-11, 19.5, -7), V(11, 32.5, 6.5), CAB_LO, CAB_HI)
 table.insert(collision, { size = V(18, 9, 9), offset = C(0, 36, 2) }) -- boiler y 31.5..40.5
 table.insert(collision, { size = V(12, 4, 8), offset = C(0, 17.5, 0.2) }) -- pelvis y 15.5..19.5
@@ -333,6 +397,7 @@ return {
 	uprightTorque = 8,
 	stepsOver = true,
 	ram = 5,
+	smoke = smoke,
 	seats = { C(0, 23, 0.8) },
 	pieces = pieces,
 }

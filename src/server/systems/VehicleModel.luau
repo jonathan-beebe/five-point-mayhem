@@ -42,6 +42,10 @@ export type LadderSpec = {
 	height: number, -- even (TrussPart sizes snap to 2 studs)
 }
 
+-- A smokestack mouth (walkers): clients puff smoke from it while the walker moves, and a burst on
+-- every step. In vehicle space, rest pose; on `bone` (nil = the skid), so it moves with that bone.
+export type SmokeSpec = { position: Vector3, bone: string? }
+
 -- The Drive/Ride prompt's anchor and MaxActivationDistance.
 export type PromptSpec = { position: Vector3, reach: number }
 
@@ -65,6 +69,7 @@ export type Model = {
 	bones: { BoneSpec }?, -- parents before children
 	seatBone: string?, -- every seat welds to this bone; default the skid
 	ladders: { LadderSpec }?,
+	smoke: { SmokeSpec }?,
 	prompt: PromptSpec?, -- default: 3.5 above the center, reach from the footprint
 	cab: CabSpec?,
 	exit: CFrame?, -- with a cab: where Climb out puts the player's root
@@ -125,6 +130,12 @@ function VehicleModel.define(model: Model): Model
 			)
 			bones[bone.name] = true
 		end
+	end
+	for _, stack in model.smoke or {} do
+		assert(
+			stack.bone == nil or bones[stack.bone],
+			model.name .. ": a smoke spot names an unknown bone"
+		)
 	end
 	for index, piece in model.pieces do
 		assert(

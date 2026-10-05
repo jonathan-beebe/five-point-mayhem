@@ -2,7 +2,9 @@
 -- Transforms do not replicate, so each client poses each mech itself from the skid's replicated
 -- velocity (src/shared/MechGait.luau); clients need not agree on the phase. Heel strikes kick up
 -- dust and fire `MechMotion.footfall` (model, foot "L" | "R", strength 0..1), which MechCamera
--- turns into a shake for the driver and VehicleSounds into a footstep.
+-- turns into a shake for the driver and VehicleSounds into a footstep. Smokestacks (Attachments
+-- named "Smoke", from the model's `smoke` spec) trail smoke while the walker moves and puff on
+-- every step.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -17,6 +19,10 @@ local ANIMATE_RANGE = 500 -- studs from the camera
 local DUST_RANGE = 200
 local DUST_SPEED = 3 -- ground speed (studs/s) below which steps raise no dust
 local SKID_TO_GROUND = CFrame.new(0, -0.5, 0)
+local SMOKE_RANGE = 400
+local SMOKE_SPEED = 0.5 -- ground speed (studs/s) below which the stacks stop smoking
+local SMOKE_RATE = 14 -- particles per second per stack at top speed
+local SMOKE_PUFF = 5 -- particles per stack on each step
 
 local footfallEvent = Instance.new("BindableEvent")
 -- Fires (model: Model, foot: "L" | "R", strength: number) on every heel strike this client animates.
@@ -29,6 +35,7 @@ type Mech = {
 	joints: { [string]: Motor6D }?,
 	state: MechGait.State?,
 	dust: ParticleEmitter?,
+	smoke: { ParticleEmitter },
 	posed: boolean, -- Transforms differ from the rest pose
 }
 
@@ -105,12 +112,42 @@ local function resolve(mech: Mech): boolean
 	dust.EmissionDirection = Enum.NormalId.Top
 	dust.Parent = attachment
 	mech.dust = dust
+
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("Attachment") and descendant.Name == "Smoke" then
+			local smoke = Instance.new("ParticleEmitter")
+			smoke.Rate = 0
+			smoke.Color =
+				ColorSequence.new(Color3.fromRGB(70, 64, 58), Color3.fromRGB(150, 145, 140))
+			smoke.Size = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1.2),
+				NumberSequenceKeypoint.new(0.3, 3.5),
+				NumberSequenceKeypoint.new(1, 8),
+			})
+			smoke.Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.15),
+				NumberSequenceKeypoint.new(0.6, 0.6),
+				NumberSequenceKeypoint.new(1, 1),
+			})
+			smoke.Lifetime = NumberRange.new(2.2, 3.4)
+			smoke.Speed = NumberRange.new(7, 11)
+			smoke.SpreadAngle = Vector2.new(10, 10)
+			smoke.Drag = 1.2
+			smoke.Acceleration = Vector3.new(0, 2, 0)
+			smoke.Rotation = NumberRange.new(0, 360)
+			smoke.RotSpeed = NumberRange.new(-40, 40)
+			smoke.LightInfluence = 1
+			smoke.EmissionDirection = Enum.NormalId.Top
+			smoke.Parent = descendant
+			table.insert(mech.smoke, smoke)
+		end
+	end
 	return true
 end
 
 local function track(model: Instance)
 	if model:IsA("Model") and model:GetAttribute("Gait") == GAIT and not mechs[model] then
-		mechs[model] = { model = model, posed = false }
+		mechs[model] = { model = model, smoke = {}, posed = false }
 	end
 end
 
@@ -133,6 +170,9 @@ local function animate(mech: Mech, dt: number, viewer: Vector3)
 	local distance = (skid.Position - viewer).Magnitude
 	if distance > ANIMATE_RANGE then
 		rest(mech)
+		for _, smoke in mech.smoke do
+			smoke.Rate = 0
+		end
 		return
 	end
 
@@ -156,7 +196,18 @@ local function animate(mech: Mech, dt: number, viewer: Vector3)
 	end
 	mech.posed = true
 
+	local smoking = distance < SMOKE_RANGE and state.ground > SMOKE_SPEED
+	local pace = math.clamp(state.ground / math.max(state.topSpeed, 1), 0, 1)
+	for _, smoke in mech.smoke do
+		smoke.Rate = if smoking then SMOKE_RATE * (0.3 + 0.7 * pace) else 0
+	end
+
 	for _, footfall in footfalls do
+		if smoking then
+			for _, smoke in mech.smoke do
+				smoke:Emit(SMOKE_PUFF)
+			end
+		end
 		if distance < DUST_RANGE and state.ground > DUST_SPEED and mech.dust then
 			local point = MechGait.footPoint(state, footfall.foot)
 			local attachment = mech.dust.Parent :: Attachment

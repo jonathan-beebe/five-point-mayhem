@@ -317,6 +317,19 @@ function Vehicles.registerCollisionGroups()
 	end
 end
 
+-- An Attachment "Smoke" at each smokestack mouth, on its bone. Clients (MechMotion) emit from it.
+local function addSmoke(skid: BasePart, bones: { [string]: Bone }, spec: VehicleModel.Model)
+	for _, stack in spec.smoke or {} do
+		local bone = stack.bone and bones[stack.bone]
+		local attachment = Instance.new("Attachment")
+		attachment.Name = "Smoke"
+		attachment.CFrame = if bone
+			then CFrame.new(bone.pivot):Inverse() * CFrame.new(stack.position)
+			else SKID_TO_GROUND * CFrame.new(stack.position)
+		attachment.Parent = if bone then bone.part else skid
+	end
+end
+
 -- Climbable TrussParts welded to the skid.
 local function addLadders(model: Model, skid: BasePart, spec: VehicleModel.Model)
 	for index, ladder in spec.ladders or {} do
@@ -868,6 +881,7 @@ local function build(id: string, cframe: CFrame): Model
 
 	local bones = buildBones(model, skid, spec)
 	addLadders(model, skid, spec)
+	addSmoke(skid, bones, spec)
 	local group = if spec.stepsOver then "Walkers" else "Vehicles"
 	for _, part in model:GetDescendants() do
 		if part:IsA("BasePart") then
