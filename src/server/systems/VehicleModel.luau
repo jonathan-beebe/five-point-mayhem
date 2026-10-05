@@ -26,9 +26,24 @@ export type PieceSpec = {
 	transparency: number?,
 	reflectance: number?,
 	bone: string?, -- welded to this bone; nil = welded to the skid
+	-- Left out of the pilot's first-person view, so the pilot sees straight through it (a tinted
+	-- canopy that looks clear from inside).
+	hideInCockpit: boolean?,
 }
 
-export type BoxSpec = { size: Vector3, offset: CFrame }
+-- `bone`: welded to that bone instead of the skid (a flying pod's hull goes with the pod).
+export type BoxSpec = { size: Vector3, offset: CFrame, bone: string? }
+
+-- A flying pod (server PodFlight): the seat bone detaches from the walker and flies, with every
+-- piece, hull box, seat and the cab welded to it, then flies home and docks.
+export type PodSpec = {
+	bone: string, -- must be the seatBone
+	button: Vector3, -- the console's launch button, vehicle space, rest pose: the prompt's anchor
+	jets: { Vector3 }?, -- thruster mouths (facing +Z) that flame while the pod flies
+	-- A saddle seat on the pod bone's parent bone (vehicle space, rest pose): while the pod is
+	-- away, the walk-up Drive prompt seats a player here to drive the legs.
+	legsSeat: CFrame?,
+}
 
 export type BoneSpec = {
 	name: string,
@@ -81,6 +96,7 @@ export type Model = {
 	smoke: { SmokeSpec }?,
 	prompt: PromptSpec?, -- default: 3.5 above the center, reach from the footprint
 	cab: CabSpec?,
+	pod: PodSpec?,
 	exit: CFrame?, -- with a cab: where Climb out puts the player's root
 	cameraFocus: Vector3?, -- outside-view camera subject
 	cockpitCamera: boolean?, -- the driver gets the first-person cockpit camera
@@ -182,6 +198,18 @@ function VehicleModel.define(model: Model): Model
 		model.name .. ": prompt reach must be positive"
 	)
 	assert(model.ram == nil or model.ram > 0, model.name .. ": ram must be positive")
+	for _, box in model.collision :: { BoxSpec } do
+		assert(
+			box.bone == nil or bones[box.bone],
+			model.name .. ": a collision box names an unknown bone"
+		)
+	end
+	if model.pod then
+		assert(
+			model.pod.bone == model.seatBone and bones[model.pod.bone],
+			model.name .. ": the pod's bone must be the seatBone"
+		)
+	end
 	return model
 end
 

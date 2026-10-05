@@ -227,6 +227,32 @@ and works with `/give <who> mech`.
 The legs and arms are decoration and do not collide; the cab walls, floor and roof, the hips and
 the back pods do. The cab's furniture does not. Gates, walls and building doors stop it.
 
+### Aurora's flying pod
+
+Aurora's capsule detaches from her legs and flies. Her arms stay with the legs. The pod seats
+three: the pilot up front and two passengers behind (**F**, **Ride**, while it is docked).
+Passengers look out in first person like the pilot.
+
+- **Launch**: in the pilot's seat, press **F** at the glowing button in the middle of the console,
+  or tap **LAUNCH** (above **STAND**). The pod lifts off and the legs park where they stand.
+- **Fly**: WASD/arrows, thumbstick or gamepad fly forward and turn. **E** climbs and **Q**
+  descends (touch: **▲** and **▼** beside the buttons). With neither, the pod holds its height. It
+  never goes lower than 4 studs over the ground.
+- **Return home**: **F** at the console button again, or tap **RETURN HOME**. The autopilot
+  climbs, flies back over the legs, turns to their heading and settles onto them.
+- **Land**: within 15 studs of the ground a **LAND** button (or **L**) appears beside
+  **RETURN HOME**. The pod settles to hover just over the ground and everyone aboard gets out
+  behind it. Walk up and press **E** (**Board**) to get back in: the first to board takes the
+  pilot's seat, the next two the passenger seats. The pod waits until the pilot presses
+  **LAUNCH** (or **F**).
+- While the pod flies the seats are locked: **STAND** is hidden and jumping does nothing. If the
+  pilot dies or leaves the game, the pod flies home on its own, passengers and all.
+- **Drive the legs**: while the pod is away, walk up to the legs and press **E** (**Drive**) to
+  sit on the saddle on top of the hips and walk the legs like any walker. When the pod returns
+  home, the rider is put on the ground behind the legs before it docks.
+- Nobody else can get into the pod while it flies. Anyone standing in the cab at launch is put
+  outside.
+
 Preview a vehicle model without Studio (needs `lune` from `rokit install` and Python with Pillow):
 
 ```sh

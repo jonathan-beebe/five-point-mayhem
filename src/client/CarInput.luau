@@ -1,7 +1,8 @@
 -- While the local player sits in a Mayhem car's driver seat, sends throttle and steer to the
 -- server. Reads, in order: WASD/arrow keys, the driver seat's ThrottleFloat/SteerFloat (written
 -- locally by the default control scripts from the thumbstick or gamepad), and the default
--- controls' move vector.
+-- controls' move vector. Also sends `lift` for flying pods: E climbs, Q descends, plus the touch
+-- buttons (PodControls).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -9,6 +10,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local PodControls = require(script.Parent.PodControls)
 
 local CarInput = {}
 
@@ -59,6 +61,13 @@ local function getControls(): any
 	return controls
 end
 
+local function readLift(): number
+	if UserInputService:GetFocusedTextBox() then
+		return 0
+	end
+	return math.clamp(keyAxis({ K.E }, { K.Q }) + PodControls.lift(), -1, 1)
+end
+
 local function readInput(seat: VehicleSeat): (number, number)
 	if UserInputService:GetFocusedTextBox() then
 		return 0, 0 -- typing in chat
@@ -89,7 +98,7 @@ local function driverSeat(): VehicleSeat?
 end
 
 function CarInput.start()
-	local lastThrottle, lastSteer, lastSent = 0, 0, 0
+	local lastThrottle, lastSteer, lastLift, lastSent = 0, 0, 0, 0
 	local driving = false
 	RunService.Heartbeat:Connect(function()
 		local seat = driverSeat()
@@ -98,13 +107,15 @@ function CarInput.start()
 			return
 		end
 		local throttle, steer = readInput(seat)
+		local lift = readLift()
 		local now = os.clock()
 		local changed = math.abs(throttle - lastThrottle) > 0.05
 			or math.abs(steer - lastSteer) > 0.05
+			or lift ~= lastLift
 		if not driving or changed or now - lastSent > RESEND_INTERVAL then
 			driving = true
-			lastThrottle, lastSteer, lastSent = throttle, steer, now
-			Remotes.DriveInput:FireServer(throttle, steer)
+			lastThrottle, lastSteer, lastLift, lastSent = throttle, steer, lift, now
+			Remotes.DriveInput:FireServer(throttle, steer, lift)
 		end
 	end)
 end

@@ -1,10 +1,13 @@
 -- Camera for walkers: while the local player drives a vehicle whose driver seat has attribute
--- CockpitCamera, the view starts first person from the pilot's head, looking out the chest
+-- CockpitCamera (or one of its passenger seats), the view starts first person from the pilot's head, looking out the chest
 -- window. V, gamepad Y, or the on-screen VIEW button (touch) switches to an outside view orbiting
 -- the model's CameraFocus part and back. The STAND button (or jumping) gets out of the seat; the
 -- driver then stands in the cab (a part tagged MechCab) and the view stays first person until
 -- they leave it (the cab's Climb out prompt). Heel strikes shake the view a little (MechMotion
 -- footfalls). The view turns with the vehicle. Leaving the vehicle or dying restores the camera.
+-- In the first-person views, pieces marked HideInCockpit (a tinted canopy) are hidden, so the pilot
+-- sees straight through them. While a flying pod (server PodFlight) is away, STAND is hidden and
+-- the view turns with the pod.
 --
 -- The default camera builds each frame's CFrame from the previous frame's look direction, so
 -- anything written to the camera after it runs carries into the next frame. Before it runs, this
@@ -41,7 +44,7 @@ local OUTSIDE_SHAKE = 0.5 -- amplitude scale in the outside view
 
 type Session = {
 	model: Model,
-	seat: VehicleSeat?, -- nil while standing in the cab
+	seat: BasePart?, -- the driver or a passenger seat; nil while standing in the cab
 	humanoid: Humanoid,
 	minZoom: number,
 	maxZoom: number,
@@ -51,6 +54,13 @@ type Session = {
 }
 
 local session: Session? = nil
+
+-- The button column, for other modules that stack buttons beside it (PodControls): button size
+-- and gap in pixels, and the bottom-right corner of VIEW. Set whenever the buttons are laid out.
+export type Layout = { size: number, gap: number, corner: UDim2, ignoreInset: boolean }
+MechCamera.layout = nil :: Layout?
+local layoutEvent = Instance.new("BindableEvent")
+MechCamera.layoutChanged = layoutEvent.Event
 local shakes: { { start: number, strength: number } } = {}
 local applied = CFrame.identity -- the shake added to the camera last frame
 
@@ -128,6 +138,9 @@ local function layoutButton()
 	viewButton.Position = corner
 	standButton.Size = UDim2.fromOffset(size, size)
 	standButton.Position = corner - UDim2.fromOffset(0, size + gap)
+	MechCamera.layout =
+		{ size = size, gap = gap, corner = corner, ignoreInset = buttonGui.IgnoreGuiInset }
+	layoutEvent:Fire()
 end
 
 local watchedJump: GuiObject? = nil
@@ -142,6 +155,26 @@ local function watchJumpButton()
 end
 
 -- Views ----------------------------------------------------------------------------------------
+
+-- Whether the model's flying pod is away from its legs.
+local function airborne(model: Model): boolean
+	return (model:GetAttribute("PodState") or "docked") ~= "docked"
+end
+
+-- Whether the model's flying pod locks its seats (in the air; a landed pod lets riders out).
+local function seatsLocked(model: Model): boolean
+	local state = model:GetAttribute("PodState")
+	return state == "flying" or state == "returning"
+end
+
+-- Pieces the pilot looks through from inside (Vehicles sets HideInCockpit); local to this client.
+local function hideCockpitPieces(model: Model, hidden: boolean)
+	for _, part in model:GetDescendants() do
+		if part:IsA("BasePart") and part:GetAttribute("HideInCockpit") then
+			part.LocalTransparencyModifier = if hidden then 1 else 0
+		end
+	end
+end
 
 local function focusPart(current: Session): BasePart?
 	local focus = current.model:FindFirstChild("CameraFocus")
@@ -159,6 +192,7 @@ local function applyView(current: Session)
 	local camera = Workspace.CurrentCamera
 	camera.CameraType = Enum.CameraType.Custom
 	camera.CameraSubject = subjectFor(current)
+	hideCockpitPieces(current.model, not current.outside)
 	if not current.outside then
 		player.CameraMinZoomDistance = COCKPIT_ZOOM
 		player.CameraMaxZoomDistance = COCKPIT_ZOOM
@@ -185,6 +219,11 @@ end
 
 local function heading(current: Session): number?
 	local root = current.model.PrimaryPart
+	if airborne(current.model) then
+		local pod =
+			current.model:FindFirstChild("Bone_" .. tostring(current.model:GetAttribute("PodBone")))
+		root = if pod and pod:IsA("BasePart") then pod else root
+	end
 	if not root then
 		return nil
 	end
@@ -259,6 +298,7 @@ local function leave()
 	RunService:UnbindFromRenderStep(RENDER_STEP)
 	RunService:UnbindFromRenderStep(TURN_STEP)
 	buttonGui.Enabled = false
+	hideCockpitPieces(current.model, false)
 	local climbOut = climbOutPrompt(current.model)
 	if climbOut then
 		climbOut.Enabled = true
@@ -279,14 +319,14 @@ local function showButtons(current: Session)
 		climbOut.Enabled = current.seat == nil
 	end
 	viewButton.Visible = current.seat ~= nil and UserInputService.TouchEnabled
-	standButton.Visible = current.seat ~= nil
+	standButton.Visible = current.seat ~= nil and not seatsLocked(current.model)
 	buttonGui.Enabled = current.seat ~= nil
 	if buttonGui.Enabled then
 		watchJumpButton()
 	end
 end
 
-local function enter(humanoid: Humanoid, model: Model, seat: VehicleSeat?)
+local function enter(humanoid: Humanoid, model: Model, seat: BasePart?)
 	leave()
 	local current: Session = {
 		model = model,
@@ -310,6 +350,15 @@ local function enter(humanoid: Humanoid, model: Model, seat: VehicleSeat?)
 						camera.CameraSubject = subjectFor(current)
 					end
 				end)
+			end
+		end)
+	)
+	table.insert(
+		current.connections,
+		model:GetAttributeChangedSignal("PodState"):Connect(function()
+			if session == current then
+				current.yaw = nil -- the heading source changes
+				showButtons(current)
 			end
 		end)
 	)
@@ -337,20 +386,25 @@ local function cabAt(position: Vector3): Model?
 	return nil
 end
 
+-- Whether `seat` gets the cockpit view: the driver seat of a CockpitCamera vehicle, or a passenger
+-- seat in one (not a pod walker's legs seat, which rides outside).
+local function inCockpit(seat: BasePart): boolean
+	local model = seat.Parent
+	local driver = model and model:FindFirstChild("DriverSeat")
+	return driver ~= nil
+		and driver:GetAttribute("CockpitCamera") == true
+		and (seat:IsA("Seat") or seat == driver)
+		and not seat:GetAttribute("LegsSeat")
+end
+
 -- Called on every seat change and every frame: seated in a cockpit, or standing in a cab, keeps
 -- (or starts) a session on that vehicle; anything else ends it.
 local function update(humanoid: Humanoid)
 	local seat = humanoid.SeatPart
 	local model: Model? = nil
-	local cockpit: VehicleSeat? = nil
+	local cockpit: BasePart? = nil
 	if humanoid.Health > 0 then
-		if
-			seat
-			and seat:IsA("VehicleSeat")
-			and seat:GetAttribute("CockpitCamera") == true
-			and seat.Parent
-			and seat.Parent:IsA("Model")
-		then
+		if seat and seat.Parent and seat.Parent:IsA("Model") and inCockpit(seat) then
 			model, cockpit = seat.Parent, seat
 		elseif not seat then
 			local root = humanoid.RootPart
@@ -373,7 +427,7 @@ end
 
 local function stand()
 	local current = session
-	if current and current.seat then
+	if current and current.seat and not seatsLocked(current.model) then
 		current.humanoid.Sit = false
 	end
 end

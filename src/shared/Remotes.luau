@@ -7,7 +7,8 @@ local NAMES = {
 	"Deploy", -- client -> server: { weaponId, weaponId, weaponId }
 	"ChooseTeam", -- client -> server: teamName
 	"FireWeapon", -- client -> server: weaponId, aimPosition
-	"DriveInput", -- client -> server: throttle, steer (each -1..1)
+	"DriveInput", -- client -> server: throttle, steer, lift (each -1..1; lift for flying pods)
+	"PodCommand", -- client -> server: action ("launch", "home" or "land"), for the pod the player drives
 	"AdminCommand", -- client -> server: command, target, item
 	"MacCommand", -- client -> server: action ("sniper" or "nuke")
 	"Announce", -- server -> client: text, color, seconds, style

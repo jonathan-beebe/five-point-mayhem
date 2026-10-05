@@ -187,6 +187,12 @@ local function rest(mech: Mech)
 	mech.posed = false
 end
 
+-- A pod walker's legs seat (Vehicles) is taken: someone drives the legs while the pod is away.
+local function legsRidden(model: Model): boolean
+	local saddle = model:FindFirstChild("LegsSeat")
+	return saddle ~= nil and saddle:IsA("VehicleSeat") and saddle.Occupant ~= nil
+end
+
 local function animate(mech: Mech, dt: number, viewer: Vector3)
 	if not resolve(mech) then
 		return
@@ -209,7 +215,7 @@ local function animate(mech: Mech, dt: number, viewer: Vector3)
 	local footfalls = MechGait.step(state, {
 		forward = skid.AssemblyLinearVelocity:Dot(forward),
 		yawRate = skid.AssemblyAngularVelocity.Y,
-		occupied = seat.Occupant ~= nil,
+		occupied = seat.Occupant ~= nil or legsRidden(mech.model),
 		topSpeed = (seat:GetAttribute("TopSpeed") :: number?) or 18,
 		turnRate = (seat:GetAttribute("TurnRate") :: number?) or 0.7,
 		time = os.clock(),

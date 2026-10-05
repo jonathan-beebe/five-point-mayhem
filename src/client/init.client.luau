@@ -9,6 +9,7 @@ local CarInput = require(script.CarInput)
 local SniperScope = require(script.SniperScope)
 local MechMotion = require(script.MechMotion)
 local MechCamera = require(script.MechCamera)
+local PodControls = require(script.PodControls)
 local VehicleSounds = require(script.VehicleSounds)
 local NukeStrike = require(script.NukeStrike)
 local SoundProbe = require(script.SoundProbe) -- TEMPORARY
@@ -25,6 +26,7 @@ for _, feature in
 		SniperScope,
 		MechMotion,
 		MechCamera,
+		PodControls,
 		VehicleSounds,
 		NukeStrike,
 	}

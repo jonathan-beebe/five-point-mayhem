@@ -4,7 +4,8 @@
 -- targets for velocity constraints on the skid. Constraints are simulated by whichever machine
 -- owns the vehicle's physics, so this works under any ownership. Wrecked or abandoned vehicles
 -- return to their parking spot. A driven vehicle hurts whoever it touches (cars ram, walkers
--- stomp), shoves the vehicles it hits, and fells trees.
+-- stomp), shoves the vehicles it hits, and fells trees. A walker with a pod (spec.pod) can send
+-- its cab flying (PodFlight); while the pod is away its legs park.
 
 local CollectionService = game:GetService("CollectionService")
 local PhysicsService = game:GetService("PhysicsService")
@@ -16,6 +17,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
 local Combat = require(script.Parent.Combat)
+local PodFlight = require(script.Parent.PodFlight)
 local VehicleModel = require(script.Parent.VehicleModel)
 
 local Vehicles = {}
@@ -109,6 +111,8 @@ type Car = {
 	yaw: number, -- commanded yaw rate
 	throttle: number,
 	steer: number,
+	pod: PodFlight.Pod?, -- a walker whose cab flies (spec.pod)
+	legsSeat: VehicleSeat?, -- drives the legs while the pod is away (spec.pod.legsSeat)
 }
 
 -- Every live car, by model.
@@ -131,8 +135,15 @@ local function setLimits(car: Car, force: number, torque: number)
 	end
 end
 
+-- The seat that drives the legs: the driver seat, or while a pod is away the legs seat (its pilot
+-- flies the pod, PodFlight).
+local function legsDriverSeat(car: Car): VehicleSeat?
+	return if PodFlight.isDocked(car.pod) then car.seat else car.legsSeat
+end
+
 local function drive(car: Car, dt: number)
-	local occupant = car.seat.Occupant
+	local legsDriver = legsDriverSeat(car)
+	local occupant = legsDriver and legsDriver.Occupant
 	local skid = car.skid
 	-- A shoved vehicle flies free for a moment: the drive constraints would cancel the shove.
 	if os.clock() < car.stunnedUntil then
@@ -206,20 +217,28 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 end)
 
-Remotes.DriveInput.OnServerEvent:Connect(function(player, throttle, steer)
+Remotes.DriveInput.OnServerEvent:Connect(function(player, throttle, steer, lift)
 	if typeof(throttle) ~= "number" or typeof(steer) ~= "number" then
 		return
+	end
+	if typeof(lift) ~= "number" then
+		lift = 0
 	end
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	local seat = humanoid and humanoid.SeatPart
 	local model = seat and seat.Parent
 	local car = model and cars[model :: Model]
-	if not car or car.seat ~= seat then
+	if not car or (car.seat ~= seat and car.legsSeat ~= seat) then
 		return
 	end
-	car.throttle = math.clamp(throttle, -1, 1)
-	car.steer = math.clamp(steer, -1, 1)
+	throttle, steer = math.clamp(throttle, -1, 1), math.clamp(steer, -1, 1)
+	if car.pod and seat == car.seat then
+		PodFlight.input(car.pod, throttle, steer, math.clamp(lift, -1, 1))
+	end
+	if seat == legsDriverSeat(car) then
+		car.throttle, car.steer = throttle, steer
+	end
 end)
 
 local SKID_TO_GROUND = CFrame.new(0, -0.5, 0)
@@ -527,7 +546,8 @@ local function hurtTouching(model: Model, car: Car, dt: number, checkTargets: bo
 	local flat = Vector3.new(velocity.X, 0, velocity.Z)
 	local speed = flat.Magnitude
 	car.pace = math.max(speed, car.pace - PACE_DECAY * dt)
-	local occupant = car.seat.Occupant
+	local legsDriver = legsDriverSeat(car)
+	local occupant = legsDriver and legsDriver.Occupant
 	local now = os.clock()
 	-- A shoved vehicle hits nothing until it is back under control: no chains of shoves.
 	if not occupant or now < car.stunnedUntil then
@@ -659,6 +679,15 @@ end)
 -- seat, Ride (F) the free passenger seat nearest the player. Both prompts sit above the middle of
 -- the vehicle and reach past its far end, so they work from any side.
 local function seatPlayer(player: Player, seat: Seat | VehicleSeat)
+	local model = seat.Parent
+	local podState = model and model:GetAttribute("PodState") or "docked"
+	if seat:GetAttribute("LegsSeat") then
+		if podState ~= "flying" and podState ~= "landed" then
+			return -- the legs ride only while the pod is away, and not while it comes home
+		end
+	elseif podState ~= "docked" then
+		return -- the seat is away with its pod
+	end
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if humanoid and humanoid.Health > 0 and not seat.Occupant then
@@ -670,7 +699,8 @@ local function addPrompts(
 	skid: BasePart,
 	spec: VehicleModel.Model,
 	driver: VehicleSeat,
-	passengers: { Seat }
+	passengers: { Seat },
+	legsSeat: VehicleSeat?
 )
 	local W, L = spec.footprint.X, spec.footprint.Y
 	local anchor = Instance.new("Attachment")
@@ -697,13 +727,31 @@ local function addPrompts(
 		return each
 	end
 
+	-- Drive takes the driver seat, or while a pod is away (flying or landed) the legs seat.
+	local model = skid.Parent :: Model
+	local function driveSeat(): VehicleSeat?
+		local podState = model:GetAttribute("PodState") or "docked"
+		if podState == "docked" then
+			return driver
+		end
+		return if legsSeat and (podState == "flying" or podState == "landed") then legsSeat else nil
+	end
 	local drivePrompt = prompt("Drive", Enum.KeyCode.E, 0)
 	drivePrompt.Triggered:Connect(function(player)
-		seatPlayer(player, driver)
+		local seat = driveSeat()
+		if seat then
+			seatPlayer(player, seat)
+		end
 	end)
-	driver:GetPropertyChangedSignal("Occupant"):Connect(function()
-		drivePrompt.Enabled = driver.Occupant == nil
-	end)
+	local function refreshDrive()
+		local seat = driveSeat()
+		drivePrompt.Enabled = seat ~= nil and seat.Occupant == nil
+	end
+	driver:GetPropertyChangedSignal("Occupant"):Connect(refreshDrive)
+	if legsSeat then
+		legsSeat:GetPropertyChangedSignal("Occupant"):Connect(refreshDrive)
+		model:GetAttributeChangedSignal("PodState"):Connect(refreshDrive)
+	end
 
 	if #passengers == 0 then
 		return
@@ -770,10 +818,31 @@ local function onTerrain(cframe: CFrame, W: number, L: number): (CFrame, boolean
 	return cframe + Vector3.new(0, top - cframe.Position.Y, 0), found
 end
 
+-- Puts `character` on the ground at the walker's exit spot (`exit`, vehicle space).
+local function placeAtExit(skid: BasePart, exit: CFrame, character: Model)
+	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not root then
+		return
+	end
+	-- Pivot the character so its root lands on the exit frame.
+	local rootOffset = character:GetPivot():ToObjectSpace(root.CFrame)
+	-- Never below the terrain surface under the exit, or the player falls through the world.
+	local lift = Vector3.new(0, exit.Position.Y, 0)
+	local spot = (onTerrain(skid.CFrame * SKID_TO_GROUND * exit - lift, 0, 0)) + lift
+	character:PivotTo(spot * rootOffset:Inverse())
+	root.AssemblyLinearVelocity = Vector3.zero
+end
+
 -- The walkable cab (spec.cab): an invisible volume tagged MechCab (the client's camera looks for
 -- it) holding two prompts: Drive takes the free driver seat, Climb out moves the player to the
 -- exit spot outside.
-local function addCab(model: Model, skid: BasePart, spec: VehicleModel.Model, driver: VehicleSeat)
+local function addCab(
+	model: Model,
+	skid: BasePart,
+	spec: VehicleModel.Model,
+	driver: VehicleSeat,
+	podBone: Bone?
+): (Player) -> ()
 	local cab = spec.cab :: VehicleModel.CabSpec
 	local exit = spec.exit :: CFrame
 	local volume = Instance.new("Part")
@@ -783,7 +852,8 @@ local function addCab(model: Model, skid: BasePart, spec: VehicleModel.Model, dr
 	volume.CanCollide = false
 	volume.CanTouch = false
 	volume.CanQuery = false
-	attach(model, skid, volume, CFrame.new(cab.center))
+	-- A flying pod takes its cab along.
+	attachTo(model, skid, podBone, volume, CFrame.new(cab.center))
 	CollectionService:AddTag(volume, "MechCab")
 
 	local anchor = Instance.new("Attachment")
@@ -813,27 +883,19 @@ local function addCab(model: Model, skid: BasePart, spec: VehicleModel.Model, dr
 		drivePrompt.Enabled = driver.Occupant == nil
 	end)
 
-	prompt("Climb out", Enum.KeyCode.Q, 1).Triggered:Connect(function(player)
+	local function climbOut(player: Player)
 		local character = player.Character
-		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		if
-			not character
-			or not root
-			or not humanoid
-			or humanoid.Health <= 0
-			or humanoid.SeatPart
-		then
-			return
+		if character and humanoid and humanoid.Health > 0 and not humanoid.SeatPart then
+			placeAtExit(skid, exit, character)
 		end
-		-- Pivot the character so its root lands on the exit frame.
-		local rootOffset = character:GetPivot():ToObjectSpace(root.CFrame)
-		-- Never below the terrain surface under the exit, or the player falls through the world.
-		local lift = Vector3.new(0, exit.Position.Y, 0)
-		local spot = (onTerrain(skid.CFrame * SKID_TO_GROUND * exit - lift, 0, 0)) + lift
-		character:PivotTo(spot * rootOffset:Inverse())
-		root.AssemblyLinearVelocity = Vector3.zero
+	end
+	prompt("Climb out", Enum.KeyCode.Q, 1).Triggered:Connect(function(player)
+		if (model:GetAttribute("PodState") or "docked") == "docked" then
+			climbOut(player)
+		end
 	end)
+	return climbOut
 end
 
 local function build(id: string, cframe: CFrame): Model
@@ -879,16 +941,16 @@ local function build(id: string, cframe: CFrame): Model
 		wedge.Parent = model
 	end
 
+	local bones = buildBones(model, skid, spec)
 	for index, box in spec.collision :: { VehicleModel.BoxSpec } do
 		local hull = Instance.new("Part")
 		hull.Name = "Hull" .. index
 		hull.Size = box.size
 		hull.Transparency = 1
 		hull.CustomPhysicalProperties = PhysicalProperties.new(1, 0, 0, 100, 1)
-		attach(model, skid, hull, box.offset)
+		attachTo(model, skid, box.bone and bones[box.bone], hull, box.offset)
 	end
-
-	local bones = buildBones(model, skid, spec)
+	local podBone = spec.pod and bones[spec.pod.bone]
 	addLadders(model, skid, spec)
 	addSmoke(skid, bones, spec)
 	local group = if spec.stepsOver then "Walkers" else "Vehicles"
@@ -912,6 +974,9 @@ local function build(id: string, cframe: CFrame): Model
 		part.CanCollide = false
 		part.CanTouch = false
 		part.CastShadow = part.Transparency < 0.5
+		if piece.hideInCockpit then
+			part:SetAttribute("HideInCockpit", true) -- MechCamera
+		end
 		attachTo(model, skid, piece.bone and bones[piece.bone], part, piece.offset)
 	end
 
@@ -924,7 +989,7 @@ local function build(id: string, cframe: CFrame): Model
 		focus.CanCollide = false
 		focus.CanTouch = false
 		focus.CanQuery = false
-		attach(model, skid, focus, CFrame.new(spec.cameraFocus))
+		attachTo(model, skid, podBone, focus, CFrame.new(spec.cameraFocus))
 	end
 	if spec.gait then
 		model:SetAttribute("Gait", spec.gait)
@@ -948,15 +1013,38 @@ local function build(id: string, cframe: CFrame): Model
 			table.insert(passengers, chair :: Seat)
 		end
 	end
-	addPrompts(skid, spec, driver, passengers)
+	-- A pod walker's saddle on the pod bone's parent, for driving the legs while the pod is away.
+	local legsSeat: VehicleSeat? = nil
+	if spec.pod and spec.pod.legsSeat then
+		local legsBone: Bone? = nil
+		for _, boneSpec in spec.bones or {} do
+			if boneSpec.name == spec.pod.bone and boneSpec.parent then
+				legsBone = bones[boneSpec.parent]
+			end
+		end
+		local saddle = Instance.new("VehicleSeat")
+		saddle.Name = "LegsSeat"
+		saddle.Size = VehicleModel.SEAT_SIZE
+		saddle.Transparency = 1
+		saddle.CanCollide = false
+		saddle.CanTouch = false
+		saddle.MaxSpeed = spec.speed
+		saddle:SetAttribute("MayhemCar", true) -- CarInput sends its driver's input
+		saddle:SetAttribute("TopSpeed", spec.speed)
+		saddle:SetAttribute("LegsSeat", true)
+		attachTo(model, skid, legsBone, saddle, spec.pod.legsSeat)
+		legsSeat = saddle
+	end
+	addPrompts(skid, spec, driver, passengers, legsSeat)
 	driver.MaxSpeed = spec.speed
 	driver:SetAttribute("MayhemCar", true)
 	driver:SetAttribute("TopSpeed", spec.speed)
 	if spec.cockpitCamera then
 		driver:SetAttribute("CockpitCamera", true)
 	end
+	local eject: ((Player) -> ())? = nil
 	if spec.cab then
-		addCab(model, skid, spec, driver)
+		eject = addCab(model, skid, spec, driver, podBone)
 	end
 	if spec.gait then
 		driver:SetAttribute("TurnRate", spec.turnRate or TURN_RATE) -- the walk animator reads it
@@ -1030,31 +1118,77 @@ local function build(id: string, cframe: CFrame): Model
 	-- While someone drives, the server simulates the car (and the seated driver with it). When
 	-- they get out, hand their character's physics back to them. A driver getting out of a cab
 	-- stands up in it.
-	local lastDriver: Player? = nil
-	driver:GetPropertyChangedSignal("Occupant"):Connect(function()
-		model:SetAttribute("LastUsed", os.clock())
-		car.throttle = 0
-		car.steer = 0
-		local occupant = driver.Occupant
-		if occupant then
-			lastDriver = Players:GetPlayerFromCharacter(occupant.Parent)
-			local ok, problem = pcall(skid.SetNetworkOwner, skid, nil)
-			if not ok then
-				warn("[Mayhem car] could not take ownership: " .. tostring(problem))
+	local function watchDriver(seat: VehicleSeat)
+		local lastDriver: Player? = nil
+		seat:GetPropertyChangedSignal("Occupant"):Connect(function()
+			model:SetAttribute("LastUsed", os.clock())
+			if seat == legsDriverSeat(car) then
+				car.throttle = 0
+				car.steer = 0
 			end
-			return
-		end
-		local previous = lastDriver
-		lastDriver = nil
-		task.defer(function()
-			local character = previous and previous.Character
-			local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-			if not character or not root then
+			local occupant = seat.Occupant
+			if occupant then
+				lastDriver = Players:GetPlayerFromCharacter(occupant.Parent)
+				local ok, problem = pcall(skid.SetNetworkOwner, skid, nil)
+				if not ok then
+					warn("[Mayhem car] could not take ownership: " .. tostring(problem))
+				end
 				return
 			end
-			pcall(root.SetNetworkOwner, root, previous)
+			local previous = lastDriver
+			lastDriver = nil
+			task.defer(function()
+				local character = previous and previous.Character
+				local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+				if not character or not root then
+					return
+				end
+				pcall(root.SetNetworkOwner, root, previous)
+			end)
 		end)
-	end)
+	end
+	watchDriver(driver)
+	car.legsSeat = legsSeat
+	if legsSeat then
+		watchDriver(legsSeat)
+	end
+
+	if spec.pod and podBone then
+		local pivot = podBone.pivot
+		-- The walker's exit, moved from the legs' frame to the pod's: the same spot around the
+		-- pod's root, the same height over the ground.
+		local exit = spec.exit or CFrame.new(0, 3, 0)
+		local podExit = CFrame.new(exit.X - pivot.X, exit.Y, exit.Z - pivot.Z) * exit.Rotation
+		local jets = {}
+		for _, mouth in spec.pod.jets or {} do
+			table.insert(jets, CFrame.new(mouth - pivot))
+		end
+		car.pod = PodFlight.new({
+			model = model,
+			skid = skid,
+			seat = driver,
+			root = podBone.part,
+			joint = podBone.part:FindFirstChild("Joint_" .. spec.pod.bone) :: Motor6D,
+			button = CFrame.new(spec.pod.button - pivot),
+			jets = jets,
+			exit = podExit,
+			legsSeat = legsSeat,
+			passengers = passengers,
+			-- Off the legs and onto the ground at the walker's exit.
+			dismount = function(humanoid: Humanoid)
+				local weld = legsSeat and legsSeat:FindFirstChild("SeatWeld")
+				if weld then
+					weld:Destroy()
+				end
+				humanoid.Sit = false
+				local character = humanoid.Parent
+				if character and character:IsA("Model") then
+					placeAtExit(skid, spec.exit or CFrame.new(0, 3, 0), character)
+				end
+			end,
+			eject = eject or function() end,
+		})
+	end
 
 	model.Parent = folder
 	cars[model] = car
@@ -1250,6 +1384,7 @@ local function layOut()
 end
 
 function Vehicles.start()
+	PodFlight.start()
 	layOut()
 
 	-- Return cars that were destroyed, or left idle far from home for a minute.
