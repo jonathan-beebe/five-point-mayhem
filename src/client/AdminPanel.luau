@@ -15,6 +15,7 @@ local rgb = Color3.fromRGB
 
 local GIFTS = {
 	{ id = "arsenal", label = "🧰 EVERY WEAPON" },
+	{ id = "sniper", label = "🎯 Sniper Rifle" },
 	{ id = "heal", label = "❤ Full heal" },
 	{ id = "shield", label = "🛡 Shield (30s)" },
 	{ id = "speed", label = "👟 Super speed" },
@@ -200,8 +201,14 @@ local function build()
 	for _, vehicle in VehicleCatalog.ALL do
 		table.insert(entries, { id = vehicle.id, label = vehicle.icon .. " " .. vehicle.name })
 	end
+	local gifted = {}
+	for _, gift in GIFTS do
+		gifted[gift.id] = true
+	end
 	for _, weapon in WeaponCatalog.ALL do
-		table.insert(entries, { id = weapon.id, label = weapon.name })
+		if not gifted[weapon.id] then
+			table.insert(entries, { id = weapon.id, label = weapon.name })
+		end
 	end
 	for order, entry in entries do
 		local button = create("TextButton", {

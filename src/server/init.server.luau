@@ -23,6 +23,7 @@ local Creatures = require(Systems.Creatures)
 local Session = require(Systems.Session)
 local Vehicles = require(Systems.Vehicles)
 local Weapons = require(Systems.Weapons)
+local WalkerProbe = require(Systems.WalkerProbe) -- TEMPORARY
 
 local BUILDINGS = {
 	castle = require(World.buildings.Castle),
@@ -93,6 +94,7 @@ buildWorld()
 
 Session.start()
 Creatures.start()
+task.spawn(WalkerProbe.start) -- TEMPORARY
 Vehicles.start()
 Admin.start()
 

@@ -45,7 +45,12 @@ local VEHICLES: { Vehicle } = {
 	{ id = "stryker", name = "Stryker APC", icon = "🛡" },
 	{ id = "abrams", name = "M1 Abrams Tank", icon = "💥" },
 	{ id = "tiger", name = "Tiger I Tank", icon = "💥" },
+	-- Walkers (they stand guard around the lobby)
 	{ id = "mech", name = "Titan Mech", icon = "🤖" },
+	{ id = "cherry_bomb", name = "Cherry Bomb", icon = "🍒" },
+	{ id = "heron", name = "Heron", icon = "🦩" },
+	{ id = "rustbucket", name = "Rustbucket", icon = "⚙" },
+	{ id = "aurora", name = "Aurora", icon = "✨" },
 }
 
 local byId: { [string]: Vehicle } = {}

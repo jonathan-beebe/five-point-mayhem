@@ -1,6 +1,7 @@
 -- Titan Mech: two-legged industrial walker with a cab in the chest, a back ladder and a deck hatch.
 -- Scale: 4 studs = 1 m. Rest pose = parked pose (knees bent). Hip pivots y 20, deck y 40, cab
--- cavity x -5.5..5.5, y 26.5..38.5, z -6..5.5 (only `In*` pieces inside it).
+-- cavity x -5.5..5.5, y 26.5..38.5, z -6..5.5 (only `In*` pieces inside it). The cavity is the
+-- walkable cab: the torso's collision is a hollow shell around it.
 --
 -- Rig: every piece belongs to one bone (or the skid when `bone` is nil). Leg pieces are authored in
 -- their bone's bind frame (thigh tilted 25 degrees forward, shin 25 degrees back, foot flat) so they
@@ -408,7 +409,13 @@ return {
 	turnRate = 0.7,
 	footprint = Vector2.new(20, 18),
 	collision = {
-		{ size = V(18, 16.5, 13), offset = C(0, 31.75, 0) }, -- torso y 23.5..40
+		-- Torso y 23.5..40, x -9..9, z -6.5..6.5, hollow around the cab cavity.
+		{ size = V(18, 3, 13), offset = C(0, 25, 0) }, -- floor, top at y 26.5
+		{ size = V(18, 1.5, 13), offset = C(0, 39.25, 0) }, -- roof
+		{ size = V(3.5, 12, 13), offset = C(-7.25, 32.5, 0) }, -- wall L
+		{ size = V(3.5, 12, 13), offset = C(7.25, 32.5, 0) }, -- wall R
+		{ size = V(11, 12, 0.5), offset = C(0, 32.5, -6.25) }, -- front (window)
+		{ size = V(11, 12, 1), offset = C(0, 32.5, 6) }, -- back
 		{ size = V(11, 6, 8), offset = C(0, 20.5, 0.4) }, -- pelvis y 17.5..23.5
 		{ size = V(5.75, 11, 2.5), offset = C(-5.625, 31.5, 7.75) }, -- pod L
 		{ size = V(5.75, 11, 2.5), offset = C(5.625, 31.5, 7.75) }, -- pod R
@@ -431,6 +438,7 @@ return {
 	seatBone = "torso",
 	ladders = { { base = V(0, 2, 7.5), height = 38 } }, -- y 2..40, between the pods
 	prompt = { position = V(0, 41.5, 2.5), reach = 8 }, -- over the hatch
+	cab = { center = V(0, 32.5, -0.25), size = V(11, 12, 11.5) },
 	exit = C(0, 43, 5.5) * A(0, math.pi, 0), -- on the deck behind the hatch, facing the ladder
 	cameraFocus = V(0, 46, 0),
 	cockpitCamera = true,

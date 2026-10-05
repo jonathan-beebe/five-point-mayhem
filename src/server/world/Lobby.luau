@@ -1,5 +1,5 @@
 -- The spawn lobby: a marble floor ringed by glass under a glass dome, with one force-field
--- gate toward each landmark. Gates block players until they pick a loadout.
+-- gate toward each landmark. Gates block players until they deploy.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")

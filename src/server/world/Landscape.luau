@@ -331,7 +331,13 @@ function Landscape.build(parent: Instance)
 			then TREES[Config.REGIONS[regionIndex].id]
 			else { "oak", "birch", "pine" }
 		local style = styles[random:NextInteger(1, #styles)]
-		TREE_BUILDERS[style](trees, position, random:NextNumber(0.8, 1.5))
+		local scale = random:NextNumber(0.8, 1.5)
+		-- One model per tree, trunk first, so vehicles can fell it whole (Vehicles: fell).
+		local tree = Build.model(style, trees)
+		TREE_BUILDERS[style](tree, position, scale)
+		tree.PrimaryPart = tree:FindFirstChildWhichIsA("BasePart")
+		tree:SetAttribute("Toughness", scale)
+		CollectionService:AddTag(tree, "Tree")
 	end)
 	scatter(110, 6, function(position)
 		rock(obstacles, position)

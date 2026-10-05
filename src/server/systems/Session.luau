@@ -1,5 +1,5 @@
 -- Player lifecycle: teams, leaderstats, admin flag, collision groups, and deploying from the
--- lobby with a three-weapon loadout. Every respawn returns the player to the lobby.
+-- lobby with a loadout of up to three weapons. Every respawn returns the player to the lobby.
 
 local Players = game:GetService("Players")
 local PhysicsService = game:GetService("PhysicsService")
@@ -107,15 +107,24 @@ local function onPlayer(player: Player)
 	end
 end
 
+-- The loadout is an array of 0 to LOADOUT_SIZE distinct weapon ids. Anything else is refused.
 local function deploy(player: Player, ids: any)
-	if typeof(ids) ~= "table" or #ids ~= Config.LOADOUT_SIZE or player:GetAttribute("Deployed") then
+	if typeof(ids) ~= "table" or player:GetAttribute("Deployed") then
 		return
 	end
 	local isAdmin = player:GetAttribute("IsAdmin") == true
 	local seen = {}
-	for _, id in ids do
+	local count = 0
+	for key, id in ids do
+		count += 1
 		local weapon = typeof(id) == "string" and WeaponCatalog.get(id)
-		if not weapon or seen[id] or (weapon.adminOnly and not isAdmin) then
+		if
+			key ~= count
+			or count > Config.LOADOUT_SIZE
+			or not weapon
+			or seen[id]
+			or (weapon.adminOnly and not isAdmin)
+		then
 			return
 		end
 		seen[id] = true

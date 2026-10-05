@@ -1,5 +1,5 @@
 -- Checks SoundCatalog against the weapon and vehicle catalogs: every weapon and vehicle has
--- sounds, no entry names an unknown id, pooled weapons are automatic, and the mech's cues are
+-- sounds, no entry names an unknown id, pooled weapons are automatic, and every walker's cues are
 -- complete.
 -- Usage: lune run tools/check-sounds.luau
 
@@ -8,8 +8,8 @@ local process = require("@lune/process")
 
 local SoundCatalog = require("../src/shared/SoundCatalog")
 
--- Vehicles whose sounds come from a custom VehicleSounds handler, with their SoundCatalog entry.
-local CUSTOM_VEHICLES: { [string]: { [string]: any } } = { mech = SoundCatalog.MECH }
+-- Walkers: their sounds come from VehicleSounds' mech handler, with their SoundCatalog.MECHS entry.
+local CUSTOM_VEHICLES: { [string]: { [string]: any } } = SoundCatalog.MECHS
 
 local problems = {}
 local function problem(message: string)
@@ -100,20 +100,24 @@ local function checkCue(cue: { [string]: any }?, where: string)
 	end
 end
 
-local mech = SoundCatalog.MECH
-for _, event in { "powerUp", "step", "hatchOpen", "hatchClose" } do
-	checkCue((mech :: any)[event], "mech." .. event)
-end
-for _, name in { "hum", "servo" } do
-	local loop = (mech :: any)[name]
-	if not loop or not SoundCatalog.PALETTE[loop.key] then
-		problem("mech." .. name .. ": missing or unknown sound")
-	elseif #loop.pitch ~= 2 or #loop.volume ~= 2 then
-		problem("mech." .. name .. ": pitch and volume need { rest, top speed }")
+for id, mech in SoundCatalog.MECHS do
+	for _, event in { "powerUp", "step", "hatchOpen", "hatchClose" } do
+		checkCue((mech :: any)[event], id .. "." .. event)
 	end
-end
-if mech.servo.volume[1] ~= 0 then
-	problem("mech.servo must be silent at rest (volume[1] = 0)")
+	if mech.creak then
+		checkCue(mech.creak, id .. ".creak")
+	end
+	for _, name in { "hum", "servo" } do
+		local loop = (mech :: any)[name]
+		if not loop or not SoundCatalog.PALETTE[loop.key] then
+			problem(id .. "." .. name .. ": missing or unknown sound")
+		elseif #loop.pitch ~= 2 or #loop.volume ~= 2 then
+			problem(id .. "." .. name .. ": pitch and volume need { rest, top speed }")
+		end
+	end
+	if mech.servo.volume[1] ~= 0 then
+		problem(id .. ".servo must be silent at rest (volume[1] = 0)")
+	end
 end
 
 local keys = 0

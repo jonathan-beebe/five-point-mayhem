@@ -45,6 +45,11 @@ export type LadderSpec = {
 -- The Drive/Ride prompt's anchor and MaxActivationDistance.
 export type PromptSpec = { position: Vector3, reach: number }
 
+-- A walkable room around the driver seat (the mech's cab). Leaving the seat leaves the driver
+-- standing in it; prompts inside offer Drive and Climb out (to `exit`). The collision boxes must
+-- leave it hollow. The prompts sit 3 above its floor (avatar root height) and reach its corners.
+export type CabSpec = { center: Vector3, size: Vector3 }
+
 export type Model = {
 	name: string,
 	speed: number, -- top speed, studs per second
@@ -61,7 +66,8 @@ export type Model = {
 	seatBone: string?, -- every seat welds to this bone; default the skid
 	ladders: { LadderSpec }?,
 	prompt: PromptSpec?, -- default: 3.5 above the center, reach from the footprint
-	exit: CFrame?, -- where the driver's root goes on getting out; default where Roblox puts it
+	cab: CabSpec?,
+	exit: CFrame?, -- with a cab: where Climb out puts the player's root
 	cameraFocus: Vector3?, -- outside-view camera subject
 	cockpitCamera: boolean?, -- the driver gets the first-person cockpit camera
 	gait: string?, -- client animator for the bones; "mech" is the only one
@@ -73,6 +79,7 @@ export type Model = {
 	parkingBrake: boolean?, -- with no driver, the drive constraints hold it still
 	uprightTorque: number?, -- multiplier on the upright MaxTorque; default 1
 	stepsOver: boolean?, -- passes through scenery and other vehicles; buildings and ground stop it
+	ram: number?, -- how hard it shoves vehicles, fells trees, flings creatures; default 1
 }
 
 local VehicleModel = {}
@@ -137,9 +144,14 @@ function VehicleModel.define(model: Model): Model
 		)
 	end
 	assert(
+		(model.cab == nil) == (model.exit == nil),
+		model.name .. ": a cab needs an exit, and an exit needs a cab"
+	)
+	assert(
 		model.prompt == nil or model.prompt.reach > 0,
 		model.name .. ": prompt reach must be positive"
 	)
+	assert(model.ram == nil or model.ram > 0, model.name .. ": ram must be positive")
 	return model
 end
 

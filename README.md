@@ -17,7 +17,8 @@ rojo serve      # then connect from the Rojo plugin in Studio and press Play
 | `src/shared/WeaponCatalog.luau` | All 52 weapons (data only) |
 | `src/shared/VehicleCatalog.luau` | All vehicles (data only) |
 | `src/server/vehicleModels` | One part-built model per vehicle (format: `src/server/systems/VehicleModel.luau`) |
-| `tools/preview` | Renders a vehicle model file to a PNG of orthographic views |
+| `src/server/creatureModels` | One part-built model per monster (format: `src/server/systems/CreatureModel.luau`) |
+| `tools/preview` | Renders a vehicle, weapon or creature model file to a PNG of orthographic views |
 | `tools/audition.luau` | Plays every weapon and vehicle sound; paste into the Studio Command Bar during Play |
 | `src/server/world` | Lobby, roads, terrain/scenery, the five landmarks |
 | `src/server/systems` | Combat, weapons, players/teams, creatures, vehicles, admin powers |
@@ -65,6 +66,7 @@ Admins see a **👑 GOD MODE** button in the top-right corner. It opens the pane
 ├────────────────┴─────────────────┤
 │ 🎁 GIVE TO TARGET                 │
 │   🧰 EVERY WEAPON                 │
+│   🎯 Sniper Rifle                 │
 │   ❤ Full heal                     │
 │   🛡 Shield (30s)                 │  gifts, then all 52 weapons;
 │   👟 Super speed                  │  tap one to give it to the target
@@ -177,11 +179,15 @@ and works with `/give <who> mech`.
   studs/s, turns in place, and backs up slowly. It speeds up, stops, and turns slowly.
 - **View**: you start in the cockpit, looking out the chest window. **V**, gamepad **Y**, or the
   **VIEW** button (touch, left of the jump button) switches to an outside view and back.
-- **Get out**: jump. You land on the deck behind the hatch; the ladder is behind you.
+- **Stand up**: tap **STAND** (above **VIEW**, every platform) or jump. You get out of the seat
+  and stand in the cab, still in first person, and can walk around inside it. The mech stays where
+  it is, and it does not return to its parking spot while you are inside.
+- **In the cab**: press **E** (or tap **Drive**) to sit back down, or **Q** (**Climb out**) to
+  climb out onto the deck behind the hatch; the ladder is behind you.
 - With nobody in it, the mech's brake holds it in place when bumped.
 
-The legs and arms are decoration and do not collide; the cab, hips and back pods do. Gates, walls
-and building doors stop it.
+The legs and arms are decoration and do not collide; the cab walls, floor and roof, the hips and
+the back pods do. The cab's furniture does not. Gates, walls and building doors stop it.
 
 Preview a vehicle model without Studio (needs `lune` from `rokit install` and Python with Pillow):
 
@@ -194,7 +200,8 @@ python3 tools/preview/render.py src/server/vehicleModels/abrams.luau abrams.png
 The Sniper Rifle (`sniper`) is admin-only.
 
 - Only admins see it in the lobby armory. The server refuses it in a non-admin's loadout.
-- `/give <who> sniper`, `/give <who> arsenal`, and the 🎁 panel give it to anyone.
+- `/give <who> sniper`, `/give <who> arsenal`, and the 🎯 Sniper Rifle button near the top of
+  the 🎁 panel give it to anyone.
 - One hit kills any player or monster. Shields and Studio immunity still block it.
 - Fires every 0.1 seconds.
 
@@ -206,8 +213,11 @@ Scope (sniper in hand):
 | Touch | Tap **SCOPE** (above the jump button) to toggle |
 | Gamepad | Hold left trigger |
 
-Scoped, the view zooms to a 12° field of view, mouse turning slows to match, and shots go
-where the reticle is. Unequipping, dying, or losing the tool ends the scope.
+Scoped, the view zooms to a 12° field of view and shots go where the reticle is. Turning is slow
+on every input: 0.02° per pixel of mouse movement, 0.03° per pixel of touch drag, 18° per second at
+full right-stick deflection. The view eases toward where the input points (0.15 s time
+constant). Tuning lives at the top of `src/client/SniperScope.luau`. Unequipping, dying, or
+losing the tool ends the scope.
 
 ## Weapon ids
 

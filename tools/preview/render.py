@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Renders a vehicle or weapon model file to a PNG contact sheet of orthographic views.
+"""Renders a vehicle, weapon or creature model file to a PNG contact sheet of orthographic views.
 
 Usage:
   python3 tools/preview/render.py src/server/vehicleModels/<id>.luau [out.png]
@@ -9,6 +9,7 @@ Usage:
       [--views left,front,top,front34] ...
 
 Files under a `weaponModels` folder render as weapons without --weapon.
+Files under a `creatureModels` folder render as creatures; the orange box is the HumanoidRootPart.
 
 Needs `lune` (rokit) and Pillow. Shapes follow Roblox: Block, Ball (diameter = smallest size),
 Cylinder (axis along local X, diameter = smaller of Y and Z), WedgePart (full bottom and +Z back
@@ -517,6 +518,12 @@ def main():
         title = (f"{data.get('name')}  |  {len(data['parts']) - 1} pieces  |  hold {data.get('hold')}  |  "
                  f"muzzle {tuple(round(v, 2) for v in muzzle) if muzzle else 'default'}  |  "
                  "wielder frame: -Z forward, +Y up")
+    elif data.get("kind") == "creature":
+        root = data["collision"][0]["size"] if data.get("collision") else None
+        title = (f"{data.get('name')}  |  {len(data['parts'])} pieces  |  "
+                 f"root {tuple(round(v, 2) for v in root) if root else '?'}  |  "
+                 f"root center y {round(data['rootCenterY'], 2) if data.get('rootCenterY') else '?'}  |  "
+                 f"reach {round(data['reach'], 2) if data.get('reach') else '?'}")
     else:
         fw, fl = data.get("footprint") or (0, 0)
         title = (f"{data.get('name')}  |  {len(data['parts'])} pieces  |  footprint {fw} x {fl} studs  |  "

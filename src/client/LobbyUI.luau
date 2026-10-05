@@ -1,5 +1,5 @@
--- The armory screen shown in the lobby: browse the catalog by category, pick three weapons,
--- pick a team, and deploy. The last loadout is remembered across respawns.
+-- The armory screen shown in the lobby: browse the catalog by category, pick up to three
+-- weapons, pick a team, and deploy. The last loadout is remembered across respawns.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -307,10 +307,11 @@ local function refresh()
 		end
 	end
 	counter.Text = string.format(
-		"%d weapons in the armory · pick %d · %d chosen",
+		"%d weapons in the armory · carry up to %d · %d/%d chosen",
 		available,
 		Config.LOADOUT_SIZE,
-		#selected
+		#selected,
+		Config.LOADOUT_SIZE
 	)
 	for id, card in cards do
 		local stroke = card:FindFirstChild("Selected") :: UIStroke
@@ -330,12 +331,6 @@ local function refresh()
 			then CATEGORY_COLORS[weapon.category]:Lerp(rgb(0, 0, 0), 0.4)
 			else PANEL
 	end
-	local ready = #selected == Config.LOADOUT_SIZE
-	deployButton.AutoButtonColor = ready
-	deployButton.BackgroundColor3 = if ready then ACCENT else rgb(80, 60, 70)
-	deployButton.Text = if ready
-		then "ENTER THE MAYHEM"
-		else string.format("PICK %d MORE", Config.LOADOUT_SIZE - #selected)
 	for name, button in teamButtons do
 		(button:FindFirstChild("Selected") :: UIStroke).Enabled = player.Team ~= nil
 			and player.Team.Name == name
@@ -349,7 +344,14 @@ local function toggle(id: string)
 	elseif #selected < Config.LOADOUT_SIZE then
 		table.insert(selected, id)
 	else
-		Announcer.show("You can carry 3 weapons. Tap one in your loadout to swap it.", GOLD, 2)
+		Announcer.show(
+			string.format(
+				"You can carry %d weapons. Tap one in your loadout to swap it.",
+				Config.LOADOUT_SIZE
+			),
+			GOLD,
+			2
+		)
 	end
 	refresh()
 end
@@ -478,9 +480,7 @@ local function updateVisibility()
 end
 
 deployButton.Activated:Connect(function()
-	if #selected == Config.LOADOUT_SIZE then
-		Remotes.Deploy:FireServer(table.clone(selected))
-	end
+	Remotes.Deploy:FireServer(table.clone(selected))
 end)
 
 lookButton.Activated:Connect(function()

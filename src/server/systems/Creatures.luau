@@ -11,6 +11,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Combat = require(script.Parent.Combat)
+local CreatureModel = require(script.Parent.CreatureModel)
+
+local creatureModels = script.Parent.Parent.creatureModels
 
 local Creatures = {}
 
@@ -18,8 +21,8 @@ local rgb = Color3.fromRGB
 local M = Enum.Material
 local random = Random.new()
 
-type Palette = { skin: Color3, body: Color3, eyes: Color3, legs: Color3 }
-
+-- `scale` sets knockback strength; the look and size come from the kind's file in
+-- src/server/creatureModels (format: src/server/systems/CreatureModel.luau).
 type Kind = {
 	name: string,
 	health: number,
@@ -27,8 +30,7 @@ type Kind = {
 	damage: number,
 	scale: number,
 	aggro: number,
-	palette: Palette,
-	style: string,
+	hops: boolean?, -- jumps while chasing
 }
 
 local KINDS: { [string]: Kind } = {
@@ -39,13 +41,6 @@ local KINDS: { [string]: Kind } = {
 		damage = 8,
 		scale = 0.8,
 		aggro = 80,
-		style = "biped",
-		palette = {
-			skin = rgb(90, 160, 60),
-			body = rgb(110, 80, 50),
-			eyes = rgb(255, 230, 40),
-			legs = rgb(80, 60, 40),
-		},
 	},
 	slime = {
 		name = "Slime",
@@ -54,13 +49,7 @@ local KINDS: { [string]: Kind } = {
 		damage = 6,
 		scale = 1,
 		aggro = 60,
-		style = "slime",
-		palette = {
-			skin = rgb(80, 230, 90),
-			body = rgb(80, 230, 90),
-			eyes = rgb(20, 20, 20),
-			legs = rgb(80, 230, 90),
-		},
+		hops = true,
 	},
 	skeleton = {
 		name = "Skeleton Knight",
@@ -69,13 +58,6 @@ local KINDS: { [string]: Kind } = {
 		damage = 14,
 		scale = 1,
 		aggro = 90,
-		style = "biped",
-		palette = {
-			skin = rgb(235, 235, 220),
-			body = rgb(120, 120, 130),
-			eyes = rgb(255, 40, 40),
-			legs = rgb(235, 235, 220),
-		},
 	},
 	oni = {
 		name = "Oni",
@@ -84,13 +66,6 @@ local KINDS: { [string]: Kind } = {
 		damage = 26,
 		scale = 2,
 		aggro = 100,
-		style = "horned",
-		palette = {
-			skin = rgb(210, 50, 40),
-			body = rgb(60, 50, 90),
-			eyes = rgb(255, 230, 60),
-			legs = rgb(210, 50, 40),
-		},
 	},
 	robot = {
 		name = "Robo-Guard",
@@ -99,13 +74,6 @@ local KINDS: { [string]: Kind } = {
 		damage = 18,
 		scale = 1.4,
 		aggro = 120,
-		style = "biped",
-		palette = {
-			skin = rgb(160, 165, 175),
-			body = rgb(60, 70, 90),
-			eyes = rgb(60, 220, 255),
-			legs = rgb(120, 125, 135),
-		},
 	},
 	trex = {
 		name = "T-Rex",
@@ -114,13 +82,6 @@ local KINDS: { [string]: Kind } = {
 		damage = 40,
 		scale = 2.6,
 		aggro = 130,
-		style = "dino",
-		palette = {
-			skin = rgb(80, 120, 60),
-			body = rgb(70, 105, 55),
-			eyes = rgb(255, 200, 0),
-			legs = rgb(70, 105, 55),
-		},
 	},
 	zombie = {
 		name = "Zombie",
@@ -129,13 +90,6 @@ local KINDS: { [string]: Kind } = {
 		damage = 10,
 		scale = 1,
 		aggro = 160,
-		style = "zombie",
-		palette = {
-			skin = rgb(120, 165, 100),
-			body = rgb(70, 90, 130),
-			eyes = rgb(255, 40, 40),
-			legs = rgb(80, 60, 45),
-		},
 	},
 	brute = {
 		name = "Zombie Brute",
@@ -144,13 +98,6 @@ local KINDS: { [string]: Kind } = {
 		damage = 25,
 		scale = 1.8,
 		aggro = 160,
-		style = "zombie",
-		palette = {
-			skin = rgb(100, 140, 90),
-			body = rgb(110, 40, 40),
-			eyes = rgb(255, 120, 0),
-			legs = rgb(60, 50, 40),
-		},
 	},
 	yeti = {
 		name = "Yeti",
@@ -159,13 +106,6 @@ local KINDS: { [string]: Kind } = {
 		damage = 28,
 		scale = 2.2,
 		aggro = 100,
-		style = "biped",
-		palette = {
-			skin = rgb(240, 245, 255),
-			body = rgb(230, 235, 245),
-			eyes = rgb(60, 140, 255),
-			legs = rgb(230, 235, 245),
-		},
 	},
 }
 
@@ -182,6 +122,7 @@ type Creature = {
 	humanoid: Humanoid,
 	root: BasePart,
 	kind: Kind,
+	reach: number, -- attack range from the root's center
 	home: Vector3,
 	lastAttack: number,
 	wanderAt: number,
@@ -197,174 +138,55 @@ local MAX_ACTIVE = 170
 
 -- Model building ----------------------------------------------------------------------------
 
-local function piece(
-	model: Model,
-	root: BasePart,
-	size: Vector3,
-	offset: CFrame,
-	color: Color3,
-	material: Enum.Material?,
-	shape: Enum.PartType?,
-	name: string?
-): Part
-	local part = Instance.new("Part")
-	if shape then
-		part.Shape = shape
-	end
-	part.Size = size
-	part.Color = color
-	part.Material = material or M.SmoothPlastic
-	part.CanCollide = false
-	part.Massless = true
-	part.CFrame = root.CFrame * offset
-	part.Name = name or "Part"
-	local weld = Instance.new("Weld")
-	weld.Part0 = root
-	weld.Part1 = part
-	weld.C0 = offset
-	weld.Parent = part
-	part.Parent = model
-	return part
+local models: { [string]: CreatureModel.Model } = {}
+for kindId in KINDS do
+	models[kindId] = CreatureModel.define(require(creatureModels[kindId]) :: any)
 end
 
--- Humanoid bipeds stand on legs of length 2*s below a 2*s tall root; HipHeight matches.
-local function biped(model: Model, root: BasePart, s: number, p: Palette, armAngle: number)
-	piece(model, root, Vector3.new(2, 2, 1.1) * s, CFrame.new(), p.body)
-	piece(
-		model,
-		root,
-		Vector3.new(1.5, 1.4, 1.4) * s,
-		CFrame.new(0, 1.75 * s, 0),
-		p.skin,
-		nil,
-		nil,
-		"Head"
-	)
-	for _, side in { -1, 1 } do
-		piece(
-			model,
-			root,
-			Vector3.new(0.3, 0.3, 0.1) * s,
-			CFrame.new(side * 0.35 * s, 1.9 * s, -0.72 * s),
-			p.eyes,
-			M.Neon
-		)
-		piece(
-			model,
-			root,
-			Vector3.new(0.8, 2, 0.8) * s,
-			CFrame.new(side * 1.45 * s, 0, -0.2 * s) * CFrame.Angles(math.rad(armAngle), 0, 0),
-			p.skin
-		)
-		piece(
-			model,
-			root,
-			Vector3.new(0.9, 2, 0.9) * s,
-			CFrame.new(side * 0.5 * s, -2 * s, 0),
-			p.legs
-		)
-	end
-end
-
-local function build(kind: Kind, position: Vector3): Creature
-	local s = kind.scale
+local function build(kindId: string, position: Vector3): Creature
+	local kind = KINDS[kindId]
+	local spec = models[kindId]
 	local model = Instance.new("Model")
 	model.Name = kind.name
 	local root = Instance.new("Part")
 	root.Name = "HumanoidRootPart"
 	root.Transparency = 1
-	root.Size = if kind.style == "slime" then Vector3.new(3, 3, 3) * s else Vector3.new(2, 2, 1) * s
+	root.Size = spec.rootSize
 	root.CFrame = CFrame.new(position)
 	root.Parent = model
 	model.PrimaryPart = root
 
-	local hipHeight = 2 * s
-	local p = kind.palette
-	if kind.style == "slime" then
-		hipHeight = 0.2
-		piece(
-			model,
-			root,
-			Vector3.one * 4.2 * s,
-			CFrame.new(0, 0.4 * s, 0),
-			p.skin,
-			M.Glass,
-			Enum.PartType.Ball,
-			"Head"
-		).Transparency =
-			0.25
-		for _, side in { -1, 1 } do
-			piece(
-				model,
-				root,
-				Vector3.one * 0.7 * s,
-				CFrame.new(side * 0.7 * s, 1 * s, -1.8 * s),
-				p.eyes,
-				M.SmoothPlastic,
-				Enum.PartType.Ball
-			)
+	-- Pieces are authored in creature space (origin on the ground); weld them relative to the root.
+	local fromRoot = CreatureModel.rootCenter(spec):Inverse()
+	for _, piece in spec.pieces do
+		local part = Instance.new(piece.class or "Part") :: BasePart
+		if piece.shape then
+			(part :: Part).Shape = piece.shape
 		end
-	else
-		biped(model, root, s, p, if kind.style == "zombie" then 85 else 25)
-		if kind.style == "horned" then
-			for _, side in { -1, 1 } do
-				piece(
-					model,
-					root,
-					Vector3.new(0.3, 1, 0.3) * s,
-					CFrame.new(side * 0.5 * s, 2.8 * s, 0) * CFrame.Angles(0, 0, -side * 0.3),
-					rgb(240, 230, 200)
-				)
-			end
-			piece(
-				model,
-				root,
-				Vector3.new(0.5, 3.5, 0.5) * s,
-				CFrame.new(1.6 * s, 0, -1.4 * s) * CFrame.Angles(math.rad(70), 0, 0),
-				rgb(40, 40, 40),
-				M.Metal
-			)
-		elseif kind.style == "dino" then
-			piece(
-				model,
-				root,
-				Vector3.new(1.4, 1.2, 2.4) * s,
-				CFrame.new(0, 1.9 * s, -1.4 * s),
-				p.skin,
-				nil,
-				nil,
-				"Snout"
-			)
-			piece(
-				model,
-				root,
-				Vector3.new(1.3, 0.3, 2) * s,
-				CFrame.new(0, 1.15 * s, -1.4 * s),
-				rgb(250, 245, 230)
-			)
-			piece(
-				model,
-				root,
-				Vector3.new(1.2, 1.2, 4) * s,
-				CFrame.new(0, -0.3 * s, 2.3 * s) * CFrame.Angles(math.rad(-15), 0, 0),
-				p.body
-			)
-		end
-	end
-	if kind.name == "Skeleton Knight" then
-		piece(
-			model,
-			root,
-			Vector3.new(0.2, 0.5, 4),
-			CFrame.new(1.45 * s, -0.6 * s, -2.4),
-			rgb(200, 200, 210),
-			M.Metal
-		)
+		part.Name = piece.name or "Part"
+		part.Size = piece.size
+		part.Color = piece.color
+		part.Material = piece.material or M.SmoothPlastic
+		part.Transparency = piece.transparency or 0
+		part.Reflectance = piece.reflectance or 0
+		part.CanCollide = false
+		part.CanTouch = false
+		part.Massless = true
+		part.TopSurface = Enum.SurfaceType.Smooth
+		part.BottomSurface = Enum.SurfaceType.Smooth
+		local offset = fromRoot * piece.offset
+		part.CFrame = root.CFrame * offset
+		local weld = Instance.new("Weld")
+		weld.Part0 = root
+		weld.Part1 = part
+		weld.C0 = offset
+		weld.Parent = part
+		part.Parent = model
 	end
 
 	local humanoid = Instance.new("Humanoid")
 	humanoid.RequiresNeck = false
-	humanoid.HipHeight = hipHeight
+	humanoid.HipHeight = spec.hipHeight
 	humanoid.MaxHealth = kind.health
 	humanoid.Health = kind.health
 	humanoid.WalkSpeed = kind.speed
@@ -374,7 +196,7 @@ local function build(kind: Kind, position: Vector3): Creature
 	humanoid.Parent = model
 
 	model:PivotTo(
-		CFrame.new(position + Vector3.new(0, hipHeight + root.Size.Y / 2 + 0.5, 0))
+		CFrame.new(position + Vector3.new(0, spec.hipHeight + spec.rootSize.Y / 2 + 0.5, 0))
 			* CFrame.Angles(0, random:NextNumber(0, 6), 0)
 	)
 	model.Parent = folder
@@ -384,6 +206,7 @@ local function build(kind: Kind, position: Vector3): Creature
 		humanoid = humanoid,
 		root = root,
 		kind = kind,
+		reach = spec.reach :: number,
 		home = position,
 		lastAttack = 0,
 		wanderAt = 0,
@@ -429,7 +252,6 @@ local function track(creature: Creature, kindId: string, respawn: boolean)
 end
 
 spawnOne = function(kindId: string, near: Vector3?)
-	local kind = KINDS[kindId]
 	local position: Vector3
 	if near then
 		position = near
@@ -444,7 +266,7 @@ spawnOne = function(kindId: string, near: Vector3?)
 			then randomGroundPoint(Config.regionCenter(regionKind), 110, 220)
 			else randomGroundPoint(Vector3.zero, 150, Config.WORLD_RADIUS - 50)
 	end
-	track(build(kind, position), kindId, near == nil)
+	track(build(kindId, position), kindId, near == nil)
 end
 
 -- Summons a temporary horde around a point (admin command). These do not respawn.
@@ -515,14 +337,13 @@ local function think(creature: Creature, now: number)
 		return
 	end
 	local target, targetRoot, distance = nearestPlayer(creature)
-	local reach = 4 + 2 * creature.kind.scale
 	if target and targetRoot then
 		creature.lastSeen = now
 		creature.humanoid:MoveTo(targetRoot.Position)
-		if creature.kind.style == "slime" then
+		if creature.kind.hops then
 			creature.humanoid.Jump = true
 		end
-		if distance <= reach and now - creature.lastAttack > 1.1 then
+		if distance <= creature.reach and now - creature.lastAttack > 1.1 then
 			creature.lastAttack = now
 			local victim = target:FindFirstChildOfClass("Humanoid")
 			if victim and Combat.damage(nil, target, victim, creature.kind.damage) then
@@ -621,7 +442,7 @@ local function releaseHorde(index: number, size: number)
 			)
 		local outside = frame * Vector3.new(x + random:NextNumber(-12, 12), 0, lair.outside)
 		local kindId = if count % 8 == 0 then "brute" else "zombie"
-		local creature = build(KINDS[kindId], inside)
+		local creature = build(kindId, inside)
 		creature.lair = region.id
 		creature.exit = outside
 		creature.exitUntil = os.clock() + 5

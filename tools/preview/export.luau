@@ -1,6 +1,8 @@
--- Loads a vehicle or weapon model file outside Roblox and prints its parts as JSON for render.py.
+-- Loads a vehicle, weapon or creature model file outside Roblox and prints its parts as JSON for
+-- render.py.
 -- Usage: lune run tools/preview/export.luau <path/to/model.luau> [--weapon]
--- Files under a `weaponModels` folder are weapons without the flag.
+-- Files under a `weaponModels` folder are weapons without the flag; files under a
+-- `creatureModels` folder are creatures.
 -- A vehicle with `bones` exports in its rest pose: each piece and seat on a bone follows that bone.
 -- A walker exports mid-stride with `--phase <0..1> [--speed <studs/s>]` (see below).
 
@@ -29,6 +31,7 @@ do
 	end
 end
 local isWeapon = options.weapon == true or string.find(path, "weaponModels", 1, true) ~= nil
+local isCreature = string.find(path, "creatureModels", 1, true) ~= nil
 
 -- Lune's CFrame.lookAt (and CFrame.new(position, target)) disagree with Roblox; rebuild them
 -- from fromMatrix the way Roblox defines them: -Z toward the target, +Y as close to `up` as possible.
@@ -248,6 +251,49 @@ if isWeapon then
 		hold = spec.hold or "forward",
 		parts = parts,
 		muzzle = if muzzle then vector(muzzle.Position) else nil,
+		problems = problems,
+	}))
+	return
+end
+
+if isCreature then
+	-- The game's own checks on a copy: define fills defaults in place.
+	local checked = table.clone(spec)
+	local ok, err = pcall(requireShim({ name = "CreatureModel" }).define, checked)
+	if not ok then
+		problem((string.gsub(tostring(err), "^.-:%d+: ", "")))
+	end
+	local lowest = math.huge
+	for _, part in parts do
+		-- Lowest point of the part's box: |R1j| * size_j / 2 summed over its axes (c[7..9] is row Y).
+		local c = part.cframe
+		local half = 0
+		for column = 0, 2 do
+			half += math.abs(c[7 + column]) * part.size[column + 1] / 2
+		end
+		lowest = math.min(lowest, c[2] - half)
+	end
+	if lowest > 0.15 then
+		problem(string.format("lowest piece is %.2f studs above the ground", lowest))
+	elseif lowest < -0.5 then
+		problem(string.format("a piece sinks %.2f studs below the ground", -lowest))
+	end
+	local rootSize = if typeof(spec.rootSize) == "Vector3" then spec.rootSize else nil
+	local hipHeight = if type(spec.hipHeight) == "number" then spec.hipHeight else nil
+	print(serde.encode("json", {
+		kind = "creature",
+		name = spec.name,
+		parts = parts,
+		collision = if rootSize and hipHeight
+			then {
+				{
+					size = vector(rootSize),
+					cframe = frame(RobloxCFrame.new(0, hipHeight + rootSize.Y / 2, 0)),
+				},
+			}
+			else {},
+		reach = if ok then checked.reach else nil,
+		rootCenterY = if rootSize and hipHeight then hipHeight + rootSize.Y / 2 else nil,
 		problems = problems,
 	}))
 	return

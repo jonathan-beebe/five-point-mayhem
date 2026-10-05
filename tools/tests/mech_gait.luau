@@ -1,7 +1,8 @@
--- Checks the Titan Mech walk cycle (src/shared/MechGait.luau) outside Roblox.
+-- Checks the walk cycle (src/shared/MechGait.luau) of every walker (a vehicle model with
+-- gait "mech") outside Roblox.
 -- Usage: lune run tools/tests/mech_gait.luau
 --
--- Drives the gait through walking, reversing, turning in place, starting and stopping, and checks:
+-- Drives each walker's gait, at its own top speed and turn rate, through walking, reversing, turning in place, starting and stopping, and checks:
 --   - a planted foot does not skate: its ground point moves < 0.05 studs per frame
 --   - a planted ankle sits on the ground (the IK reaches it)
 --   - every channel stays inside the bone limits before clamping
@@ -21,26 +22,53 @@ end
 local MechGait = load("src/shared/MechGait.luau")
 local CFrame, Vector3 = roblox.CFrame, roblox.Vector3
 
-local PIVOTS = {
-	pelvis = Vector3.new(0, 20, 0.4),
-	thigh_L = Vector3.new(-7, 20, 0.4),
-	shin_L = Vector3.new(-7, 10.937, -3.826),
-	foot_L = Vector3.new(-7, 2.780, -0.023),
-	thigh_R = Vector3.new(7, 20, 0.4),
-	shin_R = Vector3.new(7, 10.937, -3.826),
-	foot_R = Vector3.new(7, 2.780, -0.023),
-}
+-- Rest pivots, top speed and turn rate of the walker under test (set by the loop at the bottom).
+local PIVOTS: { [string]: any } = {}
+local TOP, TURN, RISE, FALL = 18, 0.7, 1.8, 1.3
+
+-- Every walker's model file, loaded the way export.luau loads it.
+local walkers = {}
+for _, file in fs.readDir("src/server/vehicleModels") do
+	local path = "src/server/vehicleModels/" .. file
+	local environment = {
+		CFrame = roblox.CFrame,
+		Vector3 = roblox.Vector3,
+		Vector2 = roblox.Vector2,
+		Color3 = roblox.Color3,
+		Enum = roblox.Enum,
+	}
+	local spec = luau.load(fs.readFile(path), { debugName = path, environment = environment })()
+	if spec.gait == "mech" then
+		local pivots = {}
+		for _, bone in spec.bones do
+			pivots[bone.name] = bone.pivot
+		end
+		table.insert(walkers, {
+			name = spec.name,
+			pivots = pivots,
+			speed = spec.speed,
+			turnRate = spec.turnRate or 0.7,
+			rise = spec.speed / (spec.acceleration or 55), -- seconds from rest to top speed
+			fall = spec.speed / (spec.coasting or 30), -- seconds to coast from top speed to rest
+		})
+	end
+end
+table.sort(walkers, function(a, b)
+	return a.name < b.name
+end)
 
 local DT = 1 / 60
 local SKATE = 0.05
 local failures = 0
+local walkerFailures = 0 -- failures printed for the walker under test
 local checks = 0
 
 local function check(ok: boolean, message: string)
 	checks += 1
 	if not ok then
 		failures += 1
-		if failures <= 20 then
+		walkerFailures += 1
+		if walkerFailures <= 10 then
 			print("FAIL " .. message)
 		end
 	end
@@ -104,8 +132,8 @@ local function run(
 			forward = v,
 			yawRate = omega,
 			occupied = true,
-			topSpeed = 18,
-			turnRate = 0.7,
+			topSpeed = TOP,
+			turnRate = TURN,
 			time = t,
 		}, DT)
 		footfalls += #events
@@ -169,61 +197,77 @@ local function ramp(t: number, start: number, rise: number): number
 	return math.clamp((t - start) / rise, 0, 1)
 end
 
--- Steady walk at top speed (a jump to full speed, so checks start once the stride settles).
-local _, walkSteps = run("walk 18", 12, function()
-	return 18, 0
-end, 3)
-check(walkSteps >= 15, "walking at 18 should give heel strikes, got " .. walkSteps)
+for _, walker in walkers do
+	PIVOTS, TOP, TURN = walker.pivots, walker.speed, walker.turnRate
+	RISE, FALL = walker.rise, walker.fall
+	walkerFailures = 0
+	print(walker.name)
+	-- Steady walk at top speed (a jump to full speed, so checks start once the stride settles).
+	local _, walkSteps = run("walk at top speed", 12, function()
+		return TOP, 0
+	end, 3)
+	check(walkSteps >= 12, "walking at top speed should give heel strikes, got " .. walkSteps)
 
--- Start from rest (1.8 s to top speed), walk, coast to a stop, settle.
-local stopped = run("start, walk, stop", 16, function(t)
-	if t < 8 then
-		return 18 * ramp(t, 0, 1.8), 0
-	end
-	return 18 * (1 - ramp(t, 8, 1.3)), 0
-end)
-check(stopped.rate == 0, "phase should park after stopping")
-for _, side in { "L", "R" } do
-	check(
-		math.abs(stopped.feet[side].z) <= MechGait.SETTLED,
-		side .. " foot should settle under the hip"
-	)
-end
-
-run("reverse 7.2", 10, function(t)
-	return -7.2 * ramp(t, 0, 0.7), 0
-end)
-run("turn in place left", 10, function(t)
-	return 0, 0.7 * ramp(t, 0, 0.5)
-end)
-run("turn in place right", 10, function(t)
-	return 0, -0.7 * ramp(t, 0, 0.5)
-end)
-run("walk and turn", 10, function(t)
-	return 18 * ramp(t, 0, 1.8), 0.7 * ramp(t, 2, 0.5)
-end)
-run("idle occupied", 30, function()
-	return 0, 0
-end)
-
--- Empty and still: the rest pose, hatch open.
-do
-	local rig = MechGait.rig(PIVOTS)
-	local state = MechGait.new(rig)
-	MechGait.step(
-		state,
-		{ forward = 0, yawRate = 0, occupied = false, topSpeed = 18, turnRate = 0.7, time = 0 },
-		DT
-	)
-	local poses = MechGait.pose(state)
-	for bone, pose in poses do
-		if bone ~= "hatch" then
-			local still = pose.Position.Magnitude < 1e-4
-				and pose.LookVector:Dot(Vector3.new(0, 0, -1)) > 1 - 1e-6
-			check(still, "empty mech: " .. bone .. " should be at rest")
+	-- Start from rest at the walker's acceleration, walk, coast to a stop, settle.
+	local stopped = run("start, walk, stop", 16, function(t)
+		if t < 8 then
+			return TOP * ramp(t, 0, RISE), 0
 		end
+		return TOP * (1 - ramp(t, 8, FALL)), 0
+	end)
+	check(stopped.rate == 0, "phase should park after stopping")
+	for _, side in { "L", "R" } do
+		check(
+			math.abs(stopped.feet[side].z) <= MechGait.SETTLED * stopped.rig.scale,
+			side .. " foot should settle under the hip"
+		)
 	end
-	check(math.abs(math.deg(state.raw.hatch.x) + 100) < 1e-3, "empty mech: hatch should be open")
+
+	run("reverse at 40 %", 10, function(t)
+		return -TOP * 0.4 * ramp(t, 0, 0.7), 0
+	end)
+	run("turn in place left", 10, function(t)
+		return 0, TURN * ramp(t, 0, 0.5)
+	end)
+	run("turn in place right", 10, function(t)
+		return 0, -TURN * ramp(t, 0, 0.5)
+	end)
+	run("walk and turn", 10, function(t)
+		return TOP * ramp(t, 0, RISE), TURN * ramp(t, 2, 0.5)
+	end)
+	run("idle occupied", 30, function()
+		return 0, 0
+	end)
+
+	-- Empty and still: the rest pose, hatch open.
+	do
+		local rig = MechGait.rig(PIVOTS)
+		local state = MechGait.new(rig)
+		MechGait.step(
+			state,
+			{
+				forward = 0,
+				yawRate = 0,
+				occupied = false,
+				topSpeed = TOP,
+				turnRate = TURN,
+				time = 0,
+			},
+			DT
+		)
+		local poses = MechGait.pose(state)
+		for bone, pose in poses do
+			if bone ~= "hatch" then
+				local still = pose.Position.Magnitude < 1e-4
+					and pose.LookVector:Dot(Vector3.new(0, 0, -1)) > 1 - 1e-6
+				check(still, "empty mech: " .. bone .. " should be at rest")
+			end
+		end
+		check(
+			math.abs(math.deg(state.raw.hatch.x) + 100) < 1e-3,
+			"empty mech: hatch should be open"
+		)
+	end
 end
 
 print(string.format("%d checks, %d failures", checks, failures))

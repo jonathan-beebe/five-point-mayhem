@@ -1,8 +1,8 @@
 -- Engine sounds for vehicles near the camera, made and driven on this client only (client sounds
 -- do not replicate, so per-frame pitch and volume cost no network). While a vehicle's driver
 -- seat is occupied its engine runs: a start one-shot, then loops whose pitch and volume follow
--- speed / TopSpeed. Profiles live in SoundCatalog.VEHICLES; a vehicle id can instead get its own
--- handler in HANDLERS (the Titan Mech: SoundCatalog.MECH).
+-- speed / TopSpeed. Profiles live in SoundCatalog.VEHICLES; walkers instead get the mech handler
+-- with their profile from SoundCatalog.MECHS.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -128,17 +128,17 @@ local function engineHandler(model: Model, profile: SoundCatalog.VehicleSounds):
 	}
 end
 
--- The Titan Mech. MechMotion animates the legs on this client; the servo follows its cadence and
--- each heel strike it fires plays a step in that foot. The hatch opens and closes with the
--- driver seat's occupant (MechGait animates it from the same signal).
-local function mechHandler(model: Model): Handler?
+-- A walker. MechMotion animates the legs on this client; the servo follows its cadence and each
+-- heel strike it fires plays a step in that foot (and a creak at that knee, if the profile has
+-- one). The hatch opens and closes with the driver seat's occupant (MechGait animates it from the
+-- same signal).
+local function mechHandler(model: Model, profile: SoundCatalog.MechSounds): Handler?
 	local skid = model.PrimaryPart
 	local seat = model:FindFirstChild("DriverSeat")
 	if not skid or not seat or not seat:IsA("VehicleSeat") then
 		return nil
 	end
 	local driverSeat = seat :: VehicleSeat
-	local profile = SoundCatalog.MECH
 
 	local hum = Sounds.make(profile.hum, GROUP)
 	hum.Looped = true
@@ -161,6 +161,9 @@ local function mechHandler(model: Model): Handler?
 	local footfall = MechMotion.footfall:Connect(function(walker: Model, foot: string, strength)
 		if walker == model then
 			Sounds.playOn(profile.step, part("Bone_foot_" .. foot), GROUP, strength)
+			if profile.creak then
+				Sounds.playOn(profile.creak, part("Bone_shin_" .. foot), GROUP, strength)
+			end
 		end
 	end)
 
@@ -180,7 +183,8 @@ local function mechHandler(model: Model): Handler?
 		local targetSpeed, targetCadence = 0, 0
 		if gait then
 			targetSpeed = math.clamp(gait.ground / gait.topSpeed, 0, 1)
-			targetCadence = math.clamp(gait.rate * MechGait.CYCLE / gait.topSpeed, 0, 1)
+			local cycle = MechGait.CYCLE * gait.rig.scale
+			targetCadence = math.clamp(gait.rate * cycle / gait.topSpeed, 0, 1)
 		end
 		local follow = 1 - math.exp(-dt * profile.smoothing)
 		speed += (targetSpeed - speed) * follow
@@ -222,19 +226,14 @@ local function mechHandler(model: Model): Handler?
 	}
 end
 
--- Vehicle ids with their own sounds instead of an engine profile.
-local HANDLERS: { [string]: (Model) -> Handler? } = {
-	mech = mechHandler,
-}
-
 local function makeHandler(model: Model): Handler?
 	local id = model:GetAttribute("VehicleId")
 	if typeof(id) ~= "string" then
 		return nil
 	end
-	local custom = HANDLERS[id]
-	if custom then
-		return custom(model)
+	local walker = SoundCatalog.MECHS[id]
+	if walker then
+		return mechHandler(model, walker)
 	end
 	local profile = SoundCatalog.VEHICLES[id]
 	return if profile then engineHandler(model, profile) else nil

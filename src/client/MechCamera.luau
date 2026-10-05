@@ -1,14 +1,17 @@
 -- Camera for walkers: while the local player drives a vehicle whose driver seat has attribute
 -- CockpitCamera, the view starts first person from the pilot's head, looking out the chest
 -- window. V, gamepad Y, or the on-screen VIEW button (touch) switches to an outside view orbiting
--- the model's CameraFocus part and back. Heel strikes shake the view a little (MechMotion
--- footfalls). The view turns with the vehicle. Getting out or dying restores the camera.
+-- the model's CameraFocus part and back. The STAND button (or jumping) gets out of the seat; the
+-- driver then stands in the cab (a part tagged MechCab) and the view stays first person until
+-- they leave it (the cab's Climb out prompt). Heel strikes shake the view a little (MechMotion
+-- footfalls). The view turns with the vehicle. Leaving the vehicle or dying restores the camera.
 --
 -- The default camera builds each frame's CFrame from the previous frame's look direction, so
 -- anything written to the camera after it runs carries into the next frame. Before it runs, this
 -- module takes the last shake back out and turns the look direction by the vehicle's yaw since the
 -- last frame; after it runs, it adds this frame's shake.
 
+local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -37,7 +40,8 @@ local SHAKE_LENGTH = 0.4 -- seconds
 local OUTSIDE_SHAKE = 0.5 -- amplitude scale in the outside view
 
 type Session = {
-	seat: VehicleSeat,
+	model: Model,
+	seat: VehicleSeat?, -- nil while standing in the cab
 	humanoid: Humanoid,
 	minZoom: number,
 	maxZoom: number,
@@ -50,38 +54,44 @@ local session: Session? = nil
 local shakes: { { start: number, strength: number } } = {}
 local applied = CFrame.identity -- the shake added to the camera last frame
 
--- Touch button ---------------------------------------------------------------------------------
+-- Buttons ---------------------------------------------------------------------------------------
 
 local buttonGui = Instance.new("ScreenGui")
-buttonGui.Name = "MechViewButton"
+buttonGui.Name = "MechButtons"
 buttonGui.ResetOnSpawn = false
 buttonGui.DisplayOrder = 6
 buttonGui.Enabled = false
 
-local button = Instance.new("TextButton")
-button.Name = "View"
-button.AnchorPoint = Vector2.new(1, 1)
-button.BackgroundColor3 = rgb(20, 20, 28)
-button.BackgroundTransparency = 0.25
-button.TextColor3 = rgb(255, 255, 255)
-button.Font = Enum.Font.GothamBold
-button.TextScaled = true
-button.Text = "VIEW"
-button.Parent = buttonGui
-local buttonCorner = Instance.new("UICorner")
-buttonCorner.CornerRadius = UDim.new(0.5, 0)
-buttonCorner.Parent = button
-local buttonStroke = Instance.new("UIStroke")
-buttonStroke.Color = rgb(255, 255, 255)
-buttonStroke.Thickness = 2
-buttonStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-buttonStroke.Parent = button
-local buttonPadding = Instance.new("UIPadding")
-buttonPadding.PaddingLeft = UDim.new(0.12, 0)
-buttonPadding.PaddingRight = UDim.new(0.12, 0)
-buttonPadding.PaddingTop = UDim.new(0.3, 0)
-buttonPadding.PaddingBottom = UDim.new(0.3, 0)
-buttonPadding.Parent = button
+local function makeButton(name: string, text: string): TextButton
+	local button = Instance.new("TextButton")
+	button.Name = name
+	button.AnchorPoint = Vector2.new(1, 1)
+	button.BackgroundColor3 = rgb(20, 20, 28)
+	button.BackgroundTransparency = 0.25
+	button.TextColor3 = rgb(255, 255, 255)
+	button.Font = Enum.Font.GothamBold
+	button.TextScaled = true
+	button.Text = text
+	button.Parent = buttonGui
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0.5, 0)
+	corner.Parent = button
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = rgb(255, 255, 255)
+	stroke.Thickness = 2
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent = button
+	local padding = Instance.new("UIPadding")
+	padding.PaddingLeft = UDim.new(0.12, 0)
+	padding.PaddingRight = UDim.new(0.12, 0)
+	padding.PaddingTop = UDim.new(0.3, 0)
+	padding.PaddingBottom = UDim.new(0.3, 0)
+	padding.Parent = button
+	return button
+end
+
+local viewButton = makeButton("View", "VIEW") -- touch only; V and gamepad Y everywhere
+local standButton = makeButton("Stand", "STAND") -- every platform; jumping does the same
 
 local function jumpButton(): GuiObject?
 	local playerGui = player:FindFirstChildOfClass("PlayerGui")
@@ -91,28 +101,33 @@ local function jumpButton(): GuiObject?
 	return if jump and jump:IsA("GuiObject") then jump else nil
 end
 
--- Sits directly left of the default jump button, bottoms aligned, measured at runtime in the same
--- coordinate space (the button's ScreenGui copies TouchGui's inset setting).
+-- VIEW sits directly left of the default jump button, bottoms aligned; STAND sits directly above
+-- VIEW. Measured at runtime in the jump button's coordinate space (the ScreenGui copies TouchGui's
+-- inset setting).
 local function layoutButton()
 	local jump = jumpButton()
+	local size, gap, corner
 	if jump then
 		local touchGui = jump:FindFirstAncestorOfClass("ScreenGui")
 		if touchGui then
 			buttonGui.IgnoreGuiInset = touchGui.IgnoreGuiInset
 		end
-		local size = math.floor(math.min(jump.AbsoluteSize.X, jump.AbsoluteSize.Y) * 0.8)
-		local gap = math.floor(jump.AbsoluteSize.X * 0.15)
-		button.Size = UDim2.fromOffset(size, size)
-		button.Position = UDim2.fromOffset(
+		size = math.floor(math.min(jump.AbsoluteSize.X, jump.AbsoluteSize.Y) * 0.8)
+		gap = math.floor(jump.AbsoluteSize.X * 0.15)
+		corner = UDim2.fromOffset(
 			jump.AbsolutePosition.X - gap,
 			jump.AbsolutePosition.Y + jump.AbsoluteSize.Y
 		)
 	else
 		local viewport = Workspace.CurrentCamera.ViewportSize
-		local size = math.floor(math.min(viewport.X, viewport.Y) * 0.14)
-		button.Size = UDim2.fromOffset(size, size)
-		button.Position = UDim2.fromScale(0.8, 0.95)
+		size = math.floor(math.min(viewport.X, viewport.Y) * 0.14)
+		gap = math.floor(size * 0.2)
+		corner = UDim2.fromScale(0.8, 0.95)
 	end
+	viewButton.Size = UDim2.fromOffset(size, size)
+	viewButton.Position = corner
+	standButton.Size = UDim2.fromOffset(size, size)
+	standButton.Position = corner - UDim2.fromOffset(0, size + gap)
 end
 
 local watchedJump: GuiObject? = nil
@@ -129,14 +144,15 @@ end
 -- Views ----------------------------------------------------------------------------------------
 
 local function focusPart(current: Session): BasePart?
-	local model = current.seat.Parent
-	local focus = model and model:FindFirstChild("CameraFocus")
+	local focus = current.model:FindFirstChild("CameraFocus")
 	return if focus and focus:IsA("BasePart") then focus else nil
 end
 
 -- The subject the current view wants.
 local function subjectFor(current: Session): Instance
-	return if current.outside then focusPart(current) or current.humanoid else current.humanoid
+	return if current.outside and current.seat
+		then focusPart(current) or current.humanoid
+		else current.humanoid
 end
 
 local function applyView(current: Session)
@@ -161,15 +177,14 @@ end
 
 local function toggle()
 	local current = session
-	if current then
+	if current and current.seat then
 		current.outside = not current.outside
 		applyView(current)
 	end
 end
 
 local function heading(current: Session): number?
-	local model = current.seat.Parent
-	local root = model and model:IsA("Model") and model.PrimaryPart
+	local root = current.model.PrimaryPart
 	if not root then
 		return nil
 	end
@@ -221,6 +236,15 @@ local function shake()
 	Workspace.CurrentCamera.CFrame *= applied
 end
 
+-- The cab's Climb out prompt (Vehicles.addCab). It only works standing, so it is hidden here while
+-- seated; the change is local to this client.
+local function climbOutPrompt(model: Model): ProximityPrompt?
+	local cab = model:FindFirstChild("Cab")
+	local anchor = cab and cab:FindFirstChild("CabPromptAnchor")
+	local prompt = anchor and anchor:FindFirstChild("Climb outPrompt")
+	return if prompt and prompt:IsA("ProximityPrompt") then prompt else nil
+end
+
 local function leave()
 	local current = session
 	if not current then
@@ -235,6 +259,10 @@ local function leave()
 	RunService:UnbindFromRenderStep(RENDER_STEP)
 	RunService:UnbindFromRenderStep(TURN_STEP)
 	buttonGui.Enabled = false
+	local climbOut = climbOutPrompt(current.model)
+	if climbOut then
+		climbOut.Enabled = true
+	end
 	player.CameraMaxZoomDistance = current.maxZoom
 	player.CameraMinZoomDistance = current.minZoom
 	local camera = Workspace.CurrentCamera
@@ -244,9 +272,24 @@ local function leave()
 	end
 end
 
-local function enter(humanoid: Humanoid, seat: VehicleSeat)
+-- Buttons for the current state: VIEW (touch) and STAND while seated, none while standing.
+local function showButtons(current: Session)
+	local climbOut = climbOutPrompt(current.model)
+	if climbOut then
+		climbOut.Enabled = current.seat == nil
+	end
+	viewButton.Visible = current.seat ~= nil and UserInputService.TouchEnabled
+	standButton.Visible = current.seat ~= nil
+	buttonGui.Enabled = current.seat ~= nil
+	if buttonGui.Enabled then
+		watchJumpButton()
+	end
+end
+
+local function enter(humanoid: Humanoid, model: Model, seat: VehicleSeat?)
 	leave()
 	local current: Session = {
+		model = model,
 		seat = seat,
 		humanoid = humanoid,
 		minZoom = player.CameraMinZoomDistance,
@@ -273,24 +316,65 @@ local function enter(humanoid: Humanoid, seat: VehicleSeat)
 	applyView(current)
 	RunService:BindToRenderStep(TURN_STEP, Enum.RenderPriority.Camera.Value - 1, turn)
 	RunService:BindToRenderStep(RENDER_STEP, Enum.RenderPriority.Camera.Value + 1, shake)
-	buttonGui.Enabled = UserInputService.TouchEnabled
-	if buttonGui.Enabled then
-		watchJumpButton()
+	showButtons(current)
+end
+
+-- The walker whose cab holds this point, if any.
+local function cabAt(position: Vector3): Model?
+	for _, cab in CollectionService:GetTagged("MechCab") do
+		if cab:IsA("BasePart") and cab.Parent and cab.Parent:IsA("Model") then
+			local offset = cab.CFrame:PointToObjectSpace(position)
+			local half = cab.Size / 2
+			if
+				math.abs(offset.X) <= half.X
+				and math.abs(offset.Y) <= half.Y
+				and math.abs(offset.Z) <= half.Z
+			then
+				return cab.Parent
+			end
+		end
+	end
+	return nil
+end
+
+-- Called on every seat change and every frame: seated in a cockpit, or standing in a cab, keeps
+-- (or starts) a session on that vehicle; anything else ends it.
+local function update(humanoid: Humanoid)
+	local seat = humanoid.SeatPart
+	local model: Model? = nil
+	local cockpit: VehicleSeat? = nil
+	if humanoid.Health > 0 then
+		if
+			seat
+			and seat:IsA("VehicleSeat")
+			and seat:GetAttribute("CockpitCamera") == true
+			and seat.Parent
+			and seat.Parent:IsA("Model")
+		then
+			model, cockpit = seat.Parent, seat
+		elseif not seat then
+			local root = humanoid.RootPart
+			model = root and cabAt(root.Position)
+		end
+	end
+	local current = session
+	if not model then
+		leave()
+	elseif not current or current.model ~= model then
+		enter(humanoid, model, cockpit)
+	elseif current.seat ~= cockpit then
+		-- Sat down or stood up in the same vehicle: keep the saved zoom, back to the cockpit view.
+		current.seat = cockpit
+		current.outside = false
+		applyView(current)
+		showButtons(current)
 	end
 end
 
-local function update(humanoid: Humanoid)
-	local seat = humanoid.SeatPart
-	local cockpit = humanoid.Health > 0
-		and seat ~= nil
-		and seat:IsA("VehicleSeat")
-		and seat:GetAttribute("CockpitCamera") == true
-	if cockpit then
-		if not session or session.seat ~= seat then
-			enter(humanoid, seat :: VehicleSeat)
-		end
-	else
-		leave()
+local function stand()
+	local current = session
+	if current and current.seat then
+		current.humanoid.Sit = false
 	end
 end
 
@@ -302,6 +386,15 @@ local function onCharacter(character: Model)
 	end)
 	humanoid.Died:Connect(leave)
 	update(humanoid)
+end
+
+-- Notices walking into or out of a cab.
+local function watchCab()
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid and (session or #CollectionService:GetTagged("MechCab") > 0) then
+		update(humanoid)
+	end
 end
 
 function MechCamera.start()
@@ -329,11 +422,13 @@ function MechCamera.start()
 			toggle()
 		end
 	end)
-	button.Activated:Connect(toggle)
+	viewButton.Activated:Connect(toggle)
+	standButton.Activated:Connect(stand)
+	RunService.Heartbeat:Connect(watchCab)
 
 	MechMotion.footfall:Connect(function(model: Model, _foot: string, strength: number)
 		local current = session
-		if current and current.seat.Parent == model then
+		if current and current.model == model then
 			table.insert(shakes, { start = os.clock(), strength = strength })
 		end
 	end)

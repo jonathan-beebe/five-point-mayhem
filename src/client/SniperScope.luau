@@ -1,8 +1,12 @@
 -- Zoom scope for the sniper rifle. While the sniper is equipped: hold the right mouse button,
 -- hold the gamepad left trigger, or toggle the on-screen SCOPE button (touch). Scoping narrows
--- the camera, draws a scope overlay, lowers mouse sensitivity, and hides the local character,
--- which sits in the middle of the third-person view. WeaponInput aims at the screen center
--- while scoped, so shots land on the reticle.
+-- the camera, draws a scope overlay, and hides the local character, which sits in the middle of
+-- the third-person view. WeaponInput aims at the screen center while scoped, so shots land on the
+-- reticle.
+--
+-- Scoped, this module turns the camera itself (Scriptable) instead of the default camera, whose
+-- touch and gamepad turning ignore the zoom. Mouse, touch drags and the right thumbstick move a
+-- target heading at low per-input rates; the view eases toward it, so it responds slowly.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -16,21 +20,36 @@ local rgb = Color3.fromRGB
 
 local WEAPON_ID = "sniper"
 local SCOPED_FOV = 12
-local MIN_SENSITIVITY_SCALE = 0.1
-local RENDER_STEP = "SniperScopeHide"
+local RENDER_STEP = "SniperScopeView"
+
+-- Turning while scoped, degrees per input unit.
+local MOUSE_RATE = 0.02 -- per pixel of mouse movement
+local TOUCH_RATE = 0.03 -- per pixel of drag
+local GAMEPAD_RATE = 18 -- per second at full right-stick deflection
+local GAMEPAD_DEADZONE = 0.15
+local EASE_SECONDS = 0.15 -- time constant of the view easing toward the target heading
+local MAX_PITCH = math.rad(80)
 local VIEW_FRACTION = 0.9 -- scope circle diameter as a fraction of the shorter screen side
 
 type Saved = {
 	camera: Camera,
+	cameraType: Enum.CameraType,
 	fieldOfView: number,
-	sensitivity: number,
 	mouseIcon: boolean,
+	mouseBehavior: Enum.MouseBehavior,
 	transparency: { [Instance]: number },
+	offset: Vector3, -- camera position relative to the character's root
+	yaw: number, -- current view, radians
+	pitch: number,
+	targetYaw: number, -- where input points the view
+	targetPitch: number,
 }
 
 local saved: Saved? = nil
 local sniper: Tool? = nil
 local touchToggled = false
+local stick = Vector2.zero -- right thumbstick
+local dragTouches: { [InputObject]: true } = {} -- touches that began on the world, not on a button
 
 -- Overlay -------------------------------------------------------------------------------------
 
@@ -203,6 +222,39 @@ local function hideCharacter()
 	end
 end
 
+local function turn(current: Saved, yawDegrees: number, pitchDegrees: number)
+	current.targetYaw -= math.rad(yawDegrees)
+	current.targetPitch =
+		math.clamp(current.targetPitch - math.rad(pitchDegrees), -MAX_PITCH, MAX_PITCH)
+end
+
+local function rootPart(): BasePart?
+	local character = player.Character
+	return character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
+local function viewStep(dt: number)
+	local current = saved
+	if not current then
+		return
+	end
+	UserInputService.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
+	local mouse = UserInputService:GetMouseDelta()
+	turn(current, mouse.X * MOUSE_RATE, mouse.Y * MOUSE_RATE)
+	if stick.Magnitude > GAMEPAD_DEADZONE then
+		turn(current, stick.X * GAMEPAD_RATE * dt, -stick.Y * GAMEPAD_RATE * dt)
+	end
+	local ease = 1 - math.exp(-dt / EASE_SECONDS)
+	current.yaw += (current.targetYaw - current.yaw) * ease
+	current.pitch += (current.targetPitch - current.pitch) * ease
+	local root = rootPart()
+	local position = if root then root.Position + current.offset else current.camera.CFrame.Position
+	current.camera.CFrame = CFrame.new(position)
+		* CFrame.Angles(0, current.yaw, 0)
+		* CFrame.Angles(current.pitch, 0, 0)
+	hideCharacter()
+end
+
 local function scopeOut()
 	local current = saved
 	if not current then
@@ -210,8 +262,10 @@ local function scopeOut()
 	end
 	saved = nil
 	RunService:UnbindFromRenderStep(RENDER_STEP)
+	-- The default camera picks up the look direction from the camera's CFrame.
+	current.camera.CameraType = current.cameraType
 	current.camera.FieldOfView = current.fieldOfView
-	UserInputService.MouseDeltaSensitivity = current.sensitivity
+	UserInputService.MouseBehavior = current.mouseBehavior
 	UserInputService.MouseIconEnabled = current.mouseIcon
 	for part, value in current.transparency do
 		if part.Parent then
@@ -227,24 +281,31 @@ local function scopeIn()
 	if saved or not sniper or not camera then
 		return
 	end
+	local look = camera.CFrame.LookVector
+	local yaw = math.atan2(-look.X, -look.Z)
+	local pitch = math.clamp(math.asin(math.clamp(look.Y, -1, 1)), -MAX_PITCH, MAX_PITCH)
+	local root = rootPart()
 	saved = {
 		camera = camera,
+		cameraType = camera.CameraType,
 		fieldOfView = camera.FieldOfView,
-		sensitivity = UserInputService.MouseDeltaSensitivity,
 		mouseIcon = UserInputService.MouseIconEnabled,
+		mouseBehavior = UserInputService.MouseBehavior,
 		transparency = {},
+		offset = if root then camera.CFrame.Position - root.Position else Vector3.zero,
+		yaw = yaw,
+		pitch = pitch,
+		targetYaw = yaw,
+		targetPitch = pitch,
 	}
-	local current = saved :: Saved
+	camera.CameraType = Enum.CameraType.Scriptable
 	camera.FieldOfView = SCOPED_FOV
-	-- Scale turning speed with the zoom so the reticle moves at the same rate across the screen.
-	UserInputService.MouseDeltaSensitivity = current.sensitivity
-		* math.max(SCOPED_FOV / current.fieldOfView, MIN_SENSITIVITY_SCALE)
 	UserInputService.MouseIconEnabled = false
 	layoutOverlay()
 	overlayGui.Enabled = true
 	button.BackgroundColor3 = rgb(200, 40, 60)
 	-- After the camera scripts, which also write LocalTransparencyModifier each frame.
-	RunService:BindToRenderStep(RENDER_STEP, Enum.RenderPriority.Camera.Value + 1, hideCharacter)
+	RunService:BindToRenderStep(RENDER_STEP, Enum.RenderPriority.Camera.Value + 1, viewStep)
 end
 
 function SniperScope.isScoped(): boolean
@@ -307,11 +368,24 @@ function SniperScope.start()
 	Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(scopeOut)
 
 	UserInputService.InputBegan:Connect(function(input, processed)
-		if not processed and isScopeInput(input) and sniper then
+		if processed then
+			return
+		end
+		if isScopeInput(input) and sniper then
 			scopeIn()
+		elseif input.UserInputType == Enum.UserInputType.Touch then
+			dragTouches[input] = true
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if input.KeyCode == Enum.KeyCode.Thumbstick2 then
+			stick = Vector2.new(input.Position.X, input.Position.Y)
+		elseif dragTouches[input] and saved then
+			turn(saved, input.Delta.X * TOUCH_RATE, input.Delta.Y * TOUCH_RATE)
 		end
 	end)
 	UserInputService.InputEnded:Connect(function(input)
+		dragTouches[input] = nil
 		if isScopeInput(input) and not touchToggled then
 			scopeOut()
 		end

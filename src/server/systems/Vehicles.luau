@@ -3,7 +3,8 @@
 -- driver's client sends its stick/keys over the DriveInput remote; the server turns that into
 -- targets for velocity constraints on the skid. Constraints are simulated by whichever machine
 -- owns the vehicle's physics, so this works under any ownership. Wrecked or abandoned vehicles
--- return to their parking spot. A driven vehicle hurts whoever it touches: cars ram, walkers stomp.
+-- return to their parking spot. A driven vehicle hurts whoever it touches (cars ram, walkers
+-- stomp), shoves the vehicles it hits, and fells trees.
 
 local CollectionService = game:GetService("CollectionService")
 local PhysicsService = game:GetService("PhysicsService")
@@ -79,9 +80,12 @@ local ACCELERATION = 55
 local BRAKING = 90
 local COASTING = 30
 local TURN_RATE = 2.4 -- default
+local SETTLING = 45 -- studs/s^2 an empty vehicle slows by, frictionless skid and all
+local SPIN_SETTLING = 4 -- rad/s^2 an empty vehicle's yaw spin slows by
 
 type Car = {
 	seat: VehicleSeat,
+	passengers: { Seat },
 	skid: BasePart,
 	mover: LinearVelocity,
 	turner: AngularVelocity,
@@ -92,9 +96,16 @@ type Car = {
 	turnAcceleration: number?, -- rad/s^2 on the yaw rate; nil = instant
 	turnInPlace: boolean, -- full turn rate at any speed
 	parkingBrake: boolean, -- hold still with no driver
+	driveForce: number, -- mover MaxForce while driven or braked
+	driveTorque: number, -- turner MaxTorque while driven or braked
 	stomps: boolean, -- walker: hurts what is under it at any pace, not by ramming speed
 	reach: Vector3, -- half width, height, half length of the box it hurts, from the ground
-	struck: { [Model]: number }, -- os.clock() each victim was last hurt
+	struck: { [Model]: number }, -- os.clock() each victim (character, vehicle, tree) was last hit
+	mass: number, -- footprint mass, for shoves between vehicles
+	ram: number, -- spec.ram
+	weight: number, -- how hard it hits trees and creatures: 1 for the base car, times ram
+	pace: number, -- recent top speed; outlasts the frame in which a crash stops the vehicle
+	stunnedUntil: number, -- os.clock() until which a shove, not the drive constraints, moves it
 	yaw: number, -- commanded yaw rate
 	throttle: number,
 	steer: number,
@@ -110,22 +121,58 @@ local function moveToward(current: number, target: number, step: number): number
 	return math.max(current - step, target)
 end
 
+local function setLimits(car: Car, force: number, torque: number)
+	-- Compared with slack: the properties store single precision.
+	if math.abs(car.mover.MaxForce - force) > 1 then
+		car.mover.MaxForce = force
+	end
+	if math.abs(car.turner.MaxTorque - torque) > 1 then
+		car.turner.MaxTorque = torque
+	end
+end
+
 local function drive(car: Car, dt: number)
 	local occupant = car.seat.Occupant
 	local skid = car.skid
-	-- Without a driver, ordinary physics has the car, unless its parking brake holds it still.
-	-- With one, the drive constraints steer it, in the air too: arcade cars keep control off jumps.
-	local held = occupant ~= nil or car.parkingBrake
-	car.mover.Enabled = held
-	car.turner.Enabled = held
+	-- A shoved vehicle flies free for a moment: the drive constraints would cancel the shove.
+	if os.clock() < car.stunnedUntil then
+		car.mover.Enabled = false
+		car.turner.Enabled = false
+		return
+	end
+	-- Without a driver, ordinary physics has the car while it is at rest; when it moves (shoved,
+	-- abandoned rolling) the constraints bleed off its speed and spin. A parking brake holds it
+	-- still. With a driver, the drive constraints steer it, in the air too: arcade cars keep
+	-- control off jumps.
 	if not occupant then
 		car.yaw = 0
-		if held then
+		local velocity = skid.AssemblyLinearVelocity
+		local flat = Vector2.new(velocity.X, velocity.Z)
+		local spin = skid.AssemblyAngularVelocity.Y
+		local settling = not car.parkingBrake and (flat.Magnitude > 0.5 or math.abs(spin) > 0.1)
+		local held = car.parkingBrake or settling
+		car.mover.Enabled = held
+		car.turner.Enabled = held
+		if car.parkingBrake then
+			setLimits(car, car.driveForce, car.driveTorque)
 			car.mover.PlaneVelocity = Vector2.zero
 			car.turner.AngularVelocity = Vector3.zero
+		elseif settling then
+			-- Limits sized to the settling rates: a sliding friction other vehicles push through.
+			local mass = skid.AssemblyMass
+			local span = skid.Size.X ^ 2 + skid.Size.Z ^ 2
+			setLimits(car, mass * SETTLING, mass * span / 12 * SPIN_SETTLING)
+			local slowed = math.max(flat.Magnitude - SETTLING * dt, 0)
+			car.mover.PlaneVelocity = if flat.Magnitude > 0
+				then flat.Unit * slowed
+				else Vector2.zero
+			car.turner.AngularVelocity = Vector3.new(0, moveToward(spin, 0, SPIN_SETTLING * dt), 0)
 		end
 		return
 	end
+	setLimits(car, car.driveForce, car.driveTorque)
+	car.mover.Enabled = true
+	car.turner.Enabled = true
 
 	local topSpeed = (car.seat:GetAttribute("TopSpeed") :: number?) or 80
 	local look = skid.CFrame.LookVector
@@ -253,15 +300,21 @@ end
 
 -- Collision groups. Every vehicle's solid parts are in Vehicles; a vehicle that steps over things
 -- (spec.stepsOver) is in Walkers, which passes through Vehicles and Scenery (trees, rocks, crates,
--- barrels). Buildings, roads, terrain and players stay solid to both.
+-- barrels). Buildings, roads, terrain and players stay solid to both. A felled tree is Wreckage:
+-- it falls through vehicles and players onto the ground. Player groups come from Session.
 function Vehicles.registerCollisionGroups()
-	for _, group in { "Vehicles", "Walkers", "Scenery" } do
+	for _, group in { "Vehicles", "Walkers", "Scenery", "Wreckage" } do
 		if not PhysicsService:IsCollisionGroupRegistered(group) then
 			PhysicsService:RegisterCollisionGroup(group)
 		end
 	end
 	PhysicsService:CollisionGroupSetCollidable("Walkers", "Vehicles", false)
 	PhysicsService:CollisionGroupSetCollidable("Walkers", "Scenery", false)
+	for _, group in { "Vehicles", "Walkers", "LobbyPlayers", "DeployedPlayers", "LockedOutPlayers" } do
+		if PhysicsService:IsCollisionGroupRegistered(group) then
+			PhysicsService:CollisionGroupSetCollidable("Wreckage", group, false)
+		end
+	end
 end
 
 -- Climbable TrussParts welded to the skid.
@@ -290,15 +343,35 @@ local function solidHeight(spec: VehicleModel.Model): number
 	return top
 end
 
--- Contact damage -------------------------------------------------------------------------------
+-- Contact damage and ramming -------------------------------------------------------------------
 
-local HIT_INTERVAL = 0.1 -- seconds between contact checks
-local HIT_COOLDOWN = 0.8 -- seconds before the same vehicle hurts the same victim again
+local HIT_INTERVAL = 0.1 -- seconds between contact checks on characters and barrels
+local HIT_COOLDOWN = 0.8 -- seconds before the same vehicle hits the same victim again
 local HIT_MARGIN = 1.5 -- studs past the footprint that count as touching
 local RAM_MIN_SPEED = 12 -- studs/s; slower cars nudge
-local RAM_DAMAGE = 0.6 -- per stud/s of speed: 48 at 80
+local RAM_DAMAGE = 0.6 -- per stud/s of speed, times weight: 48 at 80 for the base car
 local STOMP_DAMAGE = 40
 local STOMP_HEIGHT = 14 -- walkers hurt only around their legs, not riders on the deck
+local STOMP_PACE = 25 -- studs/s a moving walker hits vehicles and trees with, however slow
+local PACE_DECAY = 150 -- studs/s^2 the remembered pace falls by
+local CREATURE_FLING = 1.6 -- creatures fly further than players
+local CREATURE_LIFT = 0.5 -- extra upward fling on creatures per stud/s of pace
+local MAX_FLING = 160 -- studs/s
+-- A struck vehicle takes on the rammer's pace x RAM_TRANSFER x ram x their mass ratio (clamped),
+-- up to MAX_SHOVE. Footprint masses: kart 215, base car 448, sedan ~670, school bus 1690.
+local RAM_TRANSFER = 1.1 -- above 1, a struck vehicle of equal mass clears the rammer's path
+local RAM_MIN_RATIO = 0.15
+local RAM_MAX_RATIO = 3
+local MAX_SHOVE = 140 -- studs/s
+local SHOVE_LIFT = 0.25 -- upward share of a shove
+local STUN_TIME = 0.6 -- seconds a shoved vehicle flies free of its drive constraints
+-- A tree falls when pace x weight reaches TREE_BREAK x its toughness (0.8-1.5); slower vehicles
+-- stop against it. The base car fells at 20-38 studs/s, a kart at 29-54, a school bus at 10-19.
+local TREE_BREAK = 25
+local TREE_PUSH = 0.4 -- share of pace x weight the felled tree's crown takes on
+local MAX_TREE_PUSH = 40 -- studs/s
+local TREE_LIE = 15 -- seconds a felled tree lies before it is cleared
+local TREE_REGROW = 120 -- seconds until it grows back where it stood
 
 -- The box a vehicle hurts, as half width, height and half length from the ground.
 local function reachFor(spec: VehicleModel.Model): Vector3
@@ -314,24 +387,194 @@ local function touches(car: Car, ground: CFrame, position: Vector3): boolean
 		and at.Y <= car.reach.Y
 end
 
-local function hurtTouching(model: Model, car: Car)
-	local occupant = car.seat.Occupant
-	if not occupant then
+-- What a vehicle can ram: the solid parts of vehicles and of the tree groves (the parents of
+-- trees tagged Tree by Landscape).
+local rammable = OverlapParams.new()
+rammable.FilterType = Enum.RaycastFilterType.Include
+rammable.RespectCanCollide = true
+local rammableRoots: { Instance } = { folder }
+rammable.FilterDescendantsInstances = rammableRoots
+
+local function addGrove(tree: Instance)
+	local grove = tree.Parent
+	if grove and not table.find(rammableRoots, grove) then
+		table.insert(rammableRoots, grove)
+		rammable.FilterDescendantsInstances = rammableRoots
+	end
+end
+CollectionService:GetInstanceAddedSignal("Tree"):Connect(addGrove)
+for _, tree in CollectionService:GetTagged("Tree") do
+	addGrove(tree)
+end
+
+-- A felled tree grows back once no vehicle, creature or player stands in its place.
+local regrowParams = OverlapParams.new()
+regrowParams.FilterType = Enum.RaycastFilterType.Include
+
+local function regrow(sapling: Model, grove: Instance, box: CFrame, extent: Vector3)
+	if not grove.Parent then
 		return
 	end
-	local driver = Players:GetPlayerFromCharacter(occupant.Parent)
+	local blockers: { Instance } = { folder }
+	local creatures = workspace:FindFirstChild("Creatures")
+	if creatures then
+		table.insert(blockers, creatures)
+	end
+	for _, player in Players:GetPlayers() do
+		if player.Character then
+			table.insert(blockers, player.Character)
+		end
+	end
+	regrowParams.FilterDescendantsInstances = blockers
+	if #workspace:GetPartBoundsInBox(box, extent, regrowParams) > 0 then
+		task.delay(TREE_LIE, regrow, sapling, grove, box, extent)
+		return
+	end
+	sapling.Parent = grove
+end
+
+-- Topples a tree away from a vehicle: its parts weld to the trunk, come loose, and turn to
+-- Wreckage, which falls through vehicles and players. It lies for TREE_LIE seconds, then goes.
+local function fell(tree: Model, direction: Vector3, pace: number, weight: number)
+	local trunk = tree.PrimaryPart
+	local grove = tree.Parent
+	if not trunk or not grove or tree:GetAttribute("Felled") then
+		return
+	end
+	local sapling = tree:Clone()
+	local box, extent = tree:GetBoundingBox()
+	tree:SetAttribute("Felled", true)
+	local mass = 0
+	for _, part in tree:GetDescendants() do
+		if part:IsA("BasePart") then
+			if part ~= trunk then
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = trunk
+				weld.Part1 = part
+				weld.Parent = part
+			end
+			part.CollisionGroup = "Wreckage"
+			part.CanTouch = false
+			part.Anchored = false
+			mass += part:GetMass()
+		end
+	end
+	pcall(trunk.SetNetworkOwner, trunk, nil)
+	-- Pushed high, the tree pivots on its base and falls the way the vehicle was going.
+	local crown = box.Position + Vector3.new(0, extent.Y / 4, 0)
+	local push = math.min(pace * weight * TREE_PUSH, MAX_TREE_PUSH)
+	trunk:ApplyImpulseAtPosition(direction * push * mass, crown)
+	task.delay(TREE_LIE, function()
+		tree:Destroy()
+	end)
+	task.delay(TREE_REGROW, regrow, sapling, grove, box, extent)
+end
+
+-- Throws a struck vehicle along `direction`, scaled by the rammer's pace, ram and the two masses,
+-- and frees it from its drive constraints for STUN_TIME so the throw carries.
+local function shove(car: Car, other: Car, direction: Vector3, pace: number, now: number)
+	local skid = other.skid
+	local ratio = math.clamp(car.mass / other.mass, RAM_MIN_RATIO, RAM_MAX_RATIO)
+	local speed = math.min(pace * RAM_TRANSFER * ratio * car.ram, MAX_SHOVE)
+	-- The server must own the struck vehicle for the throw to take. A driven one it already owns;
+	-- an empty one it takes here. One carrying only passengers stays with their client, which
+	-- leaves it to the collision alone.
+	local aboard = other.seat.Occupant ~= nil
+	for _, seat in other.passengers do
+		aboard = aboard or seat.Occupant ~= nil
+	end
+	if not aboard then
+		pcall(skid.SetNetworkOwner, skid, nil)
+	end
+	local velocity = skid.AssemblyLinearVelocity
+		+ direction * speed
+		+ Vector3.new(0, speed * SHOVE_LIFT, 0)
+	if velocity.Magnitude > MAX_SHOVE then
+		velocity = velocity.Unit * MAX_SHOVE
+	end
+	skid.AssemblyLinearVelocity = velocity
+	other.stunnedUntil = now + STUN_TIME
+end
+
+-- Vehicles and trees are checked every frame with a box that reaches one frame ahead, so the hit
+-- lands before the crash stops the rammer. Characters and barrels are checked every
+-- HIT_INTERVAL (`checkTargets`).
+local function hurtTouching(model: Model, car: Car, dt: number, checkTargets: boolean)
 	local skid = car.skid
 	local velocity = skid.AssemblyLinearVelocity
 	local flat = Vector3.new(velocity.X, 0, velocity.Z)
 	local speed = flat.Magnitude
+	car.pace = math.max(speed, car.pace - PACE_DECAY * dt)
+	local occupant = car.seat.Occupant
+	local now = os.clock()
+	-- A shoved vehicle hits nothing until it is back under control: no chains of shoves.
+	if not occupant or now < car.stunnedUntil then
+		return
+	end
+	local driver = Players:GetPlayerFromCharacter(occupant.Parent)
 	local moving = if car.stomps
 		then speed > 2 or math.abs(skid.AssemblyAngularVelocity.Y) > 0.15
-		else speed >= RAM_MIN_SPEED
+		else car.pace >= RAM_MIN_SPEED
 	if not moving then
 		return
 	end
+	local pace = if car.stomps then math.max(car.pace, STOMP_PACE) else car.pace
 	local ground = skid.CFrame * SKID_TO_GROUND
-	local now = os.clock()
+	local look = ground.LookVector
+	local heading = if speed > 1 then flat.Unit else Vector3.new(look.X, 0, look.Z).Unit
+	local function away(position: Vector3): Vector3
+		local offset = position - ground.Position
+		offset = Vector3.new(offset.X, 0, offset.Z)
+		return if offset.Magnitude > 0.1 then offset.Unit else heading
+	end
+
+	local ahead = ground:VectorToObjectSpace(flat) * dt
+	local height = car.reach.Y - 0.5
+	local box = ground * CFrame.new(ahead.X / 2, 0.5 + height / 2, ahead.Z / 2)
+	local size = Vector3.new(
+		car.reach.X * 2 + math.abs(ahead.X),
+		height,
+		car.reach.Z * 2 + math.abs(ahead.Z)
+	)
+	for _, part in workspace:GetPartBoundsInBox(box, size, rammable) do
+		local victim = part.Parent
+		if
+			not victim
+			or victim == model
+			or not victim:IsA("Model")
+			or now - (car.struck[victim :: Model] or 0) < HIT_COOLDOWN
+		then
+			continue
+		end
+		local other = cars[victim :: Model]
+		if other then
+			car.struck[victim :: Model] = now
+			local outward = away(other.skid.Position)
+			local direction = if car.stomps then outward else heading + outward * 0.5
+			shove(
+				car,
+				other,
+				if direction.Magnitude > 0.1 then direction.Unit else outward,
+				pace,
+				now
+			)
+		elseif CollectionService:HasTag(victim, "Tree") then
+			local toughness = (victim:GetAttribute("Toughness") :: number?) or 1
+			if pace * car.weight >= TREE_BREAK * toughness then
+				car.struck[victim :: Model] = now
+				fell(
+					victim :: Model,
+					if car.stomps then away(part.Position) else heading,
+					pace,
+					car.weight
+				)
+			end
+		end
+	end
+
+	if not checkTargets then
+		return
+	end
 	for _, target in Combat.getTargets() do
 		local humanoid = target.humanoid
 		local seat = humanoid.SeatPart
@@ -343,16 +586,25 @@ local function hurtTouching(model: Model, car: Car)
 		then
 			continue
 		end
-		local amount = if car.stomps then STOMP_DAMAGE else speed * RAM_DAMAGE
+		local amount = if car.stomps then STOMP_DAMAGE else pace * RAM_DAMAGE * car.weight
 		if Combat.damage(driver, target.model, humanoid, amount) then
 			car.struck[target.model] = now
-			local away = target.root.Position - ground.Position
-			away = Vector3.new(away.X, 0, away.Z)
 			local direction = if car.stomps or speed < 1
-				then (if away.Magnitude > 0.1 then away.Unit else ground.LookVector)
-				else flat.Unit
-			local shove = if car.stomps then 50 else speed * 0.8
-			Combat.push(target.model, direction * shove + Vector3.new(0, 35, 0), 0.2)
+				then away(target.root.Position)
+				else heading
+			local fling = if car.stomps then 50 else pace * 0.8 * car.weight
+			local lift = 35
+			local creature = Players:GetPlayerFromCharacter(target.model) == nil
+			if creature then
+				fling *= CREATURE_FLING
+				lift += pace * CREATURE_LIFT
+			end
+			local push = direction * math.min(fling, MAX_FLING) + Vector3.new(0, lift, 0)
+			if creature and humanoid.Health <= 0 then
+				-- A kill: throw the whole body before its joints break, so the pieces scatter.
+				target.root.AssemblyLinearVelocity = push
+			end
+			Combat.push(target.model, push, 0.2)
 		end
 	end
 	for _, barrel in CollectionService:GetTagged("ExplosiveBarrel") do
@@ -370,13 +622,13 @@ end
 local sinceHits = 0
 RunService.Heartbeat:Connect(function(dt)
 	sinceHits += dt
-	if sinceHits < HIT_INTERVAL then
-		return
+	local checkTargets = sinceHits >= HIT_INTERVAL
+	if checkTargets then
+		sinceHits = 0
 	end
-	sinceHits = 0
 	for model, car in cars do
 		if model.Parent then
-			hurtTouching(model, car)
+			hurtTouching(model, car, dt, checkTargets)
 		end
 	end
 end)
@@ -384,6 +636,14 @@ end)
 -- Collision boxes can enclose seats, so players get in by prompt: Drive (E) takes the driver
 -- seat, Ride (F) the free passenger seat nearest the player. Both prompts sit above the middle of
 -- the vehicle and reach past its far end, so they work from any side.
+local function seatPlayer(player: Player, seat: Seat | VehicleSeat)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid and humanoid.Health > 0 and not seat.Occupant then
+		seat:Sit(humanoid)
+	end
+end
+
 local function addPrompts(
 	skid: BasePart,
 	spec: VehicleModel.Model,
@@ -413,14 +673,6 @@ local function addPrompts(
 		each.RequiresLineOfSight = false
 		each.Parent = anchor
 		return each
-	end
-
-	local function seatPlayer(player: Player, seat: Seat | VehicleSeat)
-		local character = player.Character
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		if humanoid and humanoid.Health > 0 and not seat.Occupant then
-			seat:Sit(humanoid)
-		end
 	end
 
 	local drivePrompt = prompt("Drive", Enum.KeyCode.E, 0)
@@ -464,12 +716,112 @@ local function addPrompts(
 	end
 end
 
+-- Terrain collides only at its surface: a part below it falls through the inside. Lifts `cframe`
+-- to the highest terrain surface under the footprint's center and corners (never lower). The
+-- second result is false when no ray hit terrain: right after the world is built, terrain has no
+-- collision yet (raycasts miss it and parts fall through it).
+local GROUND_WAIT = 10 -- seconds a new vehicle waits for terrain collision under it
+local terrainOnly = RaycastParams.new()
+terrainOnly.FilterType = Enum.RaycastFilterType.Include
+terrainOnly.FilterDescendantsInstances = { workspace.Terrain }
+
+local function onTerrain(cframe: CFrame, W: number, L: number): (CFrame, boolean)
+	local top = cframe.Position.Y
+	local found = false
+	for _, corner in
+		{
+			Vector3.zero,
+			Vector3.new(-W, 0, -L),
+			Vector3.new(W, 0, -L),
+			Vector3.new(-W, 0, L),
+			Vector3.new(W, 0, L),
+		}
+	do
+		local point = cframe * (corner / 2)
+		local hit =
+			workspace:Raycast(point + Vector3.new(0, 50, 0), Vector3.new(0, -100, 0), terrainOnly)
+		if hit then
+			top = math.max(top, hit.Position.Y)
+			found = true
+		end
+	end
+	return cframe + Vector3.new(0, top - cframe.Position.Y, 0), found
+end
+
+-- The walkable cab (spec.cab): an invisible volume tagged MechCab (the client's camera looks for
+-- it) holding two prompts: Drive takes the free driver seat, Climb out moves the player to the
+-- exit spot outside.
+local function addCab(model: Model, skid: BasePart, spec: VehicleModel.Model, driver: VehicleSeat)
+	local cab = spec.cab :: VehicleModel.CabSpec
+	local exit = spec.exit :: CFrame
+	local volume = Instance.new("Part")
+	volume.Name = "Cab"
+	volume.Size = cab.size
+	volume.Transparency = 1
+	volume.CanCollide = false
+	volume.CanTouch = false
+	volume.CanQuery = false
+	attach(model, skid, volume, CFrame.new(cab.center))
+	CollectionService:AddTag(volume, "MechCab")
+
+	local anchor = Instance.new("Attachment")
+	anchor.Name = "CabPromptAnchor"
+	anchor.Position = Vector3.new(0, 3 - cab.size.Y / 2, 0)
+	anchor.Parent = volume
+	local reach = math.sqrt((cab.size.X / 2) ^ 2 + (cab.size.Z / 2) ^ 2) + 0.5
+
+	local function prompt(action: string, key: Enum.KeyCode, order: number): ProximityPrompt
+		local each = Instance.new("ProximityPrompt")
+		each.Name = action .. "Prompt"
+		each.ActionText = action
+		each.ObjectText = spec.name
+		each.KeyboardKeyCode = key
+		each.UIOffset = Vector2.new(0, order * 72)
+		each.MaxActivationDistance = reach
+		each.RequiresLineOfSight = false
+		each.Parent = anchor
+		return each
+	end
+
+	local drivePrompt = prompt("Drive", Enum.KeyCode.E, 0)
+	drivePrompt.Triggered:Connect(function(player)
+		seatPlayer(player, driver)
+	end)
+	driver:GetPropertyChangedSignal("Occupant"):Connect(function()
+		drivePrompt.Enabled = driver.Occupant == nil
+	end)
+
+	prompt("Climb out", Enum.KeyCode.Q, 1).Triggered:Connect(function(player)
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if
+			not character
+			or not root
+			or not humanoid
+			or humanoid.Health <= 0
+			or humanoid.SeatPart
+		then
+			return
+		end
+		-- Pivot the character so its root lands on the exit frame.
+		local rootOffset = character:GetPivot():ToObjectSpace(root.CFrame)
+		-- Never below the terrain surface under the exit, or the player falls through the world.
+		local lift = Vector3.new(0, exit.Position.Y, 0)
+		local spot = (onTerrain(skid.CFrame * SKID_TO_GROUND * exit - lift, 0, 0)) + lift
+		character:PivotTo(spot * rootOffset:Inverse())
+		root.AssemblyLinearVelocity = Vector3.zero
+	end)
+end
+
 local function build(id: string, cframe: CFrame): Model
 	local spec = specFor(id)
 	local model = Instance.new("Model")
 	model.Name = spec.name
 	model:SetAttribute("VehicleId", id)
 	local W, L = spec.footprint.X, spec.footprint.Y
+	local grounded
+	cframe, grounded = onTerrain(cframe, W, L)
 
 	-- The skid and its ramps are the only massive parts: a low, frictionless sled under the
 	-- footprint. Its ends are ramps whose undersides slope up like a sled's nose, so driving into
@@ -563,6 +915,9 @@ local function build(id: string, cframe: CFrame): Model
 		chair.Size = VehicleModel.SEAT_SIZE
 		chair.Transparency = 1
 		chair.CanCollide = false
+		-- No sitting by touch: players get in by prompt (Seat:Sit), and a driver who stands up in
+		-- a cab would otherwise land back on the seat and sit again.
+		chair.CanTouch = false
 		attachTo(model, skid, spec.seatBone and bones[spec.seatBone], chair, offset)
 		if index == 1 then
 			driver = chair :: VehicleSeat
@@ -576,6 +931,9 @@ local function build(id: string, cframe: CFrame): Model
 	driver:SetAttribute("TopSpeed", spec.speed)
 	if spec.cockpitCamera then
 		driver:SetAttribute("CockpitCamera", true)
+	end
+	if spec.cab then
+		addCab(model, skid, spec, driver)
 	end
 	if spec.gait then
 		driver:SetAttribute("TurnRate", spec.turnRate or TURN_RATE) -- the walk animator reads it
@@ -618,8 +976,10 @@ local function build(id: string, cframe: CFrame): Model
 	turner.Enabled = false
 	turner.Parent = skid
 
+	local ram = spec.ram or 1
 	local car: Car = {
 		seat = driver,
+		passengers = passengers,
 		skid = skid,
 		mover = mover,
 		turner = turner,
@@ -630,16 +990,23 @@ local function build(id: string, cframe: CFrame): Model
 		turnAcceleration = spec.turnAcceleration,
 		turnInPlace = spec.turnInPlace == true,
 		parkingBrake = spec.parkingBrake == true,
+		driveForce = mover.MaxForce,
+		driveTorque = turner.MaxTorque,
 		stomps = spec.stepsOver == true,
 		reach = reachFor(spec),
 		struck = {},
+		mass = mass,
+		ram = ram,
+		weight = math.sqrt(strength) * ram,
+		pace = 0,
+		stunnedUntil = 0,
 		yaw = 0,
 		throttle = 0,
 		steer = 0,
 	}
 	-- While someone drives, the server simulates the car (and the seated driver with it). When
-	-- they get out, put them at the model's exit spot if it has one, then hand their character's
-	-- physics back to them.
+	-- they get out, hand their character's physics back to them. A driver getting out of a cab
+	-- stands up in it.
 	local lastDriver: Player? = nil
 	driver:GetPropertyChangedSignal("Occupant"):Connect(function()
 		model:SetAttribute("LastUsed", os.clock())
@@ -662,19 +1029,33 @@ local function build(id: string, cframe: CFrame): Model
 			if not character or not root then
 				return
 			end
-			local humanoid = character:FindFirstChildOfClass("Humanoid")
-			if spec.exit and skid.Parent and humanoid and humanoid.Health > 0 then
-				-- Pivot the character so its root lands on the exit frame.
-				local rootOffset = character:GetPivot():ToObjectSpace(root.CFrame)
-				character:PivotTo(skid.CFrame * SKID_TO_GROUND * spec.exit * rootOffset:Inverse())
-				root.AssemblyLinearVelocity = Vector3.zero
-			end
 			pcall(root.SetNetworkOwner, root, previous)
 		end)
 	end)
 
 	model.Parent = folder
 	cars[model] = car
+	-- No terrain collision under the spot yet: hold the vehicle in place until there is, then set
+	-- it on the surface. Unheld, it would fall through and stay buried (a walker until its lowest
+	-- collision box catches on the surface, with its prompt and exit underground).
+	if not grounded then
+		skid.Anchored = true
+		task.spawn(function()
+			local deadline = os.clock() + GROUND_WAIT
+			while skid.Parent and os.clock() < deadline do
+				task.wait(0.1)
+				local spot, found = onTerrain(cframe, W, L)
+				if found then
+					model:PivotTo(spot * CFrame.new(0, 0.5, 0))
+					break
+				end
+			end
+			if os.clock() >= deadline then
+				warn("[Mayhem vehicle] no terrain under " .. spec.name .. "; releasing it anyway")
+			end
+			skid.Anchored = false
+		end)
+	end
 	return model
 end
 
@@ -689,11 +1070,30 @@ local function park(spot: Spot)
 	spot.model:SetAttribute("LastUsed", os.clock())
 end
 
+-- Someone in a seat, or standing in the cab.
 local function isOccupied(model: Model): boolean
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("Seat") or descendant:IsA("VehicleSeat") then
 			if (descendant :: any).Occupant then
 				return true
+			end
+		end
+	end
+	local cab = model:FindFirstChild("Cab")
+	if cab and cab:IsA("BasePart") then
+		for _, player in Players:GetPlayers() do
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+			if root then
+				local offset = cab.CFrame:PointToObjectSpace(root.Position)
+				local half = cab.Size / 2
+				if
+					math.abs(offset.X) <= half.X
+					and math.abs(offset.Y) <= half.Y
+					and math.abs(offset.Z) <= half.Z
+				then
+					return true
+				end
 			end
 		end
 	end
@@ -716,6 +1116,7 @@ local placement = Random.new()
 local SPOKE_HALF_WIDTH = 11
 local CLEARANCE = 3 -- free space kept around each parked vehicle
 local CLEAR_HEIGHT = 16 -- taller than every car; walkers clear their own height
+local LOBBY_MARGIN = 10 -- no vehicle parks within this of the lobby wall
 local ATTEMPTS = 400
 
 -- Everything but the terrain counts as an obstacle, roads included: no vehicle parks on a road.
@@ -729,7 +1130,7 @@ local function isClear(ground: CFrame, W: number, L: number, height: number): bo
 	for _, x in { -1, 1 } do
 		for _, z in { -1, 1 } do
 			local corner = ground * Vector3.new(x * W / 2, 0, z * L / 2)
-			if Vector2.new(corner.X, corner.Z).Magnitude < Config.LOBBY_RADIUS + 10 then
+			if Vector2.new(corner.X, corner.Z).Magnitude < Config.LOBBY_RADIUS + LOBBY_MARGIN then
 				return false
 			end
 		end
@@ -751,16 +1152,64 @@ local function randomSpot(spoke: number): CFrame
 	return CFrame.new(position) * CFrame.Angles(0, placement:NextNumber(0, 2 * math.pi), 0)
 end
 
--- Parks every catalog vehicle once, dealt round-robin across the spokes, each at a random clear
+-- The height isClear checks above a vehicle's footprint.
+local function clearHeight(spec: VehicleModel.Model): number
+	local top = solidHeight(spec)
+	return if top > CLEAR_HEIGHT then top + 2 else CLEAR_HEIGHT
+end
+
+local function addSpot(id: string, ground: CFrame)
+	local spot: Spot = { id = id, cframe = ground + Vector3.new(0, 0.2, 0) }
+	table.insert(spots, spot)
+	park(spot)
+end
+
+-- Walkers (specs with a gait) stand guard in a ring around the lobby, facing out toward the
+-- arena: one in the middle of each gap between the gate roads, spread evenly when their count
+-- differs from the gates'. The ring is as tight as isClear allows the deepest walker, whose back
+-- edge sits CLEARANCE past the lobby margin. Returns the walkers whose spot was blocked.
+local function placeWalkers(walkers: { VehicleCatalog.Vehicle }): { VehicleCatalog.Vehicle }
+	local depth = 0
+	for _, entry in walkers do
+		depth = math.max(depth, specFor(entry.id).footprint.Y)
+	end
+	local radius = Config.LOBBY_RADIUS + LOBBY_MARGIN + CLEARANCE + depth / 2
+	local firstGap = Config.regionAngle(1) + math.pi / #Config.REGIONS
+	local blocked = {}
+	for index, entry in walkers do
+		local spec = specFor(entry.id)
+		local angle = firstGap + (index - 1) * 2 * math.pi / #walkers
+		local position = Config.pointAt(angle, radius)
+		local ground = CFrame.lookAt(position, position + Config.pointAt(angle, 1))
+		if isClear(ground, spec.footprint.X, spec.footprint.Y, clearHeight(spec)) then
+			addSpot(entry.id, ground)
+		else
+			table.insert(blocked, entry)
+		end
+	end
+	return blocked
+end
+
+-- Parks every catalog vehicle once. Walkers go first, around the lobby; the rest (and any walker
+-- whose guard spot was blocked) are dealt round-robin across the spokes, each at a random clear
 -- spot with a random heading. Each vehicle is built before the next is placed, so later picks
 -- avoid it. The chosen spot is the vehicle's home for respawns.
 local function layOut()
-	for order, entry in VehicleCatalog.ALL do
+	local walkers, others = {}, {}
+	for _, entry in VehicleCatalog.ALL do
+		table.insert(if specFor(entry.id).gait then walkers else others, entry)
+	end
+	for _, entry in placeWalkers(walkers) do
+		warn(
+			"[Mayhem vehicle] guard spot blocked for " .. entry.id .. "; parking it in a motor pool"
+		)
+		table.insert(others, entry)
+	end
+	for order, entry in others do
 		local spoke = (order - 1) % #Config.REGIONS + 1
 		local spec = specFor(entry.id)
 		local W, L = spec.footprint.X, spec.footprint.Y
-		local top = solidHeight(spec)
-		local height = if top > CLEAR_HEIGHT then top + 2 else CLEAR_HEIGHT
+		local height = clearHeight(spec)
 		local ground = randomSpot(spoke)
 		local clear = isClear(ground, W, L, height)
 		for _ = 2, ATTEMPTS do
@@ -773,9 +1222,7 @@ local function layOut()
 		if not clear then
 			warn("[Mayhem vehicle] no clear parking spot for " .. entry.id)
 		end
-		local spot: Spot = { id = entry.id, cframe = ground + Vector3.new(0, 0.2, 0) }
-		table.insert(spots, spot)
-		park(spot)
+		addSpot(entry.id, ground)
 	end
 end
 

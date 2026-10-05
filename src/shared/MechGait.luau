@@ -1,6 +1,7 @@
--- Walk cycle for the Titan Mech's bones: pure math, no services, so Lune can load it for tests and
+-- Walk cycle for every walker's bones: pure math, no services, so Lune can load it for tests and
 -- the preview renderer. The legs are decoration driven by the skid's measured velocity; nothing
--- here touches physics.
+-- here touches physics. Stride lengths and heights are the Titan Mech's (legs 19 studs long),
+-- scaled by each rig's leg length.
 --
 -- Everything is in vehicle space (origin on the ground, +Y up, -Z front, +X right). A foot's `z` is
 -- its forward offset (+ = forward) from its rest ankle. Phase `phase` runs 0..1 per stride: the
@@ -18,6 +19,8 @@ local MechGait = {}
 local rad = math.rad
 local TAU = 2 * math.pi
 
+-- Distances below are for a leg of REFERENCE_LEG; a rig's `scale` multiplies them.
+MechGait.REFERENCE_LEG = 19 -- thigh + shin, studs
 MechGait.STEP = 14 -- one foot's stance travel at full stride, studs
 MechGait.DUTY = 0.6 -- stance fraction of the cycle; 20 % double support
 MechGait.CYCLE = MechGait.STEP / MechGait.DUTY -- studs per stride
@@ -94,6 +97,7 @@ export type Leg = {
 export type Rig = {
 	pelvis: Vector3,
 	legs: { Leg },
+	scale: number, -- leg length / REFERENCE_LEG
 }
 
 export type Foot = {
@@ -184,6 +188,7 @@ function MechGait.rig(pivots: { [string]: Vector3 }): Rig
 	return {
 		pelvis = assert(pivots.pelvis, "rig needs pelvis"),
 		legs = legs,
+		scale = (legs[1].thigh + legs[1].shin) / MechGait.REFERENCE_LEG,
 	}
 end
 
@@ -226,7 +231,9 @@ function MechGait.step(state: State, input: Input, dt: number): { Footfall }
 	if dt <= 0 then
 		return footfalls
 	end
-	local DUTY, STEP, CYCLE = MechGait.DUTY, MechGait.STEP, MechGait.CYCLE
+	local scale = state.rig.scale
+	local DUTY, STEP, CYCLE = MechGait.DUTY, MechGait.STEP * scale, MechGait.CYCLE * scale
+	local slip = SLIP * scale
 
 	local v = input.forward
 	local omega = input.yawRate
@@ -255,7 +262,7 @@ function MechGait.step(state: State, input: Input, dt: number): { Footfall }
 	else
 		local settled = inDoubleSupport(state.phase)
 		for _, foot in state.feet do
-			settled = settled and not foot.swinging and math.abs(foot.z) <= MechGait.SETTLED
+			settled = settled and not foot.swinging and math.abs(foot.z) <= MechGait.SETTLED * scale
 		end
 		rate = if settled then 0 else MechGait.MIN_RATE
 	end
@@ -280,7 +287,7 @@ function MechGait.step(state: State, input: Input, dt: number): { Footfall }
 			if foot.swinging then
 				foot.swinging = false -- landed where the swing aimed
 			end
-			foot.z = math.clamp(foot.z - foot.speed * dt, -SLIP, SLIP)
+			foot.z = math.clamp(foot.z - foot.speed * dt, -slip, slip)
 			foot.lift = 0
 			foot.toe = 0
 		else
@@ -297,8 +304,8 @@ function MechGait.step(state: State, input: Input, dt: number): { Footfall }
 				land = math.clamp(travel, -STEP, STEP) / 2
 			end
 			foot.z = lerp(foot.liftoff, land, smoothstep(u))
-			local height = math.clamp(math.abs(land - foot.liftoff) / 6, 0.35, 1)
-			foot.lift = MechGait.LIFT * height * math.sin(math.pi * u)
+			local height = math.clamp(math.abs(land - foot.liftoff) / (6 * scale), 0.35, 1)
+			foot.lift = MechGait.LIFT * scale * height * math.sin(math.pi * u)
 			foot.toe = toePitch(u)
 		end
 	end
@@ -398,9 +405,12 @@ function MechGait.pose(state: State): { [string]: CFrame }
 
 	local bob = -BOB / 2 + BOB / 2 * math.cos(2 * TAU * (phase - 0.3))
 	bob -= DIP * math.max(0, 1 - (phase % 0.5) / 0.08) ^ 2
-	local pelvisY = channel("pelvis", "ty", w * bob + still * (-0.15 - 0.15 * math.sin(breath)))
-	local pelvisX =
-		channel("pelvis", "tx", -w * SWAY * math.sin(swing) + still * shiftOffset(state))
+	-- Translations are in reference-leg studs (as are their limits), scaled to this rig after.
+	local scale = state.rig.scale
+	local pelvisY = scale
+		* channel("pelvis", "ty", w * bob + still * (-0.15 - 0.15 * math.sin(breath)))
+	local pelvisX = scale
+		* channel("pelvis", "tx", -w * SWAY * math.sin(swing) + still * shiftOffset(state))
 	local pelvisRoll = channel("pelvis", "z", -w * ROLL * math.sin(swing))
 	local lead = TURN_LEAD * math.clamp(state.yawRate / state.turnRate, -1, 1)
 	local pelvisYaw = channel("pelvis", "y", -w * PELVIS_YAW * stride + lead)

@@ -1,6 +1,6 @@
 -- Every weapon and vehicle sound (data only). Tune by ear here; `src/shared/Sounds.luau` plays
 -- these on the server (weapons) and `src/client/VehicleSounds.luau` on each client (engines and
--- the Titan Mech).
+-- walkers).
 --
 -- A cue is one sound on one event:
 --   key        PALETTE entry
@@ -73,9 +73,9 @@ export type VehicleSounds = {
 	start: Cue?,
 }
 
--- The Titan Mech (VehicleSounds' `mech` handler). `hum` runs while a pilot is aboard and follows
--- ground speed; `servo` follows the legs' cadence (walking or turning in place) and is silent at
--- rest. `step` plays at each heel strike at volume x strength (0..1).
+-- A walker (VehicleSounds' mech handler). `hum` runs while a pilot is aboard and follows ground
+-- speed; `servo` follows the legs' cadence (walking or turning in place) and is silent at rest.
+-- `step` plays at each heel strike at volume x strength (0..1), and `creak` with it at the knee.
 export type MechSounds = {
 	hum: Loop,
 	servo: Loop,
@@ -83,6 +83,7 @@ export type MechSounds = {
 	step: Cue,
 	hatchOpen: Cue, -- pilot leaves
 	hatchClose: Cue, -- pilot sits
+	creak: Cue?,
 	humDelay: number,
 	fadeIn: number, -- seconds for the hum to reach full level
 	fadeOut: number,
@@ -887,6 +888,104 @@ local MECH: MechSounds = {
 	smoothing = 4,
 }
 
+-- A copy of MECH with some fields replaced.
+local function mechVariant(changes: { [string]: any }): MechSounds
+	local profile = table.clone(MECH) :: any
+	for key, value in changes do
+		profile[key] = value
+	end
+	return profile
+end
+
+-- Keyed by VehicleCatalog id: every walker's sounds.
+local MECHS: { [string]: MechSounds } = {
+	mech = MECH,
+	-- Small and springy: higher whir, lighter steps.
+	cherry_bomb = mechVariant({
+		hum = { key = "MECH_HUM", pitch = { 0.7, 0.8 }, volume = { 0.07, 0.11 }, curve = 1 },
+		servo = { key = "MECH_SERVO", pitch = { 0.85, 1.1 }, volume = { 0, 0.1 }, curve = 1 },
+		step = {
+			key = "MECH_STEP",
+			volume = 0.28,
+			pitch = 1.2,
+			jitter = { 0.07, 0.15 },
+			range = "footfall",
+			layers = { { key = "MECH_CLANK", volume = 0.1, pitch = 0.9 } },
+		},
+	}),
+	-- Long legs: a lighter footfall with a bright clank.
+	heron = mechVariant({
+		servo = { key = "MECH_SERVO", pitch = { 0.9, 1.2 }, volume = { 0, 0.1 }, curve = 1 },
+		step = {
+			key = "MECH_STEP",
+			volume = 0.28,
+			pitch = 1.05,
+			jitter = { 0.07, 0.15 },
+			range = "footfall",
+			layers = { { key = "MECH_CLANK", volume = 0.12, pitch = 0.85 } },
+		},
+	}),
+	-- Old and heavy: a low groaning pump, booming steps with a clang, and a creak on every step
+	-- (a squeak pitched down to a hinge groan).
+	rustbucket = mechVariant({
+		hum = {
+			key = "MECH_HUM",
+			pitch = { 0.42, 0.47 },
+			volume = { 0.08, 0.12 },
+			curve = 1,
+			effects = { eq(4, 0, -10) },
+		},
+		servo = {
+			key = "MECH_SERVO",
+			pitch = { 0.35, 0.45 },
+			volume = { 0, 0.16 },
+			curve = 1,
+			effects = { eq(3, 0, -6) },
+		},
+		step = {
+			key = "MECH_STEP",
+			volume = 0.45,
+			pitch = 0.7,
+			jitter = { 0.07, 0.15 },
+			range = "footfall",
+			effects = { eq(4, 0, -4) },
+			layers = {
+				{ key = "MECH_CLANK", volume = 0.14, pitch = 0.45 },
+				{ key = "HIT_CLANG", volume = 0.08, pitch = 0.5 },
+			},
+		},
+		creak = {
+			key = "SQUEAK",
+			volume = 0.22,
+			pitch = 0.32,
+			jitter = { 0.12, 0.25 },
+			range = "footfall",
+			effects = { eq(2, 0, -6) },
+		},
+		powerUp = { key = "MECH_POWER_UP", volume = 0.24, pitch = 0.65, jitter = { 0.03, 0 } },
+	}),
+	-- Smooth and quiet: a higher, cleaner hum and soft steps.
+	aurora = mechVariant({
+		hum = {
+			key = "MECH_HUM",
+			pitch = { 0.8, 0.95 },
+			volume = { 0.06, 0.1 },
+			curve = 1,
+			effects = { eq(0, 0, -6) },
+		},
+		servo = { key = "MECH_SERVO", pitch = { 1.1, 1.4 }, volume = { 0, 0.07 }, curve = 1 },
+		step = {
+			key = "MECH_STEP",
+			volume = 0.24,
+			pitch = 1.1,
+			jitter = { 0.07, 0.15 },
+			range = "footfall",
+			effects = { eq(2, 0, -6) },
+		},
+		powerUp = { key = "MECH_POWER_UP", volume = 0.2, pitch = 1.1, jitter = { 0.03, 0 } },
+	}),
+}
+
 -- Combat.explode without a weapon cue (barrels, admin meteors): EXPL_MED, louder for bigger blasts.
 local EXPLOSION = { key = "EXPL_MED", base = 0.35, perRadius = 0.01, max = 0.6, jitter = J.boom }
 
@@ -938,14 +1037,18 @@ for id, entry in VEHICLES do
 		check(entry.start, id .. ".start")
 	end
 end
-for _, loop in { MECH.hum, MECH.servo } do
-	assert(PALETTE[loop.key], "mech: unknown sound " .. loop.key)
-	loop.range = loop.range or "engine"
-end
-for _, event in { "powerUp", "step", "hatchOpen", "hatchClose" } do
-	local cue = (MECH :: any)[event] :: Cue
-	cue.range = cue.range or "engine"
-	check(cue, "mech." .. event)
+for id, profile in MECHS do
+	for _, loop in { profile.hum, profile.servo } do
+		assert(PALETTE[loop.key], id .. ": unknown sound " .. loop.key)
+		loop.range = loop.range or "engine"
+	end
+	for _, event in { "powerUp", "step", "hatchOpen", "hatchClose", "creak" } do
+		local cue = (profile :: any)[event] :: Cue?
+		if cue then
+			cue.range = cue.range or "engine"
+			check(cue, id .. "." .. event)
+		end
+	end
 end
 
 return {
@@ -957,6 +1060,7 @@ return {
 	VEHICLES = VEHICLES,
 	VEHICLE = VEHICLE,
 	MECH = MECH,
+	MECHS = MECHS,
 	EXPLOSION = EXPLOSION,
 	EXPLOSION_GAIN = EXPLOSION_GAIN,
 }
