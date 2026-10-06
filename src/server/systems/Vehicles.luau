@@ -894,6 +894,7 @@ local RAM_TRANSFER = 1.1 -- above 1, a struck vehicle of equal mass clears the r
 local RAM_MIN_RATIO = 0.15
 local RAM_MAX_RATIO = 3
 local MAX_SHOVE = 140 -- studs/s
+local MIN_SHOVE = 1 -- studs/s; a softer touch (a walker turning in place) neither throws nor stuns
 local SHOVE_LIFT = 0.25 -- upward share of a shove
 local STUN_TIME = 0.6 -- seconds a shoved vehicle flies free of its drive constraints
 -- A tree falls when pace x weight reaches TREE_BREAK x its toughness (0.8-1.5); slower vehicles
@@ -1021,6 +1022,11 @@ local function shove(
 	local skid = other.skid
 	local transfer = ramTransfer(car, other.mass)
 	local speed = math.min(VehicleDamage.shovePace(pace, closing, car.stomps) * transfer, MAX_SHOVE)
+	if speed < MIN_SHOVE then
+		-- No throw, so no stun: a car pinned by a creeping walker keeps its drive and can back out.
+		rammed(other, VehicleDamage.ramLoss(closing, transfer, car.stomps))
+		return
+	end
 	-- Stunned first: a ram that wrecks it lets the throw fly before the wreck brakes (wreck).
 	other.stunnedUntil = now + STUN_TIME
 	rammed(other, VehicleDamage.ramLoss(closing, transfer, car.stomps))
