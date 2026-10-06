@@ -57,6 +57,7 @@ local VEHICLES: { Vehicle } = {
 
 local byId: { [string]: Vehicle } = {}
 for _, vehicle in VEHICLES do
+	assert(byId[vehicle.id] == nil, "Duplicate vehicle id " .. vehicle.id)
 	byId[vehicle.id] = vehicle
 end
 

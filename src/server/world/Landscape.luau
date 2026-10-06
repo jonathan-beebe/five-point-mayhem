@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Build = require(script.Parent.Build)
+local Regions = require(script.Parent.Regions)
 local Roads = require(script.Parent.Roads)
 
 local Landscape = {}
@@ -13,23 +14,9 @@ local Landscape = {}
 local rgb = Color3.fromRGB
 local M = Enum.Material
 
--- Ground material around each landmark, by region id.
-local GROUND = {
-	castle = M.Grass,
-	pagoda = M.LeafyGrass,
-	tower = M.Pavement,
-	pyramid = M.Sand,
-	palace = M.Snow,
-}
-
--- Tree style near each landmark, by region id.
-local TREES = {
-	castle = { "oak", "oak", "birch" },
-	pagoda = { "cherry", "cherry", "maple" },
-	tower = { "street", "oak" },
-	pyramid = { "palm", "palm", "jungle" },
-	palace = { "pine", "pine", "birch" },
-}
+-- Ground material and tree styles around each landmark, by region id.
+local GROUND = Regions.GROUND
+local TREES = Regions.TREES
 
 local random = Random.new(1337)
 
@@ -182,6 +169,12 @@ local TREE_BUILDERS: { [string]: (Instance, Vector3, number) -> () } = {
 		end
 	end,
 }
+
+for regionId, styles in TREES do
+	for _, style in styles do
+		assert(TREE_BUILDERS[style], "Regions.TREES." .. regionId .. ": no tree builder " .. style)
+	end
+end
 
 -- Obstacles ----------------------------------------------------------------------------------
 

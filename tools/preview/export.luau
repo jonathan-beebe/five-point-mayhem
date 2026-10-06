@@ -10,6 +10,7 @@ local process = require("@lune/process")
 local roblox = require("@lune/roblox")
 local serde = require("@lune/serde")
 
+local ModelChecks = require("../lib/ModelChecks")
 local Sandbox = require("../lib/Sandbox")
 
 local path = process.args[1]
@@ -32,6 +33,10 @@ do
 end
 local isWeapon = options.weapon == true or string.find(path, "weaponModels", 1, true) ~= nil
 local isCreature = string.find(path, "creatureModels", 1, true) ~= nil
+local kind: ModelChecks.Kind = if isWeapon
+	then "weapon"
+	elseif isCreature then "creature"
+	else "vehicle"
 
 local RobloxCFrame = roblox.CFrame
 local SYSTEMS = "src/server/systems/"
@@ -51,10 +56,8 @@ local function vector(v): { number }
 	return { v.X, v.Y, v.Z }
 end
 
-local problems = {}
-local function problem(text: string)
-	table.insert(problems, text)
-end
+-- Problems the render shows; for a vehicle or creature, `defined` is define() run on a copy.
+local problems, defined = ModelChecks.check(spec, kind)
 
 -- Bone frames in vehicle space. A bone's world frame is its parent's (the skid's is identity)
 -- times the joint C0 times the joint Transform, as Roblox builds a Motor6D chain. `transforms`
@@ -151,35 +154,14 @@ if isWeapon then
 	})
 end
 for index, piece in spec.pieces do
-	local label = piece.name or ("piece " .. index)
-	if typeof(piece.size) ~= "Vector3" or typeof(piece.offset) ~= "CFrame" then
-		problem(label .. ": size must be a Vector3 and offset a CFrame")
+	if not ModelChecks.renderable(piece) then
 		continue
-	end
-	if typeof(piece.color) ~= "Color3" then
-		problem(label .. ": color must be a Color3")
-		continue
-	end
-	local class = piece.class or "Part"
-	if class ~= "Part" and class ~= "WedgePart" then
-		problem(label .. ": class " .. class .. " is not rendered (Part or WedgePart only)")
-	end
-	local size = piece.size
-	if size.X <= 0 or size.Y <= 0 or size.Z <= 0 then
-		problem(label .. ": every size component must be positive")
-	end
-	local shape = if piece.shape then piece.shape.Name else "Block"
-	if class == "WedgePart" and piece.shape then
-		problem(label .. ": a WedgePart takes no shape")
-	end
-	if shape == "Cylinder" and math.abs(size.Y - size.Z) > 0.001 then
-		problem(label .. ": a cylinder's Y and Z sizes must match (Roblox uses the smaller)")
 	end
 	table.insert(parts, {
-		name = label,
-		class = class,
-		shape = shape,
-		size = vector(size),
+		name = piece.name or ("piece " .. index),
+		class = piece.class or "Part",
+		shape = if piece.shape then piece.shape.Name else "Block",
+		size = vector(piece.size),
 		cframe = frame(hold * posed(piece.bone, piece.offset)),
 		color = { piece.color.R, piece.color.G, piece.color.B },
 		material = if piece.material then piece.material.Name else "SmoothPlastic",
@@ -189,9 +171,6 @@ for index, piece in spec.pieces do
 end
 
 if isWeapon then
-	if #spec.pieces > 80 then
-		problem(#spec.pieces .. " pieces; the limit is 80")
-	end
 	local muzzle = if spec.muzzle then hold * spec.muzzle else nil
 	print(serde.encode("json", {
 		kind = "weapon",
@@ -205,27 +184,6 @@ if isWeapon then
 end
 
 if isCreature then
-	-- The game's own checks on a copy: define fills defaults in place.
-	local checked = table.clone(spec)
-	local ok, err = pcall(Sandbox.require(SYSTEMS .. "CreatureModel").define, checked)
-	if not ok then
-		problem((string.gsub(tostring(err), "^.-:%d+: ", "")))
-	end
-	local lowest = math.huge
-	for _, part in parts do
-		-- Lowest point of the part's box: |R1j| * size_j / 2 summed over its axes (c[7..9] is row Y).
-		local c = part.cframe
-		local half = 0
-		for column = 0, 2 do
-			half += math.abs(c[7 + column]) * part.size[column + 1] / 2
-		end
-		lowest = math.min(lowest, c[2] - half)
-	end
-	if lowest > 0.15 then
-		problem(string.format("lowest piece is %.2f studs above the ground", lowest))
-	elseif lowest < -0.5 then
-		problem(string.format("a piece sinks %.2f studs below the ground", -lowest))
-	end
 	local rootSize = if typeof(spec.rootSize) == "Vector3" then spec.rootSize else nil
 	local hipHeight = if type(spec.hipHeight) == "number" then spec.hipHeight else nil
 	print(serde.encode("json", {
@@ -240,7 +198,7 @@ if isCreature then
 				},
 			}
 			else {},
-		reach = if ok then checked.reach else nil,
+		reach = if defined then defined.reach else nil,
 		rootCenterY = if rootSize and hipHeight then hipHeight + rootSize.Y / 2 else nil,
 		problems = problems,
 	}))
@@ -267,30 +225,9 @@ for _, ladder in spec.ladders or {} do
 	table.insert(ladders, { base = vector(ladder.base), height = ladder.height })
 end
 
--- The game's own checks (bones, seatBone, ladders, prompt) on a copy: define fills defaults in place.
-do
-	local ok, err = pcall(Sandbox.require(SYSTEMS .. "VehicleModel").define, table.clone(spec))
-	if not ok then
-		problem((string.gsub(tostring(err), "^.-:%d+: ", "")))
-	end
-end
-
 local collision = {}
 for _, box in spec.collision or {} do
 	table.insert(collision, { size = vector(box.size), cframe = frame(box.offset) })
-	if box.offset.Position.Y - box.size.Y / 2 < 1 then
-		problem("collision box bottom below y = 1 drags on the ground")
-	end
-end
-
-if #spec.pieces > 320 then
-	problem(#spec.pieces .. " pieces; the limit is 320")
-end
-if typeof(spec.footprint) ~= "Vector2" then
-	problem("footprint must be a Vector2")
-end
-if #seats == 0 then
-	problem("needs at least one seat (the driver)")
 end
 
 print(serde.encode("json", {

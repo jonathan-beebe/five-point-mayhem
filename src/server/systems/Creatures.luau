@@ -9,6 +9,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local CreatureCatalog = require(ReplicatedStorage.Shared.CreatureCatalog)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Combat = require(script.Parent.Combat)
 local CreatureModel = require(script.Parent.CreatureModel)
@@ -21,97 +22,12 @@ local rgb = Color3.fromRGB
 local M = Enum.Material
 local random = Random.new()
 
--- `scale` sets knockback strength; the look and size come from the kind's file in
--- src/server/creatureModels (format: src/server/systems/CreatureModel.luau).
-type Kind = {
-	name: string,
-	health: number,
-	speed: number,
-	damage: number,
-	scale: number,
-	aggro: number,
-	hops: boolean?, -- jumps while chasing
-}
+-- Kinds, their themed regions and lairs: src/shared/CreatureCatalog.luau.
+type Kind = CreatureCatalog.Kind
 
-local KINDS: { [string]: Kind } = {
-	goblin = {
-		name = "Goblin",
-		health = 45,
-		speed = 18,
-		damage = 8,
-		scale = 0.8,
-		aggro = 80,
-	},
-	slime = {
-		name = "Slime",
-		health = 35,
-		speed = 14,
-		damage = 6,
-		scale = 1,
-		aggro = 60,
-		hops = true,
-	},
-	skeleton = {
-		name = "Skeleton Knight",
-		health = 90,
-		speed = 15,
-		damage = 14,
-		scale = 1,
-		aggro = 90,
-	},
-	oni = {
-		name = "Oni",
-		health = 220,
-		speed = 12,
-		damage = 26,
-		scale = 2,
-		aggro = 100,
-	},
-	robot = {
-		name = "Robo-Guard",
-		health = 140,
-		speed = 16,
-		damage = 18,
-		scale = 1.4,
-		aggro = 120,
-	},
-	trex = {
-		name = "T-Rex",
-		health = 400,
-		speed = 17,
-		damage = 40,
-		scale = 2.6,
-		aggro = 130,
-	},
-	zombie = {
-		name = "Zombie",
-		health = 60,
-		speed = 13,
-		damage = 10,
-		scale = 1,
-		aggro = 160,
-	},
-	brute = {
-		name = "Zombie Brute",
-		health = 260,
-		speed = 11,
-		damage = 25,
-		scale = 1.8,
-		aggro = 160,
-	},
-	yeti = {
-		name = "Yeti",
-		health = 260,
-		speed = 13,
-		damage = 28,
-		scale = 2.2,
-		aggro = 100,
-	},
-}
-
+local KINDS = CreatureCatalog.KINDS
 -- Themed monster near each landmark, by region id.
-local REGION_KIND =
-	{ castle = "skeleton", pagoda = "oni", tower = "robot", pyramid = "trex", palace = "yeti" }
+local REGION_KIND = CreatureCatalog.REGION_KIND
 
 local folder = Instance.new("Folder")
 folder.Name = "Creatures"
@@ -387,15 +303,8 @@ end
 
 -- Lairs --------------------------------------------------------------------------------------
 
--- Where each landmark's horde appears and walks out to, in the landmark's local frame (local -Z
--- faces the lobby). `y` is the floor height inside; `xs` are the doors used.
-local LAIRS = {
-	castle = { inside = 10, outside = -105, y = 1.6, xs = { 0 } }, -- out of the keep, through the gate
-	pagoda = { inside = -27, outside = -80, y = 5, xs = { 0 } },
-	tower = { inside = -24, outside = -55, y = 1.8, xs = { 0 } },
-	pyramid = { inside = -72, outside = -105, y = 0.6, xs = { -40, 40 } },
-	palace = { inside = -27, outside = -60, y = 1.6, xs = { 0 } },
-}
+-- Where each landmark's horde appears (CreatureCatalog).
+local LAIRS = CreatureCatalog.LAIRS
 local LAIR_TRIGGER_RADIUS = 175
 local LAIR_COOLDOWN = 50
 

@@ -7,7 +7,7 @@ Roblox arena game. The entire world is built from code at server start (`src/ser
 ```sh
 rokit install
 rojo serve      # then connect from the Rojo plugin in Studio and press Play
-lune run tools/test   # tests and sound catalog checks, no Studio needed (optional name filter)
+lune run tools/test   # tests and data checks, no Studio needed (optional name filter)
 ```
 
 ## Layout
@@ -17,14 +17,15 @@ lune run tools/test   # tests and sound catalog checks, no Studio needed (option
 | `src/shared/Config.luau` | World layout, teams, admin user ids |
 | `src/shared/WeaponCatalog.luau` | All 52 weapons (data only) |
 | `src/shared/VehicleCatalog.luau` | All vehicles (data only) |
+| `src/shared/CreatureCatalog.luau` | Monster kinds, each landmark's themed monster and zombie lair (data only) |
 | `src/server/vehicleModels` | One part-built model per vehicle (format: `src/server/systems/VehicleModel.luau`) |
 | `src/server/creatureModels` | One part-built model per monster (format: `src/server/systems/CreatureModel.luau`) |
-| `tools/test.luau` | Runs every test and the sound catalog check (`lune run tools/test [filter]`) |
-| `tools/tests` | Tests for shared game logic and models, run under Lune |
-| `tools/lib` | Lune harness: `Sandbox` loads game files outside Roblox, `Check` tallies assertions |
+| `tools/test.luau` | Runs every test (`lune run tools/test [filter]`) |
+| `tools/tests` | Tests for shared game logic, models and data (`data_integrity`: catalogs, model files, sounds, regions), run under Lune |
+| `tools/lib` | Lune harness: `Sandbox` loads game files outside Roblox, `Check` tallies assertions, `ModelChecks` validates model files |
 | `tools/preview` | Renders a vehicle, weapon or creature model file to a PNG of orthographic views |
 | `tools/audition.luau` | Plays every weapon and vehicle sound; paste into the Studio Command Bar during Play |
-| `src/server/world` | Lobby, roads, terrain/scenery, the five landmarks |
+| `src/server/world` | Lobby, roads, terrain/scenery, the five landmarks (`Regions.luau`: each landmark's building module, ground and tree styles) |
 | `src/server/systems` | Combat, weapons, players/teams, creatures, vehicles, admin powers |
 | `src/client` | Armory UI, weapon input, car input, vehicle health bar, mech animation and camera, admin panel, announcer |
 

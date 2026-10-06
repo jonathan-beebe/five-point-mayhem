@@ -1,6 +1,5 @@
--- Runs every test in tools/tests and tools/check-sounds.luau, each in its own Lune process, and
--- prints PASS or FAIL, the check count and the time per file. A failing file's output follows its
--- line. Exits 1 if any file fails.
+-- Runs every test in tools/tests, each in its own Lune process, and prints PASS or FAIL, the check
+-- count and the time per file. A failing file's output follows its line. Exits 1 if any file fails.
 -- Usage: lune run tools/test [filter]   (filter: run only the files whose name contains it)
 
 local DateTime = require("@lune/datetime")
@@ -18,7 +17,6 @@ for _, file in fs.readDir(Sandbox.ROOT .. "/tools/tests") do
 	end
 end
 table.sort(files)
-table.insert(files, "tools/check-sounds.luau")
 
 local function now(): number
 	return DateTime.now().unixTimestampMillis / 1000

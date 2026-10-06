@@ -16,6 +16,10 @@
 -- `load(path, extra)`: `extra` adds or overrides globals for that file only; modules it requires
 -- get the plain sandbox.
 --
+-- `Sandbox.game` and `Sandbox.require` are the same `game` and `require` outside a loaded file, so a
+-- tool can require a module by the instance path the game uses:
+--   Sandbox.require(Sandbox.game:GetService("ReplicatedStorage").Shared.CreatureCatalog)
+--
 -- Relative paths resolve against the repository root, so tools run from any directory in it.
 
 local fs = require("@lune/fs")
@@ -177,6 +181,7 @@ local game = {
 		})
 	end,
 }
+Sandbox.game = game
 
 -- Runs the file at `path` in the sandbox and returns what it returns. `extra` adds or overrides
 -- globals.
