@@ -275,15 +275,6 @@ local function shake()
 	Workspace.CurrentCamera.CFrame *= applied
 end
 
--- The cab's Climb out prompt (Vehicles.addCab). It only works standing, so it is hidden here while
--- seated; the change is local to this client.
-local function climbOutPrompt(model: Model): ProximityPrompt?
-	local cab = model:FindFirstChild("Cab")
-	local anchor = cab and cab:FindFirstChild("CabPromptAnchor")
-	local prompt = anchor and anchor:FindFirstChild("Climb outPrompt")
-	return if prompt and prompt:IsA("ProximityPrompt") then prompt else nil
-end
-
 local function leave()
 	local current = session
 	if not current then
@@ -299,10 +290,6 @@ local function leave()
 	RunService:UnbindFromRenderStep(TURN_STEP)
 	buttonGui.Enabled = false
 	hideCockpitPieces(current.model, false)
-	local climbOut = climbOutPrompt(current.model)
-	if climbOut then
-		climbOut.Enabled = true
-	end
 	player.CameraMaxZoomDistance = current.maxZoom
 	player.CameraMinZoomDistance = current.minZoom
 	local camera = Workspace.CurrentCamera
@@ -312,12 +299,9 @@ local function leave()
 	end
 end
 
--- Buttons for the current state: VIEW (touch) and STAND while seated, none while standing.
+-- Buttons for the current state: VIEW (touch) and STAND while seated, none while standing. (The
+-- cab's Climb out prompt works standing only; PromptPanel switches it off while seated.)
 local function showButtons(current: Session)
-	local climbOut = climbOutPrompt(current.model)
-	if climbOut then
-		climbOut.Enabled = current.seat == nil
-	end
 	viewButton.Visible = current.seat ~= nil and UserInputService.TouchEnabled
 	standButton.Visible = current.seat ~= nil and not seatsLocked(current.model)
 	buttonGui.Enabled = current.seat ~= nil

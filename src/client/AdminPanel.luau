@@ -136,6 +136,7 @@ local function build()
 		create("UIStroke", { Color = rgb(255, 200, 40), Thickness = 2 }),
 		create("UISizeConstraint", { MaxSize = Vector2.new(300, 470) }),
 	})
+	table.insert(MacPanel.panels, panel)
 
 	local targetButton = create("TextButton", {
 		Position = UDim2.fromOffset(10, 10),

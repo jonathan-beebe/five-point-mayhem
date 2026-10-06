@@ -10,6 +10,7 @@ local SniperScope = require(script.SniperScope)
 local MechMotion = require(script.MechMotion)
 local MechCamera = require(script.MechCamera)
 local PodControls = require(script.PodControls)
+local PromptPanel = require(script.PromptPanel)
 local VehicleSounds = require(script.VehicleSounds)
 local VehicleHealth = require(script.VehicleHealth)
 local NukeStrike = require(script.NukeStrike)
@@ -28,6 +29,7 @@ for _, feature in
 		MechMotion,
 		MechCamera,
 		PodControls,
+		PromptPanel,
 		VehicleSounds,
 		VehicleHealth,
 		NukeStrike,
