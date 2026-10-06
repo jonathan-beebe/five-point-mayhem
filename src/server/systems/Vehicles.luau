@@ -17,8 +17,6 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
-local Config = require(ReplicatedStorage.Shared.Config)
-local MathUtil = require(ReplicatedStorage.Shared.MathUtil)
 local MechClimb = require(ReplicatedStorage.Shared.MechClimb)
 local Names = require(ReplicatedStorage.Shared.Names)
 local PodState = require(ReplicatedStorage.Shared.PodState)
@@ -27,6 +25,10 @@ local SoundCatalog = require(ReplicatedStorage.Shared.SoundCatalog)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
 local VehicleDamage = require(ReplicatedStorage.Shared.VehicleDamage)
+local VehicleDrive = require(ReplicatedStorage.Shared.VehicleDrive)
+local VehicleLayout = require(ReplicatedStorage.Shared.VehicleLayout)
+local VehicleRam = require(ReplicatedStorage.Shared.VehicleRam)
+local VehicleSizing = require(ReplicatedStorage.Shared.VehicleSizing)
 local Combat = require(script.Parent.Combat)
 local PodFlight = require(script.Parent.PodFlight)
 local VehicleModel = require(script.Parent.VehicleModel)
@@ -91,16 +93,11 @@ local function specFor(id: string): VehicleModel.Model
 	return spec
 end
 
--- Constraint strengths, tuned on an 8 x 14 skid and scaled with mass and size.
-local BASE_MASS = 8 * 14 * 4
-local BASE_SPAN = 8 ^ 2 + 14 ^ 2
+-- Drive tuning for a model that leaves it out. Drive and settling math: VehicleDrive.
 local ACCELERATION = VehicleModel.DEFAULTS.acceleration
 local BRAKING = VehicleModel.DEFAULTS.braking
 local COASTING = VehicleModel.DEFAULTS.coasting
 local TURN_RATE = VehicleModel.DEFAULTS.turnRate
-local SETTLING = 45 -- studs/s^2 an empty vehicle slows by, frictionless skid and all
-local SPIN_SETTLING = 4 -- rad/s^2 an empty vehicle's yaw spin slows by
-local CLIMB_LIFT = 60 -- studs/s^2 the climber can accelerate a walker by, beyond gravity
 
 type Car = {
 	seat: VehicleSeat,
@@ -254,7 +251,7 @@ local function climbStep(car: Car, forward: Vector3, dt: number): MechClimb.Comm
 	local lift = command.lift
 	if lift then
 		-- Sized every frame: /gravity changes, and a seated driver adds mass.
-		local force = skid.AssemblyMass * (workspace.Gravity + CLIMB_LIFT)
+		local force = VehicleDrive.climbForce(skid.AssemblyMass, workspace.Gravity)
 		if math.abs(climber.MaxForce - force) > 1 then
 			climber.MaxForce = force
 		end
@@ -296,7 +293,7 @@ local function drive(car: Car, dt: number)
 		local velocity = skid.AssemblyLinearVelocity
 		local flat = Vector2.new(velocity.X, velocity.Z)
 		local spin = skid.AssemblyAngularVelocity.Y
-		local settling = not car.parkingBrake and (flat.Magnitude > 0.5 or math.abs(spin) > 0.1)
+		local settling = VehicleDrive.isSettling(car.parkingBrake, flat.Magnitude, spin)
 		local held = car.parkingBrake or settling
 		car.mover.Enabled = held
 		car.turner.Enabled = held
@@ -306,15 +303,14 @@ local function drive(car: Car, dt: number)
 			car.turner.AngularVelocity = Vector3.zero
 		elseif settling then
 			-- Limits sized to the settling rates: a sliding friction other vehicles push through.
-			local mass = skid.AssemblyMass
-			local span = skid.Size.X ^ 2 + skid.Size.Z ^ 2
-			setLimits(car, mass * SETTLING, mass * span / 12 * SPIN_SETTLING)
-			local slowed = math.max(flat.Magnitude - SETTLING * dt, 0)
+			local force, torque =
+				VehicleDrive.settlingLimits(skid.AssemblyMass, skid.Size.X, skid.Size.Z)
+			setLimits(car, force, torque)
+			local slowed = VehicleDrive.settledSpeed(flat.Magnitude, dt)
 			car.mover.PlaneVelocity = if flat.Magnitude > 0
 				then flat.Unit * slowed
 				else Vector2.zero
-			car.turner.AngularVelocity =
-				Vector3.new(0, MathUtil.moveToward(spin, 0, SPIN_SETTLING * dt), 0)
+			car.turner.AngularVelocity = Vector3.new(0, VehicleDrive.settledSpin(spin, dt), 0)
 		end
 		return
 	end
@@ -322,28 +318,20 @@ local function drive(car: Car, dt: number)
 	car.mover.Enabled = true
 	car.turner.Enabled = true
 
-	local topSpeed = (car.seat:GetAttribute(Names.Attributes.TopSpeed) :: number?) or 80
+	local topSpeed = (car.seat:GetAttribute(Names.Attributes.TopSpeed) :: number?)
+		or VehicleDrive.DEFAULT_TOP_SPEED
 	local look = skid.CFrame.LookVector
 	local forward = Vector3.new(look.X, 0, look.Z).Unit
 	local speed = skid.AssemblyLinearVelocity:Dot(forward)
-	local throttle = car.throttle
-	local target = if throttle >= 0 then throttle * topSpeed else throttle * topSpeed * 0.4
-	local rate = if throttle == 0
-		then car.coasting
-		elseif math.sign(target) ~= math.sign(speed) and math.abs(speed) > 1 then car.braking
-		else car.acceleration
-	local newSpeed = MathUtil.moveToward(speed, target, rate * dt)
+	local newSpeed = VehicleDrive.speed(car, speed, car.throttle, topSpeed, dt)
 	local climb = climbStep(car, forward, dt)
 	if climb and climb.press then
 		newSpeed = climb.press
 	end
 
 	car.mover.PlaneVelocity = Vector2.new(forward.X * newSpeed, forward.Z * newSpeed)
-	local grip = if car.turnInPlace then 1 else math.clamp(newSpeed / 20, -1, 1)
-	local yaw = if climb and climb.climbing then 0 else -car.steer * car.turnRate * grip
-	if car.turnAcceleration then
-		yaw = MathUtil.moveToward(car.yaw, yaw, car.turnAcceleration * dt)
-	end
+	local climbing = climb ~= nil and climb.climbing
+	local yaw = VehicleDrive.yaw(car, car.yaw, car.steer, newSpeed, climbing, dt)
 	car.yaw = yaw
 	car.turner.AngularVelocity = Vector3.new(0, yaw, 0)
 end
@@ -479,18 +467,6 @@ local function addLadders(model: Model, skid: BasePart, spec: VehicleModel.Model
 	end
 end
 
--- Height of the vehicle's solid parts above the ground: collision boxes and ladders.
-local function solidHeight(spec: VehicleModel.Model): number
-	local top = 0
-	for _, box in spec.collision :: { VehicleModel.BoxSpec } do
-		top = math.max(top, box.offset.Position.Y + box.size.Y / 2)
-	end
-	for _, ladder in (spec.ladders or {}) :: { VehicleModel.LadderSpec } do
-		top = math.max(top, ladder.base.Y + ladder.height)
-	end
-	return top
-end
-
 -- Crash damage ---------------------------------------------------------------------------------
 
 -- Each Heartbeat samples the velocity of the skid (and of a pod away from its legs) into a
@@ -507,9 +483,6 @@ local WRECK_HOP = 25 -- studs/s up the hulk jumps
 local WRECK_TIME = 10 -- seconds the burnt-out hulk stays
 local CHAR_COLOR = rgb(20, 20, 20)
 local CHAR_SHARE = 0.75 -- how far each part's color goes to CHAR_COLOR
-local HEAVY_CRASH = 0.25 -- share of MaxHealth from which a crash sounds heavy
-local SMOKE_SHARE = 0.5 -- health share at and below which the vehicle smokes
-local FIRE_SHARE = 0.25 -- and burns
 
 type Crash = {
 	bulk: number,
@@ -530,36 +503,18 @@ type Crash = {
 
 local scatter = Random.new()
 
--- Size of the box around the pod's hull boxes (spec.pod.bone), in vehicle space.
-local function podSize(spec: VehicleModel.Model): Vector3
-	local low, high = Vector3.one * math.huge, -Vector3.one * math.huge
-	for _, box in spec.collision :: { VehicleModel.BoxSpec } do
-		if spec.pod and box.bone == spec.pod.bone then
-			local half = box.size / 2
-			local frame = box.offset
-			local extent = (frame.RightVector * half.X):Abs()
-				+ (frame.UpVector * half.Y):Abs()
-				+ (frame.LookVector * half.Z):Abs()
-			low = low:Min(frame.Position - extent)
-			high = high:Max(frame.Position + extent)
-		end
-	end
-	return if high.X >= low.X then high - low else Vector3.zero
-end
-
 local function newCrash(id: string, spec: VehicleModel.Model): Crash
 	local entry = VehicleCatalog.get(id)
 	local override = entry and entry.bulk
-	local pod = podSize(spec)
-	local height = solidHeight(spec)
+	local size = VehicleSizing.crash(spec, override)
 	return {
-		bulk = VehicleDamage.bulk(spec.footprint.X, spec.footprint.Y, height, override),
-		walker = spec.gait ~= nil,
-		length = spec.footprint.Y,
-		height = height,
-		podBulk = VehicleDamage.bulk(pod.X, pod.Z, pod.Y),
-		podLength = pod.Z,
-		podMass = pod.X * pod.Z * 4,
+		bulk = size.bulk,
+		walker = size.walker,
+		length = size.length,
+		height = size.height,
+		podBulk = size.podBulk,
+		podLength = size.podLength,
+		podMass = size.podMass,
 		tracker = VehicleDamage.newTracker(),
 		podTracker = VehicleDamage.newTracker(),
 		podState = PodState.DOCKED,
@@ -573,7 +528,7 @@ end
 -- A crash's sound and a burst of sparks at `at`.
 local function crashFeedback(model: Model, at: Vector3, amount: number)
 	local maxHealth = (model:GetAttribute(Names.Attributes.MaxHealth) :: number?) or 100
-	local cue = if amount >= HEAVY_CRASH * maxHealth
+	local cue = if VehicleDamage.isHeavy(amount, maxHealth)
 		then SoundCatalog.CRASH.heavy
 		else SoundCatalog.CRASH.light
 	Sounds.playAt(cue, at, "Weapons")
@@ -621,11 +576,14 @@ local function sampleCrash(
 		return
 	end
 	-- Head-on: at the front, the way it was going. A landing: under it.
-	local at = part.Position
-	local before = Vector3.new(tracker.startX, 0, tracker.startZ)
-	if lossH >= lossV and before.Magnitude > 0.1 then
-		at += before.Unit * length / 2
-	end
+	local at = VehicleDamage.crashPoint(
+		part.Position,
+		tracker.startX,
+		tracker.startZ,
+		lossH,
+		lossV,
+		length
+	)
 	crashFeedback(model, at, amount)
 	crash.lastHit = part
 	Vehicles.damage(model, amount)
@@ -700,7 +658,7 @@ local function wreck(model: Model, car: Car)
 	model:SetAttribute(Names.Attributes.Health, 0)
 	cars[model] = nil
 	-- The skid is frictionless: the drive constraints, held at zero, are the hulk's brake. A
-	-- rammed wreck flies its throw out first (the rest of STUN_TIME), then brakes.
+	-- rammed wreck flies its throw out first (the rest of VehicleRam.STUN_TIME), then brakes.
 	local function brake()
 		setLimits(car, car.driveForce, car.driveTorque)
 		car.mover.PlaneVelocity = Vector2.zero
@@ -773,7 +731,7 @@ local function onHealth(model: Model, car: Car)
 	local maxHealth = (model:GetAttribute(Names.Attributes.MaxHealth) :: number?) or 1
 	local crash = car.crash
 	local share = health / maxHealth
-	if share <= SMOKE_SHARE and not crash.smoke then
+	if VehicleDamage.smokes(share) and not crash.smoke then
 		local spot = Instance.new("Attachment")
 		spot.Name = "DamageFx"
 		spot.Position = Vector3.new(0, math.max(crash.height / 2, 1), 0)
@@ -793,8 +751,8 @@ local function onHealth(model: Model, car: Car)
 		crash.smoke, crash.fire = smoke, fire
 	end
 	if crash.smoke and crash.fire then
-		crash.smoke.Enabled = share <= SMOKE_SHARE
-		crash.fire.Enabled = share <= FIRE_SHARE
+		crash.smoke.Enabled = VehicleDamage.smokes(share)
+		crash.fire.Enabled = VehicleDamage.burns(share)
 	end
 	if health <= 0 then
 		wreck(model, car)
@@ -826,48 +784,12 @@ end
 
 -- Contact damage and ramming -------------------------------------------------------------------
 
+-- The numbers (pace, shoves, flings, tree breaks) are VehicleRam's; the reach box is
+-- VehicleSizing.reach.
 local HIT_INTERVAL = 0.1 -- seconds between contact checks on characters and barrels
 local HIT_COOLDOWN = 0.8 -- seconds before the same vehicle hits the same victim again
-local HIT_MARGIN = 1.5 -- studs past the footprint that count as touching
-local RAM_MIN_SPEED = 12 -- studs/s; slower cars nudge
-local RAM_DAMAGE = 0.6 -- per stud/s of speed, times weight: 48 at 80 for the base car
-local STOMP_DAMAGE = 40
-local STOMP_HEIGHT = 14 -- walkers hurt only around their legs, not riders on the deck
-local STOMP_PACE = 25 -- studs/s a moving walker shoves vehicles and hits trees with, however slow
-local PACE_DECAY = 150 -- studs/s^2 the remembered pace falls by
-local CREATURE_FLING = 1.6 -- creatures fly further than players
-local CREATURE_LIFT = 0.5 -- extra upward fling on creatures per stud/s of pace
-local MAX_FLING = 160 -- studs/s
--- A struck vehicle takes on the rammer's pace x RAM_TRANSFER x ram x their mass ratio (clamped),
--- up to MAX_SHOVE. Footprint masses: kart 215, base car 448, sedan ~670, school bus 1690.
-local RAM_TRANSFER = 1.1 -- above 1, a struck vehicle of equal mass clears the rammer's path
-local RAM_MIN_RATIO = 0.15
-local RAM_MAX_RATIO = 3
-local MAX_SHOVE = 140 -- studs/s
-local MIN_SHOVE = 1 -- studs/s; a softer touch (a walker turning in place) neither throws nor stuns
-local SHOVE_LIFT = 0.25 -- upward share of a shove
-local STUN_TIME = 0.6 -- seconds a shoved vehicle flies free of its drive constraints
--- A tree falls when pace x weight reaches TREE_BREAK x its toughness (0.8-1.5); slower vehicles
--- stop against it. The base car fells at 20-38 studs/s, a kart at 29-54, a school bus at 10-19.
-local TREE_BREAK = 25
-local TREE_PUSH = 0.4 -- share of pace x weight the felled tree's crown takes on
-local MAX_TREE_PUSH = 40 -- studs/s
 local TREE_LIE = 15 -- seconds a felled tree lies before it is cleared
 local TREE_REGROW = 120 -- seconds until it grows back where it stood
-
--- The box a vehicle hurts, as half width, height and half length from the ground.
-local function reachFor(spec: VehicleModel.Model): Vector3
-	local height = if spec.stepsOver then STOMP_HEIGHT else math.max(solidHeight(spec), 4)
-	return Vector3.new(spec.footprint.X / 2 + HIT_MARGIN, height, spec.footprint.Y / 2 + HIT_MARGIN)
-end
-
-local function touches(car: Car, ground: CFrame, position: Vector3): boolean
-	local at = ground:PointToObjectSpace(position)
-	return math.abs(at.X) <= car.reach.X
-		and math.abs(at.Z) <= car.reach.Z
-		and at.Y >= -2
-		and at.Y <= car.reach.Y
-end
 
 -- What a vehicle can ram: the solid parts of vehicles and of the tree groves (the parents of
 -- trees tagged Tree by Landscape).
@@ -943,8 +865,8 @@ local function fell(tree: Model, direction: Vector3, pace: number, weight: numbe
 	end
 	Ownership.set(trunk, nil)
 	-- Pushed high, the tree pivots on its base and falls the way the vehicle was going.
-	local crown = box.Position + Vector3.new(0, extent.Y / 4, 0)
-	local push = math.min(pace * weight * TREE_PUSH, MAX_TREE_PUSH)
+	local crown = VehicleRam.treeCrown(box, extent)
+	local push = VehicleRam.treePush(pace, weight)
 	trunk:ApplyImpulseAtPosition(direction * push * mass, crown)
 	task.delay(TREE_LIE, function()
 		tree:Destroy()
@@ -952,15 +874,9 @@ local function fell(tree: Model, direction: Vector3, pace: number, weight: numbe
 	task.delay(TREE_REGROW, regrow, sapling, grove, box, extent)
 end
 
--- The share of the rammer's speed a struck body of `mass` takes on: RAM_TRANSFER x their mass
--- ratio (clamped) x ram.
-local function ramTransfer(car: Car, mass: number): number
-	return RAM_TRANSFER * math.clamp(car.mass / mass, RAM_MIN_RATIO, RAM_MAX_RATIO) * car.ram
-end
-
 -- Throws a struck vehicle along `direction`, scaled by the rammer's pace, ram and the two masses,
--- and frees it from its drive constraints for STUN_TIME so the throw carries. Its damage comes
--- from `closing`, the rammer's real speed toward it.
+-- and frees it from its drive constraints for VehicleRam.STUN_TIME so the throw carries. Its
+-- damage comes from `closing`, the rammer's real speed toward it.
 local function shove(
 	car: Car,
 	other: Car,
@@ -970,15 +886,15 @@ local function shove(
 	now: number
 )
 	local skid = other.skid
-	local transfer = ramTransfer(car, other.mass)
-	local speed = math.min(VehicleDamage.shovePace(pace, closing, car.stomps) * transfer, MAX_SHOVE)
-	if speed < MIN_SHOVE then
+	local transfer = VehicleRam.transfer(car.mass, other.mass, car.ram)
+	local speed = VehicleRam.shoveSpeed(pace, closing, car.stomps, transfer)
+	if speed < VehicleRam.MIN_SHOVE then
 		-- No throw, so no stun: a car pinned by a creeping walker keeps its drive and can back out.
 		rammed(other, VehicleDamage.ramLoss(closing, transfer, car.stomps))
 		return
 	end
 	-- Stunned first: a ram that wrecks it lets the throw fly before the wreck brakes (wreck).
-	other.stunnedUntil = now + STUN_TIME
+	other.stunnedUntil = now + VehicleRam.STUN_TIME
 	rammed(other, VehicleDamage.ramLoss(closing, transfer, car.stomps))
 	-- The server must own the struck vehicle for the throw to take. A driven one it already owns;
 	-- an empty one it takes here. One carrying only passengers stays with their client, which
@@ -990,13 +906,8 @@ local function shove(
 	if not aboard then
 		Ownership.set(skid, nil)
 	end
-	local velocity = skid.AssemblyLinearVelocity
-		+ direction * speed
-		+ Vector3.new(0, speed * SHOVE_LIFT, 0)
-	if velocity.Magnitude > MAX_SHOVE then
-		velocity = velocity.Unit * MAX_SHOVE
-	end
-	skid.AssemblyLinearVelocity = velocity
+	skid.AssemblyLinearVelocity =
+		VehicleRam.shoveVelocity(skid.AssemblyLinearVelocity, direction, speed)
 end
 
 -- Vehicles and trees are checked every frame with a box that reaches one frame ahead, so the hit
@@ -1007,7 +918,7 @@ local function hurtTouching(model: Model, car: Car, dt: number, checkTargets: bo
 	local velocity = skid.AssemblyLinearVelocity
 	local flat = Vector3.new(velocity.X, 0, velocity.Z)
 	local speed = flat.Magnitude
-	car.pace = math.max(speed, car.pace - PACE_DECAY * dt)
+	car.pace = VehicleRam.decayPace(car.pace, speed, dt)
 	local legsDriver = legsDriverSeat(car)
 	local occupant = legsDriver and legsDriver.Occupant
 	local now = os.clock()
@@ -1016,30 +927,17 @@ local function hurtTouching(model: Model, car: Car, dt: number, checkTargets: bo
 		return
 	end
 	local driver = Players:GetPlayerFromCharacter(occupant.Parent)
-	local moving = if car.stomps
-		then speed > 2 or math.abs(skid.AssemblyAngularVelocity.Y) > 0.15
-		else car.pace >= RAM_MIN_SPEED
-	if not moving then
+	if not VehicleRam.isMoving(car.stomps, speed, skid.AssemblyAngularVelocity.Y, car.pace) then
 		return
 	end
-	local pace = if car.stomps then math.max(car.pace, STOMP_PACE) else car.pace
+	local pace = VehicleRam.ramPace(car.stomps, car.pace)
 	local ground = skid.CFrame * SKID_TO_GROUND
-	local look = ground.LookVector
-	local heading = if speed > 1 then flat.Unit else Vector3.new(look.X, 0, look.Z).Unit
+	local heading = VehicleRam.heading(flat, speed, ground.LookVector)
 	local function away(position: Vector3): Vector3
-		local offset = position - ground.Position
-		offset = Vector3.new(offset.X, 0, offset.Z)
-		return if offset.Magnitude > 0.1 then offset.Unit else heading
+		return VehicleRam.away(ground.Position, position, heading)
 	end
 
-	local ahead = ground:VectorToObjectSpace(flat) * dt
-	local height = car.reach.Y - 0.5
-	local box = ground * CFrame.new(ahead.X / 2, 0.5 + height / 2, ahead.Z / 2)
-	local size = Vector3.new(
-		car.reach.X * 2 + math.abs(ahead.X),
-		height,
-		car.reach.Z * 2 + math.abs(ahead.Z)
-	)
+	local box, size = VehicleRam.sweep(ground, flat, car.reach, dt)
 	for _, part in workspace:GetPartBoundsInBox(box, size, rammable) do
 		local victim = part.Parent
 		if
@@ -1071,12 +969,12 @@ local function hurtTouching(model: Model, car: Car, dt: number, checkTargets: bo
 				outward.X,
 				outward.Z
 			)
-			local transfer = ramTransfer(car, other.crash.podMass)
+			local transfer = VehicleRam.transfer(car.mass, other.crash.podMass, car.ram)
 			rammed(other, VehicleDamage.ramLoss(closing, transfer, car.stomps), true)
 		elseif other then
 			car.struck[victim :: Model] = now
 			local outward = away(other.skid.Position)
-			local direction = if car.stomps then outward else heading + outward * 0.5
+			local direction = VehicleRam.shoveDirection(car.stomps, heading, outward)
 			local struck = other.skid.AssemblyLinearVelocity
 			local closing = VehicleDamage.closingSpeed(
 				velocity.X,
@@ -1086,17 +984,10 @@ local function hurtTouching(model: Model, car: Car, dt: number, checkTargets: bo
 				outward.X,
 				outward.Z
 			)
-			shove(
-				car,
-				other,
-				if direction.Magnitude > 0.1 then direction.Unit else outward,
-				pace,
-				closing,
-				now
-			)
+			shove(car, other, direction, pace, closing, now)
 		elseif CollectionService:HasTag(victim, Names.Tags.Tree) then
 			local toughness = (victim:GetAttribute(Names.Attributes.Toughness) :: number?) or 1
-			if pace * car.weight >= TREE_BREAK * toughness then
+			if VehicleRam.breaksTree(pace, car.weight, toughness) then
 				car.struck[victim :: Model] = now
 				fell(
 					victim :: Model,
@@ -1118,24 +1009,18 @@ local function hurtTouching(model: Model, car: Car, dt: number, checkTargets: bo
 			(seat and seat:IsDescendantOf(model))
 			or humanoid:GetState() == Enum.HumanoidStateType.Climbing
 			or now - (car.struck[target.model] or 0) < HIT_COOLDOWN
-			or not touches(car, ground, target.root.Position)
+			or not VehicleRam.touches(car.reach, ground, target.root.Position)
 		then
 			continue
 		end
-		local amount = if car.stomps then STOMP_DAMAGE else pace * RAM_DAMAGE * car.weight
+		local amount = VehicleRam.contactDamage(car.stomps, pace, car.weight)
 		if Combat.damage(driver, target.model, humanoid, amount) then
 			car.struck[target.model] = now
 			local direction = if car.stomps or speed < 1
 				then away(target.root.Position)
 				else heading
-			local fling = if car.stomps then 50 else pace * 0.8 * car.weight
-			local lift = 35
 			local creature = Players:GetPlayerFromCharacter(target.model) == nil
-			if creature then
-				fling *= CREATURE_FLING
-				lift += pace * CREATURE_LIFT
-			end
-			local push = direction * math.min(fling, MAX_FLING) + Vector3.new(0, lift, 0)
+			local push = VehicleRam.fling(direction, car.stomps, pace, car.weight, creature)
 			if creature and humanoid.Health <= 0 then
 				-- A kill: throw the whole body before its joints break, so the pieces scatter.
 				target.root.AssemblyLinearVelocity = push
@@ -1144,7 +1029,7 @@ local function hurtTouching(model: Model, car: Car, dt: number, checkTargets: bo
 		end
 	end
 	for _, barrel in CollectionService:GetTagged(Names.Tags.ExplosiveBarrel) do
-		if barrel:IsA("BasePart") and touches(car, ground, barrel.Position) then
+		if barrel:IsA("BasePart") and VehicleRam.touches(car.reach, ground, barrel.Position) then
 			Combat.detonateBarrel(barrel, driver)
 		end
 	end
@@ -1178,12 +1063,10 @@ end)
 local function seatPlayer(player: Player, seat: Seat | VehicleSeat)
 	local model = seat.Parent
 	local podState = PodState.of(model and model:GetAttribute(Names.Attributes.PodState))
-	if seat:GetAttribute(Names.Attributes.LegsSeat) then
-		if not PodState.legsFree(podState) then
-			return -- the legs ride only while the pod is away, and not while it comes home
-		end
-	elseif podState ~= PodState.DOCKED then
-		return -- the seat is away with its pod
+	-- The legs ride only while the pod is away, and not while it comes home; any other seat is
+	-- away with its pod.
+	if not PodState.canSit(podState, seat:GetAttribute(Names.Attributes.LegsSeat)) then
+		return
 	end
 	local humanoid = Characters.humanoidOf(player)
 	if humanoid and humanoid.Health > 0 and not seat.Occupant then
@@ -1204,7 +1087,7 @@ local function addPrompts(
 	anchor.Name = "PromptAnchor"
 	anchor.Position = Vector3.new(0, 3.5, 0)
 	anchor.Parent = skid
-	local reach = math.sqrt((W / 2) ^ 2 + (L / 2) ^ 2) + 6
+	local reach = VehicleSizing.promptReach(W, L)
 	if spec.prompt then
 		-- A fixed spot (a walker's hatch): only players right there get the prompt.
 		anchor.CFrame = SKID_TO_GROUND * CFrame.new(spec.prompt.position)
@@ -1225,11 +1108,11 @@ local function addPrompts(
 	-- Drive takes the driver seat, or while a pod is away (flying or landed) the legs seat.
 	local model = skid.Parent :: Model
 	local function driveSeat(): VehicleSeat?
-		local podState = PodState.of(model:GetAttribute(Names.Attributes.PodState))
-		if podState == PodState.DOCKED then
-			return driver
-		end
-		return if legsSeat and PodState.legsFree(podState) then legsSeat else nil
+		return PodState.driveSeat(
+			PodState.of(model:GetAttribute(Names.Attributes.PodState)),
+			driver,
+			legsSeat
+		)
 	end
 	local drivePrompt = prompt("Drive", Enum.KeyCode.E, Names.Instances.DrivePrompt)
 	drivePrompt.Triggered:Connect(function(player)
@@ -1352,7 +1235,7 @@ local function addCab(
 	anchor.Name = "CabPromptAnchor"
 	anchor.Position = Vector3.new(0, 3 - cab.size.Y / 2, 0)
 	anchor.Parent = volume
-	local reach = math.sqrt((cab.size.X / 2) ^ 2 + (cab.size.Z / 2) ^ 2) + 0.5
+	local reach = VehicleSizing.cabReach(cab.size)
 
 	-- `name` defaults to `<action>Prompt`; PromptPanel finds the Drive prompt by its name.
 	local function prompt(action: string, key: Enum.KeyCode, name: string?): ProximityPrompt
@@ -1524,9 +1407,7 @@ local function build(id: string, cframe: CFrame): Model
 		driver:SetAttribute(Names.Attributes.TurnRate, spec.turnRate or TURN_RATE) -- the walk animator reads it
 	end
 
-	local mass = W * L * 4
-	local strength = mass / BASE_MASS
-	local leverage = strength * (W ^ 2 + L ^ 2) / BASE_SPAN
+	local strength = VehicleDrive.strength(W, L, spec.uprightTorque)
 
 	-- Keeps the vehicle upright without fixing its heading.
 	local attachment = Instance.new("Attachment")
@@ -1537,7 +1418,7 @@ local function build(id: string, cframe: CFrame): Model
 	upright.AlignType = Enum.AlignType.PrimaryAxisParallel
 	upright.PrimaryAxis = Vector3.yAxis
 	upright.Attachment0 = attachment
-	upright.MaxTorque = 4e5 * leverage * (spec.uprightTorque or 1)
+	upright.MaxTorque = strength.uprightTorque
 	upright.Responsiveness = 12
 	upright.Parent = skid
 
@@ -1551,13 +1432,13 @@ local function build(id: string, cframe: CFrame): Model
 	mover.VelocityConstraintMode = Enum.VelocityConstraintMode.Plane
 	mover.PrimaryTangentAxis = Vector3.xAxis
 	mover.SecondaryTangentAxis = Vector3.zAxis
-	mover.MaxForce = 3e5 * strength
+	mover.MaxForce = strength.moverForce
 	mover.Enabled = false
 	mover.Parent = skid
 	local turner = Instance.new("AngularVelocity")
 	turner.Attachment0 = driveAttachment
 	turner.RelativeTo = Enum.ActuatorRelativeTo.World
-	turner.MaxTorque = 1e6 * leverage
+	turner.MaxTorque = strength.turnerTorque
 	turner.Enabled = false
 	turner.Parent = skid
 	-- Climb assist: a vertical velocity on the same attachment, off until a climb (climbStep).
@@ -1592,11 +1473,11 @@ local function build(id: string, cframe: CFrame): Model
 		driveForce = mover.MaxForce,
 		driveTorque = turner.MaxTorque,
 		stomps = spec.stepsOver == true,
-		reach = reachFor(spec),
+		reach = VehicleSizing.reach(spec),
 		struck = {},
-		mass = mass,
+		mass = strength.mass,
 		ram = ram,
-		weight = math.sqrt(strength) * ram,
+		weight = VehicleRam.weight(strength.strength, ram),
 		pace = 0,
 		stunnedUntil = 0,
 		yaw = 0,
@@ -1648,24 +1529,18 @@ local function build(id: string, cframe: CFrame): Model
 	end
 
 	if spec.pod and podBone then
-		local pivot = podBone.pivot
-		-- The walker's exit, moved from the legs' frame to the pod's: the same spot around the
-		-- pod's root, the same height over the ground.
-		local exit = spec.exit or CFrame.new(0, 3, 0)
-		local podExit = CFrame.new(exit.X - pivot.X, exit.Y, exit.Z - pivot.Z) * exit.Rotation
-		local jets = {}
-		for _, mouth in spec.pod.jets or {} do
-			table.insert(jets, CFrame.new(mouth - pivot))
-		end
+		-- The button, jets and the walker's exit, moved from the legs' frame to the pod's (the exit
+		-- keeps its height over the ground).
+		local frames = VehicleSizing.podFrames(spec, podBone.pivot)
 		car.pod = PodFlight.new({
 			model = model,
 			skid = skid,
 			seat = driver,
 			root = podBone.part,
 			joint = podBone.part:FindFirstChild(Names.Instances.JointPrefix .. spec.pod.bone) :: Motor6D,
-			button = CFrame.new(spec.pod.button - pivot),
-			jets = jets,
-			exit = podExit,
+			button = frames.button,
+			jets = frames.jets,
+			exit = frames.exit,
 			legsSeat = legsSeat,
 			passengers = passengers,
 			-- Off the legs and onto the ground at the walker's exit.
@@ -1673,7 +1548,7 @@ local function build(id: string, cframe: CFrame): Model
 				Seats.unseat(legsSeat, humanoid)
 				local character = humanoid.Parent
 				if character and character:IsA("Model") then
-					placeAtExit(skid, spec.exit or CFrame.new(0, 3, 0), character)
+					placeAtExit(skid, VehicleSizing.exitOf(spec), character)
 				end
 			end,
 			eject = eject or function() end,
@@ -1745,19 +1620,11 @@ function Vehicles.spawnNear(position: Vector3, facing: Vector3?, id: string?): M
 	local kind = id and VehicleCatalog.get(id)
 		or VehicleCatalog.ALL[math.random(1, #VehicleCatalog.ALL)]
 	local spec = specFor(kind.id)
-	local flat = facing and Vector3.new(facing.X, 0, facing.Z)
-	local look = if flat and flat.Magnitude > 0.01 then flat.Unit else Vector3.zAxis
-	-- Clear the spawn point by half the vehicle's length.
-	local center = position + look * (spec.footprint.Y / 2) + Vector3.new(0, 1, 0)
-	return build(kind.id, CFrame.lookAt(center, center + look))
+	return build(kind.id, VehicleLayout.spawnFrame(position, facing, spec.footprint.Y))
 end
 
+-- Spots, the clear test's sizes and the respawn rule: VehicleLayout.
 local placement = Random.new()
-local SPOKE_HALF_WIDTH = 11
-local CLEARANCE = 3 -- free space kept around each parked vehicle
-local CLEAR_HEIGHT = 16 -- taller than every car; walkers clear their own height
-local LOBBY_MARGIN = 10 -- no vehicle parks within this of the lobby wall
-local ATTEMPTS = 400
 
 -- Everything but the terrain counts as an obstacle, roads included: no vehicle parks on a road.
 local clearParams = OverlapParams.new()
@@ -1765,37 +1632,13 @@ clearParams.FilterType = Enum.RaycastFilterType.Exclude
 clearParams.FilterDescendantsInstances = { workspace.Terrain }
 
 -- Whether a W x L footprint at `ground` (a ground-level CFrame) is clear of the lobby and of
--- every part in the world up to `height`, with CLEARANCE to spare.
+-- every part in the world up to `height`, with room to spare (VehicleLayout.clearBox).
 local function isClear(ground: CFrame, W: number, L: number, height: number): boolean
-	for _, x in { -1, 1 } do
-		for _, z in { -1, 1 } do
-			local corner = ground * Vector3.new(x * W / 2, 0, z * L / 2)
-			if Vector2.new(corner.X, corner.Z).Magnitude < Config.LOBBY_RADIUS + LOBBY_MARGIN then
-				return false
-			end
-		end
+	if not VehicleLayout.clearsLobby(ground, W, L) then
+		return false
 	end
-	local size = Vector3.new(W + CLEARANCE * 2, height, L + CLEARANCE * 2)
-	local box = ground * CFrame.new(0, 0.1 + height / 2, 0)
+	local box, size = VehicleLayout.clearBox(ground, W, L, height)
 	return #workspace:GetPartBoundsInBox(box, size, clearParams) == 0
-end
-
--- A random ground-level spot and heading in a spoke's motor pool, on either side of the road.
-local function randomSpot(spoke: number): CFrame
-	local angle = Config.regionAngle(spoke)
-	local outward = Config.pointAt(angle, 1)
-	local side = Vector3.new(-outward.Z, 0, outward.X)
-	local along = placement:NextNumber(Config.PARKING_START_RADIUS, Config.PARKING_END_RADIUS)
-	local across = placement:NextNumber(SPOKE_HALF_WIDTH, Config.PARKING_REACH)
-		* (if placement:NextNumber() < 0.5 then -1 else 1)
-	local position = Config.pointAt(angle, along) + side * across
-	return CFrame.new(position) * CFrame.Angles(0, placement:NextNumber(0, 2 * math.pi), 0)
-end
-
--- The height isClear checks above a vehicle's footprint.
-local function clearHeight(spec: VehicleModel.Model): number
-	local top = solidHeight(spec)
-	return if top > CLEAR_HEIGHT then top + 2 else CLEAR_HEIGHT
 end
 
 local function addSpot(id: string, ground: CFrame)
@@ -1806,22 +1649,19 @@ end
 
 -- Walkers (specs with a gait) stand guard in a ring around the lobby, facing out toward the
 -- arena: one in the middle of each gap between the gate roads, spread evenly when their count
--- differs from the gates'. The ring is as tight as isClear allows the deepest walker, whose back
--- edge sits CLEARANCE past the lobby margin. Returns the walkers whose spot was blocked.
+-- differs from the gates' (VehicleLayout.guardRadius, guardSpot). Returns the walkers whose spot
+-- was blocked.
 local function placeWalkers(walkers: { VehicleCatalog.Vehicle }): { VehicleCatalog.Vehicle }
 	local depth = 0
 	for _, entry in walkers do
 		depth = math.max(depth, specFor(entry.id).footprint.Y)
 	end
-	local radius = Config.LOBBY_RADIUS + LOBBY_MARGIN + CLEARANCE + depth / 2
-	local firstGap = Config.regionAngle(1) + math.pi / #Config.REGIONS
+	local radius = VehicleLayout.guardRadius(depth)
 	local blocked = {}
 	for index, entry in walkers do
 		local spec = specFor(entry.id)
-		local angle = firstGap + (index - 1) * 2 * math.pi / #walkers
-		local position = Config.pointAt(angle, radius)
-		local ground = CFrame.lookAt(position, position + Config.pointAt(angle, 1))
-		if isClear(ground, spec.footprint.X, spec.footprint.Y, clearHeight(spec)) then
+		local ground = VehicleLayout.guardSpot(index, #walkers, radius)
+		if isClear(ground, spec.footprint.X, spec.footprint.Y, VehicleLayout.clearHeight(spec)) then
 			addSpot(entry.id, ground)
 		else
 			table.insert(blocked, entry)
@@ -1846,17 +1686,17 @@ local function layOut()
 		table.insert(others, entry)
 	end
 	for order, entry in others do
-		local spoke = (order - 1) % #Config.REGIONS + 1
+		local spoke = VehicleLayout.spokeFor(order)
 		local spec = specFor(entry.id)
 		local W, L = spec.footprint.X, spec.footprint.Y
-		local height = clearHeight(spec)
-		local ground = randomSpot(spoke)
+		local height = VehicleLayout.clearHeight(spec)
+		local ground = VehicleLayout.randomSpot(placement, spoke)
 		local clear = isClear(ground, W, L, height)
-		for _ = 2, ATTEMPTS do
+		for _ = 2, VehicleLayout.ATTEMPTS do
 			if clear then
 				break
 			end
-			ground = randomSpot(spoke)
+			ground = VehicleLayout.randomSpot(placement, spoke)
 			clear = isClear(ground, W, L, height)
 		end
 		if not clear then
@@ -1873,7 +1713,7 @@ function Vehicles.start()
 	-- Return cars that were destroyed, or left idle far from home for a minute.
 	task.spawn(function()
 		while true do
-			task.wait(10)
+			task.wait(VehicleLayout.RESPAWN_INTERVAL)
 			for _, spot in spots do
 				local model = spot.model
 				local skid = model and model.PrimaryPart
@@ -1882,10 +1722,10 @@ function Vehicles.start()
 				elseif isOccupied(model) then
 					model:SetAttribute("LastUsed", os.clock())
 				else
-					local away = (skid.Position - spot.cframe.Position).Magnitude > 30
-					local idle = os.clock() - ((model:GetAttribute("LastUsed") :: number?) or 0)
-						> 60
-					if (away and idle) or skid.Position.Y < -50 then
+					local distance = (skid.Position - spot.cframe.Position).Magnitude
+					local idleSeconds = os.clock()
+						- ((model:GetAttribute("LastUsed") :: number?) or 0)
+					if VehicleLayout.shouldRepark(distance, idleSeconds, skid.Position.Y) then
 						park(spot)
 					end
 				end

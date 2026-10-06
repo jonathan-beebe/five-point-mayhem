@@ -21,8 +21,9 @@ placement on phone/tablet/desktop, network ownership, sounds by ear (`tools/audi
 ```
 src/shared/   ReplicatedStorage.Shared. Every file --!strict. Loads under Lune.
   *Catalog    data only: WeaponCatalog, VehicleCatalog, CreatureCatalog, SoundCatalog
-  pure logic  DayNight, VehicleDamage, MechGait, MechClimb, VehicleDefaults, MathUtil (tested in
-              tools/tests)
+  pure logic  DayNight, VehicleDamage, MechGait, MechClimb, VehicleDefaults, MathUtil, and the
+              vehicle math Vehicles applies: VehicleDrive, VehicleSizing, VehicleRam,
+              VehicleLayout (tested in tools/tests)
   Config      world layout, REGIONS, teams, admin ids;  Remotes: every RemoteEvent, typed record
   contracts   Names (attributes, tags, collision groups, instance names), PodState, RemoteActions
 src/server/   ServerScriptService.Server. init.server.luau boots in this order:
@@ -73,6 +74,13 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
 - Collision groups and the pairs that pass through each other are all in
   `src/server/systems/CollisionGroups.luau`; a new group or pair also goes in the golden matrix in
   `tools/tests/collision_groups.luau`.
+- Vehicle math is in `src/shared` and `Vehicles` applies it to instances: `VehicleDrive` (target
+  speed, yaw, settling, constraint strengths), `VehicleSizing` (solid height, pod box, crash sizes,
+  reach box, prompt reach, pod frames), `VehicleRam` (pace, sweep box, shoves, flings, tree
+  breaks), `VehicleDamage` (crash health, crash point, smoke/fire shares), `VehicleLayout` (lobby
+  clearance, parking spots from an injected `Random`, guard ring, respawn rule), `PodState`
+  (`canSit`, `driveSeat`). `tools/tests/vehicle_logic.luau` compares each with the inline code it
+  replaced; a deliberate tuning change updates that reference too.
 - Small math shared across modules (`moveToward`, `wrapAngle`, `yawOf`, `insideBox`,
   `clampToRange`, `rateAlpha`/`timeAlpha` follow fractions) comes from `src/shared/MathUtil.luau`.
 - Server systems use `systems/util/` instead of writing these inline:
@@ -167,7 +175,7 @@ Move these word for word; do not "simplify" them.
   - `setLimits` compares with slack (`> 1`): the properties store single precision.
   - `wreck`: a stunned vehicle brakes after its stun (`task.delay(stun, brake)`) so a wrecking
     ram's throw flies first; cab ejection (`climbOut`) is deferred until the weld removal lands.
-  - `shove`: `stunnedUntil` is set before `rammed`; under `MIN_SHOVE` there is no stun.
+  - `shove`: `stunnedUntil` is set before `rammed`; under `VehicleRam.MIN_SHOVE` there is no stun.
   - `watchDriver`: the server takes the skid's network ownership when a driver sits and hands
     the leaving driver's character back in a `task.defer`.
   - Heartbeat connections: the one calling `drive` first, then crash/contact.
@@ -183,5 +191,7 @@ Move these word for word; do not "simplify" them.
 - Instance, attribute, tag, collision group and prompt names, pod states and remote action strings
   (`src/shared/Names.luau`, `PodState.luau`, `RemoteActions.luau`) are a contract between server
   and client: never change a value. `tools/tests/names.luau` pins each one.
-- Numbers in `VehicleDamage`, `MechClimb`, `MechGait` and `DayNight` are tuning pinned by tests;
-  changing one is a gameplay change.
+- Numbers in `VehicleDamage`, `VehicleDrive`, `VehicleSizing`, `VehicleRam`, `VehicleLayout`,
+  `MechClimb`, `MechGait` and `DayNight` are tuning pinned by tests; changing one is a gameplay
+  change. `VehicleLayout.randomSpot` draws four numbers per call, in a fixed order, from the
+  `Random` it is given.

@@ -40,4 +40,23 @@ function PodState.legsFree(state: State): boolean
 	return state == PodState.FLYING or state == PodState.LANDED
 end
 
+-- Whether a player may sit in a seat of a walker whose pod is in `state`: the legs seat
+-- (`legsSeat`, the seat's LegsSeat attribute, tested for truth) only while the legs are free, any
+-- other seat only while the pod is docked (it is away with the pod).
+function PodState.canSit(state: State, legsSeat: unknown): boolean
+	if legsSeat then
+		return PodState.legsFree(state)
+	end
+	return state == PodState.DOCKED
+end
+
+-- The seat the walk-up Drive prompt takes: the driver seat while docked, the legs seat (if any)
+-- while the legs are free, else none.
+function PodState.driveSeat<T>(state: State, driver: T, legsSeat: T?): T?
+	if state == PodState.DOCKED then
+		return driver
+	end
+	return if legsSeat and PodState.legsFree(state) then legsSeat else nil
+end
+
 return table.freeze(PodState)
