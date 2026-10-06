@@ -7,7 +7,8 @@
 -- crash past the threshold costs them more, in health and as a share of it.
 --
 -- A crash is an episode: it starts on a frame that loses at least START_LOSS studs/s (or
--- START_DECELERATION x dt, so a long frame needs more) and runs while the frames that follow keep
+-- START_DECELERATION x dt, so a long frame needs more; above the drive constraints' hardest stop,
+-- ~670 studs/s^2, at any frame rate) and runs while the frames that follow keep
 -- losing CONTINUE_LOSS (or CONTINUE_DECELERATION x dt), for up to IMPACT_TIME. Its result is the
 -- sum of the horizontal and the vertical speed lost. Horizontal loss is speed lost along the
 -- direction of travel; vertical loss is only a fall stopping (never a lift, never a climb slowing).
@@ -23,19 +24,28 @@ local BASE_HEALTH = 100
 local HEALTH_EXPONENT = 0.25
 -- Speed lost without harm: horizontal THRESHOLD x bulk ^ -THRESHOLD_EXPONENT; a landing
 -- LANDING_SCALE times that, and at least LANDING_MIN (a walker's legs: WALKER_LANDING_MIN, so a
--- one-tier 12-stud drop, ~69 studs/s, is free and a 24-stud drop, ~97, hurts).
+-- one-tier drop is free: MechClimb lets a walker step off a ledge up to 14.4 studs, ~75 studs/s;
+-- a 24-stud drop, ~97, hurts).
 local THRESHOLD = 40
 local THRESHOLD_EXPONENT = 0.3
 local LANDING_SCALE = 1.25
 local LANDING_MIN = 30
-local WALKER_LANDING_MIN = 75
+local WALKER_LANDING_MIN = 80
 -- Damage: DAMAGE x bulk ^ BULK_EXPONENT x (speed lost past the thresholds) ^ SPEED_EXPONENT.
 local DAMAGE = 0.3
 local BULK_EXPONENT = 0.5
 local SPEED_EXPONENT = 1.3
+local MIN_DAMAGE = 1 -- less is no crash: no sound, no sparks, no health lost
+-- A ram hits the struck vehicle like a crash at the rammer's closing speed (its velocity toward
+-- the struck one, less the struck one's) x the shove's transfer (mass ratio x ram), up to
+-- RAM_MAX_LOSS. A walker's legs come down on it: STOMP_SCALE times that, nothing below
+-- STOMP_MIN_CLOSING (creeping, turning in place).
+local RAM_MAX_LOSS = 140
+local STOMP_SCALE = 1.5
+local STOMP_MIN_CLOSING = 2
 -- Crash detection, studs/s lost per frame (or per second, times the frame's dt).
 local START_LOSS = 12
-local START_DECELERATION = 700
+local START_DECELERATION = 1000
 local CONTINUE_LOSS = 3
 local CONTINUE_DECELERATION = 175
 local IMPACT_TIME = 0.2 -- seconds; longest episode
@@ -73,7 +83,37 @@ function VehicleDamage.damage(bulk: number, lossH: number, lossV: number, walker
 		return 0
 	end
 	local excess = math.sqrt(excessH ^ 2 + excessV ^ 2)
-	return DAMAGE * bulk ^ BULK_EXPONENT * excess ^ SPEED_EXPONENT
+	local amount = DAMAGE * bulk ^ BULK_EXPONENT * excess ^ SPEED_EXPONENT
+	return if amount < MIN_DAMAGE then 0 else amount
+end
+
+-- How fast a rammer (velocity rx, rz) closes on the vehicle it hits (vx, vz) along the contact
+-- direction (dx, dz, rammer toward struck; any length). Never negative.
+function VehicleDamage.closingSpeed(
+	rx: number,
+	rz: number,
+	vx: number,
+	vz: number,
+	dx: number,
+	dz: number
+): number
+	local length = math.sqrt(dx * dx + dz * dz)
+	if length < 1e-6 then
+		return 0
+	end
+	return math.max(0, ((rx - vx) * dx + (rz - vz) * dz) / length)
+end
+
+-- The speed a rammed vehicle loses, as a crash, to a rammer closing at `closing` studs/s with
+-- `transfer` (the shove's mass ratio x ram). `walker`: the rammer stomps.
+function VehicleDamage.ramLoss(closing: number, transfer: number, walker: boolean?): number
+	if walker then
+		if closing < STOMP_MIN_CLOSING then
+			return 0
+		end
+		transfer *= STOMP_SCALE
+	end
+	return math.min(closing * transfer, RAM_MAX_LOSS)
 end
 
 function VehicleDamage.wreckRadius(bulk: number): number

@@ -415,12 +415,14 @@ type Crash = {
 	bulk: number,
 	walker: boolean, -- lands on its legs (VehicleDamage.thresholds)
 	length: number, -- footprint length: a head-on crash's sparks fly at the front
+	height: number, -- solid height: smoke and fire rise from half of it
 	podBulk: number, -- the flying pod's, from its own hull boxes
 	podLength: number,
 	tracker: VehicleDamage.Tracker, -- the skid
 	podTracker: VehicleDamage.Tracker, -- the pod's root while it is away
 	podState: string, -- last seen; any change clears both trackers
 	climbOut: ((Player) -> ())?, -- a walker's cab exit
+	lastHit: BasePart?, -- the part (skid or pod root) that took the last damage: the wreck's center
 	smoke: Smoke?,
 	fire: Fire?,
 }
@@ -448,16 +450,19 @@ local function newCrash(id: string, spec: VehicleModel.Model): Crash
 	local entry = VehicleCatalog.get(id)
 	local override = entry and entry.bulk
 	local pod = podSize(spec)
+	local height = solidHeight(spec)
 	return {
-		bulk = VehicleDamage.bulk(spec.footprint.X, spec.footprint.Y, solidHeight(spec), override),
+		bulk = VehicleDamage.bulk(spec.footprint.X, spec.footprint.Y, height, override),
 		walker = spec.gait ~= nil,
 		length = spec.footprint.Y,
+		height = height,
 		podBulk = VehicleDamage.bulk(pod.X, pod.Z, pod.Y),
 		podLength = pod.Z,
 		tracker = VehicleDamage.newTracker(),
 		podTracker = VehicleDamage.newTracker(),
 		podState = "docked",
 		climbOut = nil,
+		lastHit = nil,
 		smoke = nil,
 		fire = nil,
 	}
@@ -501,6 +506,7 @@ end
 -- Feeds `part`'s velocity to `tracker`, and damages the vehicle by a crash it reports.
 local function sampleCrash(
 	model: Model,
+	crash: Crash,
 	part: BasePart,
 	tracker: VehicleDamage.Tracker,
 	bulk: number,
@@ -533,6 +539,7 @@ local function sampleCrash(
 		at += before.Unit * length / 2
 	end
 	crashFeedback(model, at, amount)
+	crash.lastHit = part
 	Vehicles.damage(model, amount)
 end
 
@@ -545,10 +552,11 @@ local function trackCrash(model: Model, car: Car, dt: number)
 		VehicleDamage.clear(crash.tracker)
 		VehicleDamage.clear(crash.podTracker)
 	end
-	sampleCrash(model, car.skid, crash.tracker, crash.bulk, crash.walker, crash.length, dt)
+	sampleCrash(model, crash, car.skid, crash.tracker, crash.bulk, crash.walker, crash.length, dt)
 	if car.pod and podState ~= "docked" then
 		sampleCrash(
 			model,
+			crash,
 			car.pod.root,
 			crash.podTracker,
 			crash.podBulk,
@@ -559,15 +567,16 @@ local function trackCrash(model: Model, car: Car, dt: number)
 	end
 end
 
--- A shove (`speed` studs/s) hits the struck vehicle like a crash at that speed. It sets the
--- velocity, so the tracker starts over.
-local function rammed(other: Car, speed: number)
+-- A ram hits the struck vehicle like a crash that lost `loss` studs/s (VehicleDamage.ramLoss).
+-- The shove sets the velocity, so the tracker starts over.
+local function rammed(other: Car, loss: number)
 	local crash = other.crash
 	VehicleDamage.clear(crash.tracker)
-	local amount = VehicleDamage.damage(crash.bulk, speed, 0)
+	local amount = VehicleDamage.damage(crash.bulk, loss, 0)
 	local model = other.skid.Parent
 	if amount > 0 and model and model:IsA("Model") then
 		crashFeedback(model, other.skid.Position, amount)
+		crash.lastHit = other.skid
 		Vehicles.damage(model, amount)
 	end
 end
@@ -594,7 +603,7 @@ local function throwOut(seat: (Seat | VehicleSeat)?)
 	end
 end
 
--- Destroys a vehicle at no health: it stops driving, throws out everyone aboard (a walker's cab
+-- Destroys a vehicle at no health: it brakes to a stop, throws out everyone aboard (a walker's cab
 -- puts whoever stands in it at the exit), explodes, chars, hops, and is cleared after WRECK_TIME.
 -- A parked vehicle's spot then builds a fresh one (Vehicles.start); a /give vehicle is gone.
 local function wreck(model: Model, car: Car)
@@ -604,8 +613,12 @@ local function wreck(model: Model, car: Car)
 	model:SetAttribute("Wrecked", true)
 	model:SetAttribute("Health", 0)
 	cars[model] = nil
-	car.mover.Enabled = false
-	car.turner.Enabled = false
+	-- The skid is frictionless: the drive constraints, held at zero, are the hulk's brake.
+	setLimits(car, car.driveForce, car.driveTorque)
+	car.mover.PlaneVelocity = Vector2.zero
+	car.turner.AngularVelocity = Vector3.zero
+	car.mover.Enabled = true
+	car.turner.Enabled = true
 	if car.pod then
 		PodFlight.wreck(car.pod)
 	end
@@ -635,8 +648,9 @@ local function wreck(model: Model, car: Car)
 		end)
 	end
 
-	local hull = model:FindFirstChild("Hull1") :: BasePart?
-	local center = if hull then hull.Position else car.skid.Position
+	-- At the part that crashed (a flying pod, or the legs), else the skid.
+	local hit = car.crash.lastHit
+	local center = if hit and hit:IsDescendantOf(model) then hit.Position else car.skid.Position
 	Combat.explode(nil, center, VehicleDamage.wreckRadius(car.crash.bulk), WRECK_DAMAGE)
 	for _, part in model:GetDescendants() do
 		if part:IsA("BasePart") and part.Transparency < 1 then
@@ -653,7 +667,8 @@ local function wreck(model: Model, car: Car)
 	end)
 end
 
--- Smoke at half health and fire at a quarter, from the top of the first hull box; a wreck at none.
+-- Smoke at half health and fire at a quarter, from the skid at half the solid height; a wreck at
+-- none.
 local function onHealth(model: Model, car: Car)
 	if model:GetAttribute("Wrecked") then
 		return
@@ -663,11 +678,10 @@ local function onHealth(model: Model, car: Car)
 	local crash = car.crash
 	local share = health / maxHealth
 	if share <= SMOKE_SHARE and not crash.smoke then
-		local hull = model:FindFirstChild("Hull1") :: BasePart?
 		local spot = Instance.new("Attachment")
 		spot.Name = "DamageFx"
-		spot.Position = Vector3.new(0, if hull then hull.Size.Y / 2 else 1, 0)
-		spot.Parent = hull or car.skid
+		spot.Position = Vector3.new(0, math.max(crash.height / 2, 1), 0)
+		spot.Parent = car.skid
 		local size = 4 + 2 * math.sqrt(crash.bulk)
 		local smoke = Instance.new("Smoke")
 		smoke.Color = rgb(45, 45, 48)
@@ -719,7 +733,7 @@ local RAM_MIN_SPEED = 12 -- studs/s; slower cars nudge
 local RAM_DAMAGE = 0.6 -- per stud/s of speed, times weight: 48 at 80 for the base car
 local STOMP_DAMAGE = 40
 local STOMP_HEIGHT = 14 -- walkers hurt only around their legs, not riders on the deck
-local STOMP_PACE = 25 -- studs/s a moving walker hits vehicles and trees with, however slow
+local STOMP_PACE = 25 -- studs/s a moving walker shoves vehicles and hits trees with, however slow
 local PACE_DECAY = 150 -- studs/s^2 the remembered pace falls by
 local CREATURE_FLING = 1.6 -- creatures fly further than players
 local CREATURE_LIFT = 0.5 -- extra upward fling on creatures per stud/s of pace
@@ -838,12 +852,21 @@ local function fell(tree: Model, direction: Vector3, pace: number, weight: numbe
 end
 
 -- Throws a struck vehicle along `direction`, scaled by the rammer's pace, ram and the two masses,
--- and frees it from its drive constraints for STUN_TIME so the throw carries.
-local function shove(car: Car, other: Car, direction: Vector3, pace: number, now: number)
+-- and frees it from its drive constraints for STUN_TIME so the throw carries. Its damage comes
+-- from `closing`, the rammer's real speed toward it.
+local function shove(
+	car: Car,
+	other: Car,
+	direction: Vector3,
+	pace: number,
+	closing: number,
+	now: number
+)
 	local skid = other.skid
 	local ratio = math.clamp(car.mass / other.mass, RAM_MIN_RATIO, RAM_MAX_RATIO)
-	local speed = math.min(pace * RAM_TRANSFER * ratio * car.ram, MAX_SHOVE)
-	rammed(other, speed)
+	local transfer = RAM_TRANSFER * ratio * car.ram
+	local speed = math.min(pace * transfer, MAX_SHOVE)
+	rammed(other, VehicleDamage.ramLoss(closing, transfer, car.stomps))
 	-- The server must own the struck vehicle for the throw to take. A driven one it already owns;
 	-- an empty one it takes here. One carrying only passengers stays with their client, which
 	-- leaves it to the collision alone.
@@ -920,11 +943,21 @@ local function hurtTouching(model: Model, car: Car, dt: number, checkTargets: bo
 			car.struck[victim :: Model] = now
 			local outward = away(other.skid.Position)
 			local direction = if car.stomps then outward else heading + outward * 0.5
+			local struck = other.skid.AssemblyLinearVelocity
+			local closing = VehicleDamage.closingSpeed(
+				velocity.X,
+				velocity.Z,
+				struck.X,
+				struck.Z,
+				outward.X,
+				outward.Z
+			)
 			shove(
 				car,
 				other,
 				if direction.Magnitude > 0.1 then direction.Unit else outward,
 				pace,
+				closing,
 				now
 			)
 		elseif CollectionService:HasTag(victim, "Tree") then

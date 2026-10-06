@@ -4,7 +4,10 @@
 --   - sizes: the jeep is bulk ~1 with 100 health; Aurora's pod is bulk ~6.94
 --   - worked crashes: a jeep into a wall at 90, the pod into a tower at 100
 --   - every vehicle shrugs off a 2-stud drop and a 12 studs/s bump
---   - walkers land a 12-stud drop free and feel a 24-stud one
+--   - walkers land a 12-stud drop and a 14.4-stud MechClimb step-off free and feel a 24-stud one
+--   - crashes worth less than 1 health cost nothing
+--   - rams: damage from the rammer's real closing speed; walkers stomp at walking pace, not
+--     creeping or turning in place
 --   - damage, damage as a share of health, and health grow with bulk; bulk clamps
 --   - the tracker: crashes, landings and shoves count once; driving, braking, ramps, pods turning
 --     round and cleared jumps do not
@@ -60,6 +63,7 @@ for _, file in fs.readDir("src/server/vehicleModels") do
 	for _, ladder in spec.ladders or {} do
 		top = math.max(top, ladder.base.Y + ladder.height)
 	end
+	local mass = spec.footprint.X * spec.footprint.Y * 4 -- Vehicles' footprint mass
 	-- The pod: the box around its hull boxes.
 	local pod = nil
 	if spec.pod then
@@ -91,6 +95,10 @@ for _, file in fs.readDir("src/server/vehicleModels") do
 		name = spec.name,
 		bulk = VehicleDamage.bulk(spec.footprint.X, spec.footprint.Y, top),
 		walker = spec.gait ~= nil,
+		stomps = spec.stepsOver == true,
+		mass = mass,
+		ram = spec.ram or 1,
+		speed = spec.speed,
 		pod = pod,
 	}
 end
@@ -119,6 +127,23 @@ check(
 	VehicleDamage.damage(og.bulk, 0, dropSpeed(12), false) > 0,
 	"OG without the walker allowance should feel a 12-stud drop"
 )
+-- MechClimb lets a walker step off up to MAX_RISE + CLEARANCE = 14.4 studs (~75.2 studs/s).
+check(near(dropSpeed(14.4), 75.2, 0.1), "a 14.4-stud drop lands at ~75.2 studs/s")
+for id, vehicle in vehicles do
+	if vehicle.walker then
+		check(
+			VehicleDamage.damage(vehicle.bulk, 0, dropSpeed(14.4), true) == 0,
+			id .. ": a 14.4-stud drop is free"
+		)
+	end
+end
+
+-- Below 1 health a crash is nothing: just past the threshold it would be a fraction.
+do
+	local horizontal = VehicleDamage.thresholds(jeep.bulk)
+	check(VehicleDamage.damage(jeep.bulk, horizontal + 0.5, 0) == 0, "a 0.5 excess costs nothing")
+	check(VehicleDamage.damage(jeep.bulk, horizontal + 5, 0) >= 1, "a 5 excess costs health")
+end
 
 for id, vehicle in vehicles do
 	-- The pod lands on its hull, not on legs.
@@ -161,6 +186,46 @@ check(VehicleDamage.bulk(100, 100, 100) == 50, "bulk clamps at 50")
 check(VehicleDamage.bulk(8, 14, 5, 3) == 3, "a catalog bulk wins")
 check(VehicleDamage.wreckRadius(0.2) == 10, "wreck radius clamps at 10")
 check(VehicleDamage.wreckRadius(50) == 34, "wreck radius clamps at 34")
+
+-- Rams ---------------------------------------------------------------------------------------
+
+-- Mirrors Vehicles.shove: RAM_TRANSFER x mass ratio (clamped 0.15..3) x ram.
+local function transfer(rammer, struck): number
+	return 1.1 * math.clamp(rammer.mass / struck.mass, 0.15, 3) * rammer.ram
+end
+
+local function ramDamage(rammer, struck, closing: number): number
+	local loss = VehicleDamage.ramLoss(closing, transfer(rammer, struck), rammer.stomps)
+	return VehicleDamage.damage(struck.bulk, loss, 0)
+end
+
+check(VehicleDamage.closingSpeed(50, 0, 0, 0, 1, 0) == 50, "closing: straight at a parked car")
+check(VehicleDamage.closingSpeed(50, 0, 0, 0, 0, 1) == 0, "closing: passing alongside is 0")
+check(VehicleDamage.closingSpeed(50, 0, 30, 0, 2, 0) == 20, "closing: catching one up")
+check(VehicleDamage.closingSpeed(50, 0, -50, 0, 1, 0) == 100, "closing: head-on adds")
+check(VehicleDamage.closingSpeed(0, 0, 40, 0, 1, 0) == 0, "closing: never negative")
+check(VehicleDamage.closingSpeed(50, 0, 0, 0, 0, 0) == 0, "closing: no direction is 0")
+
+do
+	local taxi = vehicles.taxi
+	local slow, fast = ramDamage(jeep, taxi, 30), ramDamage(jeep, taxi, 90)
+	check(fast > slow, "car rams scale with closing speed")
+	check(ramDamage(jeep, taxi, 5) == 0, "a car nudging at 5 does nothing")
+	check(VehicleDamage.ramLoss(1000, 3) == 140, "ram loss clamps at 140")
+end
+
+for id, walker in vehicles do
+	if walker.stomps then
+		check(ramDamage(walker, jeep, 1.9) == 0, id .. ": creeping at 1.9 does not hurt a jeep")
+		check(ramDamage(walker, jeep, 0) == 0, id .. ": turning in place does not hurt a jeep")
+		local stomp = ramDamage(walker, jeep, walker.speed)
+		check(stomp >= 25, id .. " walking into a jeep takes " .. stomp .. ", want >= 25")
+	end
+end
+check(
+	ramDamage(og, jeep, 3) < VehicleDamage.maxHealth(jeep.bulk),
+	"OG at 3 studs/s does not wreck a jeep"
+)
 
 -- Tracker --------------------------------------------------------------------------------------
 
@@ -215,6 +280,14 @@ do
 		table.insert(samples, { math.max(90 - 90 * frame * DT, 0), 0, 0 })
 	end
 	check(#feed(samples) == 0, "braking at 90 studs/s^2: no crash")
+end
+-- The drive constraint's hardest stop, ~670 studs/s^2, at any frame rate.
+for _, dt in { 1 / 60, 1 / 45, 1 / 30, 1 / 20 } do
+	local samples = {}
+	for frame = 0, math.ceil(150 / 670 / dt) + 2 do
+		table.insert(samples, { math.max(150 - 670 * frame * dt, 0), 0, 0 })
+	end
+	check(#feed(samples, dt) == 0, "a 670 studs/s^2 stop at dt " .. dt .. ": no crash")
 end
 do
 	local samples = {}
