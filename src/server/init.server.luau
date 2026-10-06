@@ -28,7 +28,6 @@ local MacAccess = require(Systems.MacAccess)
 local Session = require(Systems.Session)
 local Vehicles = require(Systems.Vehicles)
 local Weapons = require(Systems.Weapons)
-local WalkerProbe = require(Systems.WalkerProbe) -- TEMPORARY
 
 -- Each landmark's building module (Regions.BUILDINGS), by region id, required in region order.
 local BUILDINGS = {}
@@ -97,7 +96,6 @@ buildWorld()
 
 Session.start()
 Creatures.start()
-task.spawn(WalkerProbe.start) -- TEMPORARY
 Vehicles.start()
 Admin.start()
 MacAccess.start()

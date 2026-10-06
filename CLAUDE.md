@@ -38,7 +38,7 @@ src/server/   ServerScriptService.Server. init.server.luau boots in this order:
   4. CharacterAutoLoads back on: nobody spawns before the lobby exists
   world/      Build helpers, Lobby, Roads, Landscape, Regions (per-landmark data), buildings/
   systems/    Combat, Weapons, WeaponSounds, Session, Creatures, Vehicles, PodFlight, Admin,
-              MacAccess, DayNight, CollisionGroups, WalkerProbe (TEMPORARY), and the model formats
+              MacAccess, DayNight, CollisionGroups, and the model formats
               VehicleModel, WeaponModel, CreatureModel
     Vehicles/ init.luau is the facade (damage, spawnNear, start) and wires the system. Modules:
               Registry (folder, `cars`, Car/Crash), Specs (model files, placeholder), Placement
@@ -266,9 +266,7 @@ After one failed guess at a bug only Studio shows, ship a probe and ask the user
 - Every wiring line ends in `-- TEMPORARY`; output lines start with a tag (`[WalkerProbe] ...`).
   `tools/check` lists every `TEMPORARY` line as a warning. Remove a probe once the user confirms
   the cause is known.
-- Two probes predate this branch and await the user: `src/server/systems/WalkerProbe.luau`
-  (walker skids under the ground) and `src/client/SoundProbe.luau` (which sound plays at game
-  start).
+- No probes are live.
 
 ## Hazards
 
