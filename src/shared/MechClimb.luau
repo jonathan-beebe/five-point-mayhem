@@ -34,7 +34,7 @@ MechClimb.COOLDOWN = 1.0
 export type Probe = {
 	wall: { distance: number }?, -- nearest wall face ahead, from the skid's front
 	ledge: { height: number, normalY: number }?, -- the top LEDGE_INSET past REACH
-	headroom: boolean, -- nothing taller than MAX_RISE within reach of the top
+	headroom: boolean, -- nothing taller than MAX_RISE within reach of the top, across the width
 	foot: number?, -- ground under the front of the skid's flat underside; nil = none near
 }
 export type Mode = "walk" | "climb" | "cling"
@@ -61,8 +61,13 @@ export type Command = {
 
 -- A ray in vehicle space from (x, y, z): walls and headroom cast forward (-Z), ledge and foot down.
 export type Ray = { x: number, y: number, z: number, length: number }
--- `front` is the z of the skid's front edge, which Probe distances count from.
-export type Rays = { front: number, walls: { Ray }, headroom: Ray, ledge: Ray, foot: Ray }
+-- `front` is the z of the skid's front edge, which Probe distances count from. Walls and headroom
+-- cast at the same x offsets: both edges and the center.
+export type Rays = { front: number, walls: { Ray }, headroom: { Ray }, ledge: Ray, foot: Ray }
+
+-- Side rays run this far inside the skid's edges, so a wall meeting a front corner at an angle
+-- reads as near as it is (the GAP holds the corner off trim).
+MechClimb.EDGE_INSET = 0.05
 
 function MechClimb.new(): State
 	return { mode = "walk", target = 0, stalled = 0, time = 0, cooldown = 0 }
@@ -155,25 +160,27 @@ end
 function MechClimb.rays(W: number, L: number): Rays
 	local front = -L / 2
 	local start = front + 1 -- one stud inside the skid, so a wall touching the front still hits
-	local walls = {}
-	for _, x in { -(W / 2 - 1), 0, W / 2 - 1 } do
+	local high = MechClimb.MAX_RISE + 1
+	local side = W / 2 - MechClimb.EDGE_INSET
+	local walls, headroom = {}, {}
+	for _, x in { -side, 0, side } do
 		table.insert(walls, {
 			x = x,
 			y = MechClimb.WALL_RAY_HEIGHT,
 			z = start,
 			length = MechClimb.REACH + 1,
 		})
-	end
-	local high = MechClimb.MAX_RISE + 1
-	return {
-		front = front,
-		walls = walls,
-		headroom = {
-			x = 0,
+		table.insert(headroom, {
+			x = x,
 			y = high,
 			z = start,
 			length = MechClimb.REACH + MechClimb.LEDGE_INSET + 1,
-		},
+		})
+	end
+	return {
+		front = front,
+		walls = walls,
+		headroom = headroom,
 		ledge = {
 			x = 0,
 			y = high,

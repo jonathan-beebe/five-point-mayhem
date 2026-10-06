@@ -219,10 +219,37 @@ for _, walker in walkers do
 		past >= 3 and past <= 8.9,
 		string.format("%s: ledge probe lands %.1f past the front", walker.name, past)
 	)
-	check(
-		rays.headroom.z - rays.headroom.length <= rays.ledge.z,
-		walker.name .. ": headroom ray should reach the ledge probe"
-	)
+	check(#rays.headroom == #rays.walls, walker.name .. ": a headroom ray per wall ray")
+	for index, ray in rays.headroom do
+		check(
+			ray.x == rays.walls[index].x and ray.z - ray.length <= rays.ledge.z,
+			string.format(
+				"%s: headroom ray %d should share its wall ray's x and reach the ledge probe",
+				walker.name,
+				index
+			)
+		)
+	end
+
+	-- Angled approach: a wall meeting a front corner at angle a reads within GAP of the corner, so
+	-- the climb backs the corner off the trim. A ray at x meets that wall (W/2 - |x|) * tan(a) past
+	-- the front.
+	for _, degrees in { 10, 25, 45, 60 } do
+		local nearest = math.huge
+		for _, ray in rays.walls do
+			nearest =
+				math.min(nearest, (walker.W / 2 - math.abs(ray.x)) * math.tan(math.rad(degrees)))
+		end
+		check(
+			nearest < MechClimb.GAP / 2,
+			string.format(
+				"%s: a wall at %d degrees on a front corner reads %.2f away",
+				walker.name,
+				degrees,
+				nearest
+			)
+		)
+	end
 	check(
 		rays.ledge.y - rays.ledge.length < -0.4,
 		walker.name .. ": ledge probe should reach below the bottom"
@@ -236,7 +263,9 @@ end
 -- 2D kinematic side view -------------------------------------------------------------------------
 -- `s` runs along the walker's path (forward +), `y` up. The world is boxes {s0, s1, y0, y1}. The
 -- skid spans [front - L, front] with ramps RAMP_LENGTH long at each end whose undersides rise to
--- RAMP_HEIGHT at the tips (Vehicles' sled); everything above it is ignored.
+-- RAMP_HEIGHT at the tips (Vehicles' sled); everything above it is ignored. A box may carry an x
+-- range {.., x0, x1} (vehicle space across the walker): rays at other x miss it, but it always
+-- overlaps the footprint, so the skid collides with it.
 
 local RAMP_HEIGHT, RAMP_LENGTH = 1.6, 2.5
 local GRAVITY = 196.2
@@ -292,11 +321,15 @@ local function inside(box: Box, s: number, y: number): boolean
 	return s > box[1] and s < box[2] and y > box[3] and y < box[4]
 end
 
+local function lane(box: Box, x: number): boolean
+	return box[5] == nil or (x > box[5] and x < box[6])
+end
+
 -- First face a forward ray at height y from s meets within length, ignoring boxes it starts in.
-local function castForward(world: { Box }, s: number, y: number, length: number): number?
+local function castForward(world: { Box }, x: number, s: number, y: number, length: number): number?
 	local nearest = nil
 	for _, box in world do
-		if not inside(box, s, y) and y > box[3] and y < box[4] and box[1] >= s then
+		if lane(box, x) and not inside(box, s, y) and y > box[3] and y < box[4] and box[1] >= s then
 			local d = box[1] - s
 			if d <= length and (not nearest or d < nearest) then
 				nearest = d
@@ -307,10 +340,10 @@ local function castForward(world: { Box }, s: number, y: number, length: number)
 end
 
 -- Highest top a downward ray from (s, y) meets within length, ignoring boxes it starts in.
-local function castDown(world: { Box }, s: number, y: number, length: number): number?
+local function castDown(world: { Box }, x: number, s: number, y: number, length: number): number?
 	local best = nil
 	for _, box in world do
-		if s >= box[1] and s < box[2] and not inside(box, s, y) then
+		if lane(box, x) and s >= box[1] and s < box[2] and not inside(box, s, y) then
 			if box[4] <= y and box[4] >= y - length and (not best or box[4] > best) then
 				best = box[4]
 			end
@@ -319,7 +352,7 @@ local function castDown(world: { Box }, s: number, y: number, length: number): n
 	return best
 end
 
--- Senses the world the way Vehicles does, along the walker's center line.
+-- Senses the world the way Vehicles does.
 local function sense(world: { Box }, rays, front: number, L: number, bottom: number)
 	local center = front - L / 2
 	local function at(z: number): number
@@ -327,21 +360,26 @@ local function sense(world: { Box }, rays, front: number, L: number, bottom: num
 	end
 	local wall = nil
 	for _, ray in rays.walls do
-		local d = castForward(world, at(ray.z), bottom + ray.y, ray.length)
+		local d = castForward(world, ray.x, at(ray.z), bottom + ray.y, ray.length)
 		local distance = d and d - (ray.z - rays.front)
 		if distance and (not wall or distance < wall.distance) then
 			wall = { distance = distance }
 		end
 	end
-	local headroom =
-		castForward(world, at(rays.headroom.z), bottom + rays.headroom.y, rays.headroom.length)
-	local top = castDown(world, at(rays.ledge.z), bottom + rays.ledge.y, rays.ledge.length)
-	local foot = castDown(world, at(rays.foot.z), bottom + rays.foot.y, rays.foot.length)
+	local headroom = true
+	for _, ray in rays.headroom do
+		if castForward(world, ray.x, at(ray.z), bottom + ray.y, ray.length) then
+			headroom = false
+		end
+	end
+	local ledge, foot = rays.ledge, rays.foot
+	local top = castDown(world, ledge.x, at(ledge.z), bottom + ledge.y, ledge.length)
+	local under = castDown(world, foot.x, at(foot.z), bottom + foot.y, foot.length)
 	return {
 		wall = wall,
 		ledge = if top then { height = top - bottom, normalY = 1 } else nil,
-		headroom = headroom == nil,
-		foot = if foot then foot - bottom else nil,
+		headroom = headroom,
+		foot = if under then under - bottom else nil,
 	}
 end
 
@@ -459,14 +497,19 @@ local SUMMIT = TIERS * TIER
 
 local GROUND: Box = { -1000, 1000, -10, 0 }
 
-local function pyramid(temple: number): { Box }
+-- `templeX` limits the temple to an x range across the walker (an off-center approach).
+local function pyramid(temple: number, templeX: { number }?): { Box }
 	local world = { GROUND }
 	for k = 0, TIERS - 1 do
 		local s0 = k * SHRINK / 2
 		table.insert(world, { s0, BASE - s0, k * TIER, (k + 1) * TIER })
 		table.insert(world, { s0 - 0.3, s0 + 0.1, (k + 1) * TIER - 1.5, (k + 1) * TIER })
 	end
-	table.insert(world, { temple, BASE - temple, SUMMIT, SUMMIT + 19 })
+	local x0, x1 = nil, nil
+	if templeX then
+		x0, x1 = templeX[1], templeX[2]
+	end
+	table.insert(world, { temple, BASE - temple, SUMMIT, SUMMIT + 19, x0, x1 })
 	return world
 end
 
@@ -503,6 +546,31 @@ for _, walker in walkers do
 	check(side.stalls == 0, walker.name .. ": side face should not stall")
 	check(side.climbs == TIERS - 1, walker.name .. ": side face should climb once per tier")
 	check(side.settled > 5, walker.name .. ": side face should settle")
+
+	-- (b') A side face approached off-center: the temple is beside the center line, across only
+	-- one edge of the walker. The edge headroom ray refuses the last tier; no climb into the
+	-- temple, no stall loop.
+	local offset = simulate(
+		walker,
+		pyramid(BASE / 2 - 20, { walker.W / 2 - 2, walker.W / 2 + 40 }),
+		-10,
+		60,
+		"side face, off-center"
+	)
+	check(
+		math.abs(offset.final - (SUMMIT - TIER)) < 0.05,
+		string.format(
+			"%s: off-center side face should stop at %d, got %.1f",
+			walker.name,
+			SUMMIT - TIER,
+			offset.final
+		)
+	)
+	check(offset.stalls == 0, walker.name .. ": off-center side face should not stall")
+	check(
+		offset.climbs == TIERS - 1,
+		walker.name .. ": off-center side face should climb once per tier"
+	)
 
 	-- (c) The front staircase.
 	local stairs = simulate(walker, staircase(), -50, 60, "front staircase")

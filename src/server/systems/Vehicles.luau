@@ -188,13 +188,20 @@ local function senseClimb(rays: MechClimb.Rays, ground: CFrame): MechClimb.Probe
 			end
 		end
 	end
+	local headroom = true
+	for _, ray in rays.headroom do
+		if cast(ray, false) then
+			headroom = false
+			break
+		end
+	end
 	local bottom = ground.Position.Y
 	local top = cast(rays.ledge, true)
 	local foot = cast(rays.foot, true)
 	return {
 		wall = wall,
 		ledge = if top then { height = top.Position.Y - bottom, normalY = top.Normal.Y } else nil,
-		headroom = cast(rays.headroom, false) == nil,
+		headroom = headroom,
 		foot = if foot then foot.Position.Y - bottom else nil,
 	}
 end
