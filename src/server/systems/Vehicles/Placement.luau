@@ -1,7 +1,12 @@
 -- Vehicle space and placement: SKID_TO_GROUND (the skid's frame to the ground under it), welding
--- a part to the skid or to a bone at an offset in vehicle space, and lifting a frame onto the
--- terrain surface (onTerrain).
+-- a part to the skid or to a bone at an offset in vehicle space, building the model file's pieces
+-- (addPieces), and lifting a frame onto the terrain surface (onTerrain).
+-- tools/tests/server_helpers.luau loads this module and builds every vehicle model's pieces.
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Names = require(ReplicatedStorage.Shared.Names)
+local VehicleModel = require(script.Parent.Parent.VehicleModel)
 local Parts = require(script.Parent.Parent.util.Parts)
 
 local Placement = {}
@@ -27,6 +32,23 @@ local function attachTo(model: Model, skid: BasePart, bone: Bone?, part: BasePar
 	part.Anchored = false
 	part.Massless = true
 	Parts.weldTo(bone.part, part, CFrame.new(bone.pivot):Inverse() * offset, model)
+end
+
+-- The model file's pieces, each welded to its bone (from `bones`, by name), else to the skid.
+local function addPieces(
+	model: Model,
+	skid: BasePart,
+	bones: { [string]: Bone },
+	pieces: { VehicleModel.PieceSpec }
+)
+	for _, piece in pieces do
+		local part = Parts.fromPiece(piece, "Piece")
+		part.CastShadow = part.Transparency < 0.5
+		if piece.hideInCockpit then
+			part:SetAttribute(Names.Attributes.HideInCockpit, true) -- MechCamera
+		end
+		attachTo(model, skid, piece.bone and bones[piece.bone], part, piece.offset)
+	end
 end
 
 -- Terrain collides only at its surface: a part below it falls through the inside. Lifts `cframe`
@@ -63,6 +85,7 @@ end
 Placement.SKID_TO_GROUND = SKID_TO_GROUND
 Placement.attach = attach
 Placement.attachTo = attachTo
+Placement.addPieces = addPieces
 Placement.onTerrain = onTerrain
 
 return Placement

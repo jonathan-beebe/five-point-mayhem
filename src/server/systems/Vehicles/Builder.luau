@@ -190,14 +190,7 @@ local function build(id: string, cframe: CFrame): Model
 		end
 	end
 
-	for _, piece in spec.pieces do
-		local part = Parts.fromPiece(piece, "Piece")
-		part.CastShadow = part.Transparency < 0.5
-		if piece.hideInCockpit then
-			part:SetAttribute(Names.Attributes.HideInCockpit, true) -- MechCamera
-		end
-		attachTo(model, skid, piece.bone and bones[piece.bone], part, piece.offset)
-	end
+	Placement.addPieces(model, skid, bones, spec.pieces)
 
 	-- Outside-view camera subject.
 	if spec.cameraFocus then

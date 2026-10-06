@@ -18,7 +18,6 @@ local Combat = require(script.Parent.Combat)
 local CreatureModel = require(script.Parent.CreatureModel)
 local Characters = require(script.Parent.util.Characters)
 local Guard = require(script.Parent.util.Guard)
-local Parts = require(script.Parent.util.Parts)
 
 local creatureModels = script.Parent.Parent.creatureModels
 
@@ -97,15 +96,7 @@ local function build(kindId: string, position: Vector3): Creature?
 	root.Parent = model
 	model.PrimaryPart = root
 
-	-- Pieces are authored in creature space (origin on the ground); weld them relative to the root.
-	local fromRoot = CreatureModel.rootCenter(spec):Inverse()
-	for _, piece in spec.pieces do
-		local part = Parts.fromPiece(piece, "Part")
-		part.Massless = true
-		part.TopSurface = Enum.SurfaceType.Smooth
-		part.BottomSurface = Enum.SurfaceType.Smooth
-		Parts.weldTo(root, part, fromRoot * piece.offset, model)
-	end
+	CreatureModel.addPieces(model, root, spec)
 
 	local humanoid = Instance.new("Humanoid")
 	humanoid.RequiresNeck = false

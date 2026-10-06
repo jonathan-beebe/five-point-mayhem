@@ -10,9 +10,11 @@
 --     client ScreenGui takes its DisplayOrder from Theme
 --   - RightColumn's constants equal MacPanel's old ones (PANEL_TOP follows the column's new top);
 --     notifyOpened fires `opened`
---   - Hud: jumpButton, shownIn, edgeY and bottomControls give what the inline lookups gave (the
---     bottom-right guis found by name before, listed with addBottomControls now); jumpWatcher hooks
---     a jump button once and lays out on every call
+--   - Hud: jumpButton and shownIn give the golden results generated once from the code at
+--     a50e99c, over trees with each piece missing, of the wrong class, hidden or disabled; edgeY
+--     and bottomControls give what the inline lookups gave (the bottom-right guis found by name
+--     before, listed with addBottomControls now); jumpWatcher hooks a jump button once and lays
+--     out on every call
 --
 -- Not covered: events and layout (Lune instances have no signals or AbsolutePosition). Hud's
 -- signal hookup is checked against stand-ins.
@@ -1027,11 +1029,8 @@ local fakeGame = {
 }
 local Hud = Sandbox.load("src/client/ui/Hud.luau", { game = fakeGame })
 
--- PromptPanel's lookups before the registry, word for word (Names constants inlined).
-local function oldShownIn(object: any): boolean
-	local owner = object:FindFirstAncestorOfClass("ScreenGui")
-	return object.Visible and owner ~= nil and owner.Enabled
-end
+-- PromptPanel's bottom-control lookup before the registry, word for word (Names constants
+-- inlined). Its shownIn was Hud.shownIn word for word; SHOWN_OBJECTS below pins that.
 local function oldBottomControls(): { any }
 	local found = {}
 	local playerGui = player:FindFirstChildOfClass("PlayerGui")
@@ -1041,7 +1040,7 @@ local function oldBottomControls(): { any }
 	local touchGui = playerGui:FindFirstChild("TouchGui")
 	local touchFrame = touchGui and touchGui:FindFirstChild("TouchControlFrame")
 	local jump = touchFrame and touchFrame:FindFirstChild("JumpButton")
-	if jump and jump:IsA("GuiObject") and oldShownIn(jump) then
+	if jump and jump:IsA("GuiObject") and Hud.shownIn(jump) then
 		table.insert(found, jump)
 	end
 	for _, name in { "MechButtons", "PodButtons", "SniperScopeButton" } do
@@ -1055,13 +1054,6 @@ local function oldBottomControls(): { any }
 		end
 	end
 	return found
-end
-local function oldJumpButton(): any
-	local playerGui = player:FindFirstChildOfClass("PlayerGui")
-	local touchGui = playerGui and playerGui:FindFirstChild("TouchGui")
-	local frame = touchGui and touchGui:FindFirstChild("TouchControlFrame")
-	local jump = frame and frame:FindFirstChild("JumpButton")
-	return if jump and jump:IsA("GuiObject") then jump else nil
 end
 
 local function sameSet(got: { any }, want: { any }, label: string)
@@ -1087,6 +1079,172 @@ for _, name in { "MechButtons", "PodButtons", "SniperScopeButton" } do
 	table.insert(bottomGuis, gui)
 end
 
+-- Golden results of Hud.jumpButton and Hud.shownIn, generated once from the code at a50e99c:
+-- they pin their behaviour. A deliberate change updates the third entry of each case.
+local function new(className: string, name: string, parent: any?): any
+	local each = RealInstance.new(className)
+	each.Name = name
+	each.Parent = parent
+	return each
+end
+-- { label, PlayerGui tree (nil: none), the path below PlayerGui jumpButton returns (false: nil) }
+local JUMP_TREES = {
+	{
+		"no PlayerGui",
+		function()
+			return nil
+		end,
+		false,
+	},
+	{
+		"no TouchGui",
+		function()
+			local gui = new("PlayerGui", "PlayerGui")
+			new("ScreenGui", "OtherGui", gui)
+			return gui
+		end,
+		false,
+	},
+	{
+		"no TouchControlFrame",
+		function()
+			local gui = new("PlayerGui", "PlayerGui")
+			new("Frame", "OtherFrame", new("ScreenGui", "TouchGui", gui))
+			return gui
+		end,
+		false,
+	},
+	{
+		"no JumpButton",
+		function()
+			local gui = new("PlayerGui", "PlayerGui")
+			local frame = new("Frame", "TouchControlFrame", new("ScreenGui", "TouchGui", gui))
+			new("ImageButton", "ThumbstickFrame", frame)
+			return gui
+		end,
+		false,
+	},
+	{
+		"JumpButton a Folder",
+		function()
+			local gui = new("PlayerGui", "PlayerGui")
+			local frame = new("Frame", "TouchControlFrame", new("ScreenGui", "TouchGui", gui))
+			new("Folder", "JumpButton", frame)
+			return gui
+		end,
+		false,
+	},
+	{
+		"JumpButton a Frame",
+		function()
+			local gui = new("PlayerGui", "PlayerGui")
+			local frame = new("Frame", "TouchControlFrame", new("ScreenGui", "TouchGui", gui))
+			new("Frame", "JumpButton", frame)
+			return gui
+		end,
+		"TouchGui.TouchControlFrame.JumpButton",
+	},
+	{
+		"JumpButton an ImageButton",
+		function()
+			local gui = new("PlayerGui", "PlayerGui")
+			local frame = new("Frame", "TouchControlFrame", new("ScreenGui", "TouchGui", gui))
+			new("ImageButton", "JumpButton", frame)
+			return gui
+		end,
+		"TouchGui.TouchControlFrame.JumpButton",
+	},
+	{
+		"JumpButton hidden in a disabled TouchGui",
+		function()
+			local gui = new("PlayerGui", "PlayerGui")
+			local touch = new("ScreenGui", "TouchGui", gui)
+			touch.Enabled = false
+			local jump = new("ImageButton", "JumpButton", new("Frame", "TouchControlFrame", touch))
+			jump.Visible = false
+			return gui
+		end,
+		"TouchGui.TouchControlFrame.JumpButton",
+	},
+	{
+		"TouchGui a Folder",
+		function()
+			local gui = new("PlayerGui", "PlayerGui")
+			local frame = new("Frame", "TouchControlFrame", new("Folder", "TouchGui", gui))
+			new("ImageButton", "JumpButton", frame)
+			return gui
+		end,
+		"TouchGui.TouchControlFrame.JumpButton",
+	},
+	{
+		"JumpButton one level deeper",
+		function()
+			local gui = new("PlayerGui", "PlayerGui")
+			local frame = new("Frame", "TouchControlFrame", new("ScreenGui", "TouchGui", gui))
+			new("ImageButton", "JumpButton", new("Frame", "Inner", frame))
+			return gui
+		end,
+		false,
+	},
+}
+for _, case in JUMP_TREES do
+	local label, tree, want = case[1], case[2](), case[3]
+	if tree then
+		tree.Parent = player
+	end
+	local got = Hud.jumpButton()
+	equal(
+		if got then string.gsub(got:GetFullName(), "^Player%.PlayerGui%.", "") else false,
+		want,
+		"jumpButton, " .. label
+	)
+	if tree then
+		tree.Parent = nil
+	end
+end
+
+-- { label, the object asked about, shownIn }
+local SHOWN_OBJECTS = {}
+for _, visible in { true, false } do
+	local function object(parent: any): any
+		local button = new("TextButton", "Button", parent)
+		button.Visible = visible
+		return button
+	end
+	local function disabled(gui: any): any
+		gui.Enabled = false
+		return gui
+	end
+	local shown = if visible then "visible" else "hidden"
+	for _, case in
+		{
+			{ "no ScreenGui", new("Frame", "Holder"), false },
+			{ "enabled ScreenGui", new("ScreenGui", "Gui"), visible },
+			{ "disabled ScreenGui", disabled(new("ScreenGui", "Gui")), false },
+			{
+				"enabled ScreenGui two levels up",
+				new("Frame", "Inner", new("Frame", "Outer", new("ScreenGui", "Gui"))),
+				visible,
+			},
+			{
+				"disabled ScreenGui inside an enabled one",
+				disabled(new("ScreenGui", "Inner", new("ScreenGui", "Outer"))),
+				false,
+			},
+			{
+				"enabled ScreenGui inside a disabled one",
+				new("ScreenGui", "Inner", disabled(new("ScreenGui", "Outer"))),
+				visible,
+			},
+		}
+	do
+		table.insert(SHOWN_OBJECTS, { shown .. ", " .. case[1], object(case[2]), case[3] })
+	end
+end
+for _, case in SHOWN_OBJECTS do
+	equal(Hud.shownIn(case[2]), case[3], "shownIn, " .. case[1])
+end
+
 equal(Hud.jumpButton(), nil, "no PlayerGui: no jump button")
 sameSet(Hud.bottomControls(), oldBottomControls(), "no PlayerGui")
 
@@ -1101,6 +1259,10 @@ local jump = RealInstance.new("ImageButton")
 jump.Name = "JumpButton"
 jump.Parent = touchFrame
 
+-- Golden results per touch state, generated once from the code at a50e99c: whether jumpButton
+-- returns `jump` (else nil) and shownIn(jump).
+local JUMP_BY_TOUCH = { none = false, hidden = true, disabled = true, shown = true }
+local SHOWN_BY_TOUCH = { none = true, hidden = false, disabled = false, shown = true }
 local scenarios = 0
 for _, touch in { "none", "hidden", "disabled", "shown" } do
 	touchGui.Parent = if touch == "none" then nil else playerGui
@@ -1114,9 +1276,9 @@ for _, touch in { "none", "hidden", "disabled", "shown" } do
 			gui.Enabled = bit32.btest(bits, 2)
 		end
 		local label = string.format("touch %s guis %d", touch, mask)
-		equal(Hud.jumpButton(), oldJumpButton(), label .. " jumpButton")
+		equal(Hud.jumpButton(), if JUMP_BY_TOUCH[touch] then jump else nil, label .. " jumpButton")
 		sameSet(Hud.bottomControls(), oldBottomControls(), label)
-		equal(Hud.shownIn(jump), oldShownIn(jump), label .. " shownIn")
+		equal(Hud.shownIn(jump), SHOWN_BY_TOUCH[touch], label .. " shownIn")
 		scenarios += 1
 	end
 end

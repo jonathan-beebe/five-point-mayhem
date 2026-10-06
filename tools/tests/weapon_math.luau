@@ -1,12 +1,16 @@
 -- Checks src/shared/WeaponMath.luau outside Roblox.
 -- Usage: lune run tools/tests/weapon_math.luau
 --
---   - every function returns the same bits (signed zeros and NaNs included; vectors and frames
---     component by component) as the inline code it replaced in Weapons.luau, copied below word
---     for word as the reference, over a sweep of inputs: zero and -0, values on each threshold and
---     a hair either side, NaN, and every weapon model file for the display centering
---   - spreadDirection makes the same calls, in the same order with the same arguments, on the
---     Random it is given (a recording fake) as the inline code made on its own Random
+--   - spreadDirection, inMeleeReach, inPushCone and projectileStep return the same bits (signed
+--     zeros included, vectors component by component; a NaN matches any NaN) as golden tables
+--     generated once from the code at a50e99c: zero and -0, values on each threshold and a hair
+--     either side, NaN
+--   - spreadDirection makes the calls in its golden call log, in order with the same arguments, on
+--     the Random it is given (a recording fake)
+--   - coolingDown, projectileSize and centerUpright return the same bits as the inline code each
+--     replaced in Weapons.luau, copied below word for word as the reference, over a sweep of
+--     inputs: values on each threshold and a hair either side, NaN, and every weapon model file
+--     for the display centering
 --   - a few plain values (the cooldown slack, worked examples)
 
 local luau = require("@lune/luau")
@@ -31,42 +35,9 @@ local Reference = luau.load(
 	[[
 local Reference = {}
 
--- spreadDirection, with the module's `random` as an argument.
-function Reference.spreadDirection(direction, degrees, random)
-	if degrees <= 0 then
-		return direction
-	end
-	local frame = CFrame.lookAt(Vector3.zero, direction)
-	local pitch = math.rad(random:NextNumber(-degrees, degrees))
-	local yaw = math.rad(random:NextNumber(-degrees, degrees))
-	return (frame * CFrame.Angles(pitch, yaw, 0)).LookVector
-end
-
 -- The FireWeapon handler's cooldown test.
 function Reference.coolingDown(times, weaponId, now, cooldown)
 	return times[weaponId] and now - times[weaponId] < cooldown * 0.85
-end
-
--- fireMelee, per target: `from` is shot.root.Position, `to` target.root.Position.
-function Reference.inMeleeReach(flatLook, minimumDot, from, to, range)
-	local offset = to - from
-	local flat = Vector3.new(offset.X, 0, offset.Z)
-	local inReach = offset.Magnitude <= range + 1.5
-	local inFront = flat.Magnitude < 2 or flatLook:Dot(flat.Unit) >= minimumDot
-	return inReach and inFront
-end
-
--- firePush, per target: `origin` is shot.origin, `position` target.root.Position.
-function Reference.inPushCone(look, origin, position, range)
-	local offset = position - origin
-	return offset.Magnitude <= range and look:Dot(offset.Unit) > 0.4
-end
-
--- The projectile Heartbeat.
-function Reference.projectileStep(velocity, gravity, dt)
-	local nextVelocity = velocity - Vector3.new(0, gravity * dt, 0)
-	local step = (velocity + nextVelocity) / 2 * dt
-	return step, nextVelocity
 end
 
 -- projectileVisual.
@@ -124,6 +95,32 @@ local function same(a: any, b: any): boolean
 	end
 	return a == b
 end
+-- A golden value: numbers by bits (a NaN matches any NaN), a vector as { x, y, z }, tables key
+-- by key.
+local function matches(got: any, want: any): boolean
+	if typeof(got) == "Vector3" then
+		got = { got.X, got.Y, got.Z }
+	end
+	if type(want) == "number" then
+		return type(got) == "number"
+			and (
+				if want ~= want
+					then got ~= got
+					else string.pack("<d", got) == string.pack("<d", want)
+			)
+	elseif type(want) == "table" then
+		if type(got) ~= "table" or #got ~= #want then
+			return false
+		end
+		for key, value in want do
+			if not matches(got[key], value) then
+				return false
+			end
+		end
+		return true
+	end
+	return got == want
+end
 local function show(...: any): string
 	local parts = {}
 	for index = 1, select("#", ...) do
@@ -164,12 +161,12 @@ local OFFSETS = {
 	Vector3.new(-0, 0, -0),
 	Vector3.new(1.9, 0, 0),
 	Vector3.new(2, 0, 0),
-	Vector3.new(2 + hair, 0, 0),
+	Vector3.new(2.0001, 0, 0), -- a hair Vector3 keeps (single precision)
 	Vector3.new(0, 0, -2),
 	Vector3.new(0, 5, 1),
 	Vector3.new(0, 0, -6),
 	Vector3.new(0, 0, -7.5),
-	Vector3.new(0, 0, -7.5 - hair),
+	Vector3.new(0, 0, -7.5001),
 	Vector3.new(4, 0, -4),
 	Vector3.new(math.sqrt(21), 0, -2), -- dot 0.4 with -Z, as close as single precision gets
 	Vector3.new(math.sqrt(21), 0, -2.001),
@@ -182,7 +179,6 @@ local OFFSETS = {
 	Vector3.new(nan, 0, 0),
 	Vector3.new(0, nan, 0),
 }
-local RANGES = { 0, 6, 10, 20, 40, -1, nan }
 
 Check.section("spreadDirection")
 -- A Random stand-in that logs every call and answers from a seeded sequence.
@@ -204,23 +200,110 @@ local function recorder(seed: number): any
 	end
 	return fake, log
 end
-for _, seed in { 1, 77, 424242 } do
-	for _, direction in DIRECTIONS do
-		for _, degrees in { 0, -0, -3, hair, 0.5, 4, 8, 30, 90, nan } do
-			local old, oldLog = recorder(seed)
-			local new, newLog = recorder(seed)
-			for draw = 1, 5 do
-				check(
-					same(
-						WeaponMath.spreadDirection(direction, degrees, new),
-						Reference.spreadDirection(direction, degrees, old)
-					),
-					"spreadDirection " .. show(seed, direction, degrees, draw)
-				)
-			end
-			check(same(newLog, oldLog), "spreadDirection calls " .. show(seed, direction, degrees))
-		end
-	end
+-- Golden outputs and call logs of WeaponMath.spreadDirection (fake seeded 77, one draw),
+-- generated once from the code at a50e99c: they pin its behaviour. A deliberate change updates
+-- this table. { DIRECTIONS index, degrees, want, calls }
+local SPREAD = {
+	{ 1, 0, { 0, 0, -1 }, {} },
+	{ 1, -0, { 0, 0, -1 }, {} },
+	{ 1, -3, { 0, 0, -1 }, {} },
+	{
+		1,
+		1e-9,
+		{ -1.6580133533478092e-12, -1.739287533442102e-11, -1 },
+		{ { "NextNumber", 2, -1e-9, 1e-9 }, { "NextNumber", 2, -1e-9, 1e-9 } },
+	},
+	{
+		1,
+		4,
+		{ -0.006632004864513874, -0.06951386481523514, -0.9975589513778687 },
+		{ { "NextNumber", 2, -4, 4 }, { "NextNumber", 2, -4, 4 } },
+	},
+	{
+		1,
+		90,
+		{ -0.14866803586483002, -0.9888725280761719, -0.005376997869461775 },
+		{ { "NextNumber", 2, -90, 90 }, { "NextNumber", 2, -90, 90 } },
+	},
+	{ 1, nan, { nan, nan, nan }, { { "NextNumber", 2, nan, nan }, { "NextNumber", 2, nan, nan } } },
+	{ 4, 0, { 0, 1, 0 }, {} },
+	{ 4, -0, { 0, 1, 0 }, {} },
+	{ 4, -3, { 0, 1, 0 }, {} },
+	{
+		4,
+		1e-9,
+		{ -1.6580133533478092e-12, 1, -1.739287533442102e-11 },
+		{ { "NextNumber", 2, -1e-9, 1e-9 }, { "NextNumber", 2, -1e-9, 1e-9 } },
+	},
+	{
+		4,
+		4,
+		{ -0.006632004864513874, 0.9975589513778687, -0.06951386481523514 },
+		{ { "NextNumber", 2, -4, 4 }, { "NextNumber", 2, -4, 4 } },
+	},
+	{
+		4,
+		90,
+		{ -0.14866803586483002, 0.005376997869461775, -0.9888725280761719 },
+		{ { "NextNumber", 2, -90, 90 }, { "NextNumber", 2, -90, 90 } },
+	},
+	{ 4, nan, { nan, nan, nan }, { { "NextNumber", 2, nan, nan }, { "NextNumber", 2, nan, nan } } },
+	{ 6, 0, { 0.300006628036499, -0.40000882744789124, 0.866019070148468 }, {} },
+	{ 6, -0, { 0.300006628036499, -0.40000882744789124, 0.866019070148468 }, {} },
+	{ 6, -3, { 0.300006628036499, -0.40000882744789124, 0.866019070148468 }, {} },
+	{
+		6,
+		1e-9,
+		{ 0.300006628036499, -0.40000882744789124, 0.866019070148468 },
+		{ { "NextNumber", 2, -1e-9, 1e-9 }, { "NextNumber", 2, -1e-9, 1e-9 } },
+	},
+	{
+		6,
+		4,
+		{ 0.296438992023468, -0.4627426266670227, 0.8354598879814148 },
+		{ { "NextNumber", 2, -4, 4 }, { "NextNumber", 2, -4, 4 } },
+	},
+	{
+		6,
+		90,
+		{ 0.01261071301996708, -0.908463716506958, -0.41777345538139343 },
+		{ { "NextNumber", 2, -90, 90 }, { "NextNumber", 2, -90, 90 } },
+	},
+	{ 6, nan, { nan, nan, nan }, { { "NextNumber", 2, nan, nan }, { "NextNumber", 2, nan, nan } } },
+	{ 8, 0, { 0, 0, 0 }, {} },
+	{ 8, -0, { 0, 0, 0 }, {} },
+	{ 8, -3, { 0, 0, 0 }, {} },
+	{
+		8,
+		1e-9,
+		{ nan, nan, nan },
+		{ { "NextNumber", 2, -1e-9, 1e-9 }, { "NextNumber", 2, -1e-9, 1e-9 } },
+	},
+	{ 8, 4, { nan, nan, nan }, { { "NextNumber", 2, -4, 4 }, { "NextNumber", 2, -4, 4 } } },
+	{ 8, 90, { nan, nan, nan }, { { "NextNumber", 2, -90, 90 }, { "NextNumber", 2, -90, 90 } } },
+	{ 8, nan, { nan, nan, nan }, { { "NextNumber", 2, nan, nan }, { "NextNumber", 2, nan, nan } } },
+	{ 9, 0, { nan, 0, 0 }, {} },
+	{ 9, -0, { nan, 0, 0 }, {} },
+	{ 9, -3, { nan, 0, 0 }, {} },
+	{
+		9,
+		1e-9,
+		{ nan, nan, nan },
+		{ { "NextNumber", 2, -1e-9, 1e-9 }, { "NextNumber", 2, -1e-9, 1e-9 } },
+	},
+	{ 9, 4, { nan, nan, nan }, { { "NextNumber", 2, -4, 4 }, { "NextNumber", 2, -4, 4 } } },
+	{ 9, 90, { nan, nan, nan }, { { "NextNumber", 2, -90, 90 }, { "NextNumber", 2, -90, 90 } } },
+	{ 9, nan, { nan, nan, nan }, { { "NextNumber", 2, nan, nan }, { "NextNumber", 2, nan, nan } } },
+}
+for _, row in SPREAD do
+	local direction, degrees, want, calls = DIRECTIONS[row[1]], row[2], row[3], row[4]
+	local fake, log = recorder(77)
+	local got = WeaponMath.spreadDirection(direction, degrees, fake)
+	check(
+		matches(got, want),
+		"spreadDirection " .. show(direction, degrees) .. " = " .. tostring(got)
+	)
+	check(matches(log, calls), "spreadDirection calls " .. show(direction, degrees))
 end
 do
 	local still, stillLog = recorder(5)
@@ -254,67 +337,239 @@ end
 check(WeaponMath.coolingDown(10, 10.5, 1), "0.5 s into a 1 s cooldown")
 check(not WeaponMath.coolingDown(10, 10.9, 1), "0.9 s into a 1 s cooldown (slack 0.85)")
 
+-- Golden outputs of WeaponMath.inMeleeReach, generated once from the code at a50e99c: they pin
+-- its behaviour. A deliberate change updates this table. The string holds one T or F per OFFSETS
+-- entry, in order. { FRAMES index, minimumDot, range, want }
+local MELEE = {
+	{ 1, 0.3, 6, "TTTFFTTTTFTTTTTFFFFFF" },
+	{ 1, 0.3, 0, "TTFFFFFFFFFFFFFFFFFFF" },
+	{ 1, 0.3, nan, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 1, 0.7, 6, "TTTFFTTTTFTFFFTFFFFFF" },
+	{ 1, 0.7, 0, "TTFFFFFFFFFFFFFFFFFFF" },
+	{ 1, 0.7, nan, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 1, nan, 6, "TTTFFFTFFFFFFFFFFFFFF" },
+	{ 1, nan, 0, "TTFFFFFFFFFFFFFFFFFFF" },
+	{ 1, nan, nan, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 3, 0.3, 6, "TTTFFTTTTFFFFFTFFFFFF" },
+	{ 3, 0.3, 0, "TTFFFFFFFFFFFFFFFFFFF" },
+	{ 3, 0.3, nan, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 3, 0.7, 6, "TTTFFTTTTFFFFFTFFFFFF" },
+	{ 3, 0.7, 0, "TTFFFFFFFFFFFFFFFFFFF" },
+	{ 3, 0.7, nan, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 3, nan, 6, "TTTFFFTFFFFFFFFFFFFFF" },
+	{ 3, nan, 0, "TTFFFFFFFFFFFFFFFFFFF" },
+	{ 3, nan, nan, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 7, 0.3, 6, "TTTFFFTFFFFFFFFFTFFFF" },
+	{ 7, 0.3, 0, "TTFFFFFFFFFFFFFFFFFFF" },
+	{ 7, 0.3, nan, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 7, 0.7, 6, "TTTFFFTFFFFFFFFFFFFFF" },
+	{ 7, 0.7, 0, "TTFFFFFFFFFFFFFFFFFFF" },
+	{ 7, 0.7, nan, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 7, nan, 6, "TTTFFFTFFFFFFFFFFFFFF" },
+	{ 7, nan, 0, "TTFFFFFFFFFFFFFFFFFFF" },
+	{ 7, nan, nan, "FFFFFFFFFFFFFFFFFFFFF" },
+}
+
+-- Golden outputs of WeaponMath.inPushCone, generated once from the code at a50e99c: they pin its
+-- behaviour. A deliberate change updates this table. One T or F per OFFSETS entry, the look along
+-- the DIRECTIONS entry. { FRAMES index, DIRECTIONS index, range, want }
+local PUSH = {
+	{ 1, 1, 6, "FFFFFTFTFFTTTFTFFFFFF" },
+	{ 1, 1, 10, "FFFFFTFTTTTTTFTFFFFFF" },
+	{ 1, 1, nan, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 1, 3, 6, "FFTTTTFTFFTTTTFFFFFFF" },
+	{ 1, 3, 10, "FFTTTTFTTTTTTTFFFFFFF" },
+	{ 1, 3, nan, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 1, 8, 6, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 1, 8, 10, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 1, 8, nan, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 1, 9, 6, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 1, 9, 10, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 1, 9, nan, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 6, 1, 6, "FFFFFTFTFFTTTFTFFFFFF" },
+	{ 6, 1, 10, "FFFFFTFTTTTTTFTFFFFFF" },
+	{ 6, 1, nan, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 6, 3, 6, "FFTTTTFTFFTTTTFFFFFFF" },
+	{ 6, 3, 10, "FFTTTTFTTTTTTTFFFFFFF" },
+	{ 6, 3, nan, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 6, 8, 6, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 6, 8, 10, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 6, 8, nan, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 6, 9, 6, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 6, 9, 10, "FFFFFFFFFFFFFFFFFFFFF" },
+	{ 6, 9, nan, "FFFFFFFFFFFFFFFFFFFFF" },
+}
+
+-- Golden outputs of WeaponMath.projectileStep, generated once from the code at a50e99c: they pin
+-- its behaviour. A deliberate change updates this table. { velocity, gravity, dt, step, velocity }
+local PROJECTILE = {
+	{ { 0, 0, 0 }, 0, 0, { 0, 0, 0 }, { 0, 0, 0 } },
+	{ { 0, 0, 0 }, 0, 0.016666666666666666, { 0, 0, 0 }, { 0, 0, 0 } },
+	{ { 0, 0, 0 }, 0, 0.5, { 0, 0, 0 }, { 0, 0, 0 } },
+	{ { 0, 0, 0 }, 196.2, 0, { 0, 0, 0 }, { 0, 0, 0 } },
+	{
+		{ 0, 0, 0 },
+		196.2,
+		0.016666666666666666,
+		{ 0, -0.027250001206994057, 0 },
+		{ 0, -3.2699999809265137, 0 },
+	},
+	{ { 0, 0, 0 }, 196.2, 0.5, { 0, -24.524999618530273, 0 }, { 0, -98.0999984741211, 0 } },
+	{ { 0, 0, 0 }, -10, 0, { 0, 0, 0 }, { 0, 0, 0 } },
+	{
+		{ 0, 0, 0 },
+		-10,
+		0.016666666666666666,
+		{ 0, 0.0013888890389353037, 0 },
+		{ 0, 0.1666666716337204, 0 },
+	},
+	{ { 0, 0, 0 }, -10, 0.5, { 0, 1.25, 0 }, { 0, 5, 0 } },
+	{ { 0, 0, 0 }, nan, 0, { 0, nan, 0 }, { 0, nan, 0 } },
+	{ { 0, 0, 0 }, nan, 0.016666666666666666, { 0, nan, 0 }, { 0, nan, 0 } },
+	{ { 0, 0, 0 }, nan, 0.5, { 0, nan, 0 }, { 0, nan, 0 } },
+	{ { 30, 40, -80 }, 0, 0, { 0, 0, -0 }, { 30, 40, -80 } },
+	{
+		{ 30, 40, -80 },
+		0,
+		0.016666666666666666,
+		{ 0.5, 0.6666666865348816, -1.3333333730697632 },
+		{ 30, 40, -80 },
+	},
+	{ { 30, 40, -80 }, 0, 0.5, { 15, 20, -40 }, { 30, 40, -80 } },
+	{ { 30, 40, -80 }, 196.2, 0, { 0, 0, -0 }, { 30, 40, -80 } },
+	{
+		{ 30, 40, -80 },
+		196.2,
+		0.016666666666666666,
+		{ 0.5, 0.6394166350364685, -1.3333333730697632 },
+		{ 30, 36.72999954223633, -80 },
+	},
+	{
+		{ 30, 40, -80 },
+		196.2,
+		0.5,
+		{ 15, -4.524999618530273, -40 },
+		{ 30, -58.099998474121094, -80 },
+	},
+	{ { 30, 40, -80 }, -10, 0, { 0, 0, -0 }, { 30, 40, -80 } },
+	{
+		{ 30, 40, -80 },
+		-10,
+		0.016666666666666666,
+		{ 0.5, 0.6680556535720825, -1.3333333730697632 },
+		{ 30, 40.16666793823242, -80 },
+	},
+	{ { 30, 40, -80 }, -10, 0.5, { 15, 21.25, -40 }, { 30, 45, -80 } },
+	{ { 30, 40, -80 }, nan, 0, { 0, nan, -0 }, { 30, nan, -80 } },
+	{
+		{ 30, 40, -80 },
+		nan,
+		0.016666666666666666,
+		{ 0.5, nan, -1.3333333730697632 },
+		{ 30, nan, -80 },
+	},
+	{ { 30, 40, -80 }, nan, 0.5, { 15, nan, -40 }, { 30, nan, -80 } },
+	{ { -0, -0, 0 }, 0, 0, { -0, -0, 0 }, { -0, -0, 0 } },
+	{ { -0, -0, 0 }, 0, 0.016666666666666666, { -0, -0, 0 }, { -0, -0, 0 } },
+	{ { -0, -0, 0 }, 0, 0.5, { -0, -0, 0 }, { -0, -0, 0 } },
+	{ { -0, -0, 0 }, 196.2, 0, { -0, -0, 0 }, { -0, -0, 0 } },
+	{
+		{ -0, -0, 0 },
+		196.2,
+		0.016666666666666666,
+		{ -0, -0.027250001206994057, 0 },
+		{ -0, -3.2699999809265137, 0 },
+	},
+	{ { -0, -0, 0 }, 196.2, 0.5, { -0, -24.524999618530273, 0 }, { -0, -98.0999984741211, 0 } },
+	{ { -0, -0, 0 }, -10, 0, { -0, 0, 0 }, { -0, 0, 0 } },
+	{
+		{ -0, -0, 0 },
+		-10,
+		0.016666666666666666,
+		{ -0, 0.0013888890389353037, 0 },
+		{ -0, 0.1666666716337204, 0 },
+	},
+	{ { -0, -0, 0 }, -10, 0.5, { -0, 1.25, 0 }, { -0, 5, 0 } },
+	{ { -0, -0, 0 }, nan, 0, { -0, nan, 0 }, { -0, nan, 0 } },
+	{ { -0, -0, 0 }, nan, 0.016666666666666666, { -0, nan, 0 }, { -0, nan, 0 } },
+	{ { -0, -0, 0 }, nan, 0.5, { -0, nan, 0 }, { -0, nan, 0 } },
+	{ { nan, 1, 2 }, 0, 0, { nan, 0, 0 }, { nan, 1, 2 } },
+	{
+		{ nan, 1, 2 },
+		0,
+		0.016666666666666666,
+		{ nan, 0.01666666753590107, 0.03333333507180214 },
+		{ nan, 1, 2 },
+	},
+	{ { nan, 1, 2 }, 0, 0.5, { nan, 0.5, 1 }, { nan, 1, 2 } },
+	{ { nan, 1, 2 }, 196.2, 0, { nan, 0, 0 }, { nan, 1, 2 } },
+	{
+		{ nan, 1, 2 },
+		196.2,
+		0.016666666666666666,
+		{ nan, -0.010583333671092987, 0.03333333507180214 },
+		{ nan, -2.2699999809265137, 2 },
+	},
+	{ { nan, 1, 2 }, 196.2, 0.5, { nan, -24.024999618530273, 1 }, { nan, -97.0999984741211, 2 } },
+	{ { nan, 1, 2 }, -10, 0, { nan, 0, 0 }, { nan, 1, 2 } },
+	{
+		{ nan, 1, 2 },
+		-10,
+		0.016666666666666666,
+		{ nan, 0.01805555447936058, 0.03333333507180214 },
+		{ nan, 1.1666666269302368, 2 },
+	},
+	{ { nan, 1, 2 }, -10, 0.5, { nan, 1.75, 1 }, { nan, 6, 2 } },
+	{ { nan, 1, 2 }, nan, 0, { nan, nan, 0 }, { nan, nan, 2 } },
+	{
+		{ nan, 1, 2 },
+		nan,
+		0.016666666666666666,
+		{ nan, nan, 0.03333333507180214 },
+		{ nan, nan, 2 },
+	},
+	{ { nan, 1, 2 }, nan, 0.5, { nan, nan, 1 }, { nan, nan, 2 } },
+}
+
+local function flags(each: (Vector3) -> boolean): string
+	local out = {}
+	for _, offset in OFFSETS do
+		table.insert(out, if each(offset) then "T" else "F")
+	end
+	return table.concat(out)
+end
+
 Check.section("inMeleeReach")
-for _, frame in FRAMES do
+for _, row in MELEE do
+	local frame, minimumDot, range, want = FRAMES[row[1]], row[2], row[3], row[4]
 	local look = frame.LookVector
 	local flatLook = Vector3.new(look.X, 0, look.Z).Unit
 	local from = frame.Position
-	for _, minimumDot in { 0.3, 0, -1, 0.7, 1, nan } do
-		for _, offset in OFFSETS do
-			for _, range in RANGES do
-				local to = from + offset
-				check(
-					same(
-						WeaponMath.inMeleeReach(flatLook, minimumDot, from, to, range),
-						Reference.inMeleeReach(flatLook, minimumDot, from, to, range)
-					),
-					"inMeleeReach " .. show(frame, minimumDot, offset, range)
-				)
-			end
-		end
-	end
+	local got = flags(function(offset)
+		return WeaponMath.inMeleeReach(flatLook, minimumDot, from, from + offset, range)
+	end)
+	equal(got, want, "inMeleeReach " .. show(row[1], minimumDot, range))
 end
 
 Check.section("inPushCone")
-for _, frame in FRAMES do
-	for _, aimOffset in DIRECTIONS do
-		local origin = frame.Position
-		local look = ((origin + aimOffset * 10) - origin).Unit
-		for _, offset in OFFSETS do
-			for _, range in RANGES do
-				local position = origin + offset
-				check(
-					same(
-						WeaponMath.inPushCone(look, origin, position, range),
-						Reference.inPushCone(look, origin, position, range)
-					),
-					"inPushCone " .. show(frame, aimOffset, offset, range)
-				)
-			end
-		end
-	end
+for _, row in PUSH do
+	local origin, range, want = FRAMES[row[1]].Position, row[3], row[4]
+	local look = ((origin + DIRECTIONS[row[2]] * 10) - origin).Unit
+	local got = flags(function(offset)
+		return WeaponMath.inPushCone(look, origin, origin + offset, range)
+	end)
+	equal(got, want, "inPushCone " .. show(row[1], row[2], range))
 end
 
 Check.section("projectileStep")
-for _, velocity in
-	{
-		Vector3.zero,
-		Vector3.new(0, 0, -100),
-		Vector3.new(30, 40, -80),
-		Vector3.new(-0, -0, 0),
-		Vector3.new(nan, 1, 2),
-	}
-do
-	for _, gravity in { 0, 196.2 * 0.3, 196.2, -10, nan } do
-		for _, dt in { 0, 1 / 240, 1 / 60, 1 / 30, 0.5 } do
-			local newStep, newVelocity = WeaponMath.projectileStep(velocity, gravity, dt)
-			local oldStep, oldVelocity = Reference.projectileStep(velocity, gravity, dt)
-			check(
-				same(newStep, oldStep) and same(newVelocity, oldVelocity),
-				"projectileStep " .. show(velocity, gravity, dt)
-			)
-		end
-	end
+for _, row in PROJECTILE do
+	local velocity = Vector3.new(table.unpack(row[1]))
+	local gravity, dt = row[2], row[3]
+	local step, nextVelocity = WeaponMath.projectileStep(velocity, gravity, dt)
+	check(
+		matches(step, row[4]) and matches(nextVelocity, row[5]),
+		"projectileStep " .. show(velocity, gravity, dt)
+	)
 end
 
 Check.section("projectileSize")

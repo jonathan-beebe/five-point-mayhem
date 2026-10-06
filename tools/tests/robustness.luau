@@ -33,7 +33,6 @@ local CFrame = Sandbox.CFrame
 Check.printLimit = 10
 
 local Shared = Sandbox.game:GetService("ReplicatedStorage").Shared
-local Server = Sandbox.game:GetService("ServerScriptService").Server
 local Config = Sandbox.require(Shared.Config)
 local CreatureCatalog = Sandbox.require(Shared.CreatureCatalog)
 local Names = Sandbox.require(Shared.Names)
@@ -203,19 +202,25 @@ local BROKEN_KIND = "skeleton"
 local brokenName = CreatureCatalog.KINDS[BROKEN_KIND].name
 
 local piecesBreak = false
+local fakeParts = {
+	fromPiece = function()
+		if piecesBreak then
+			error("piece failed", 0)
+		end
+		return FakeInstance.new("Part")
+	end,
+	weldTo = function() end,
+}
 local creatureFakes: { [string]: any } = {
-	CreatureModel = Sandbox.require(Server.systems.CreatureModel),
+	-- CreatureModel.addPieces builds the pieces: its one require, util/Parts, is the fake.
+	CreatureModel = Sandbox.load("src/server/systems/CreatureModel.luau", {
+		require = function(target)
+			assert(tostring(target) == "src/server/systems/util/Parts", tostring(target))
+			return fakeParts
+		end,
+	}),
 	Combat = stub,
 	Characters = stub,
-	Parts = {
-		fromPiece = function()
-			if piecesBreak then
-				error("piece failed", 0)
-			end
-			return FakeInstance.new("Part")
-		end,
-		weldTo = function() end,
-	},
 }
 for kindId in CreatureCatalog.KINDS do
 	creatureFakes[kindId] = function()

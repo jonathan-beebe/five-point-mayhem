@@ -11,8 +11,10 @@
 --     Vehicles, Debris and Instance)
 --   - the panel's power buttons, the chat command list, the gifts, the power-ups and the tuning
 --     equal the literals Admin.luau and AdminPanel.luau had at 3c65531
---   - resolveTargets, giftLabel, chatArguments and meteorSeconds return what the inline code they
---     replaced in Admin.luau returned, copied below word for word as the reference
+--   - resolveTargets, giftLabel and meteorSeconds return what the inline code they replaced in
+--     Admin.luau returned, copied below word for word as the reference; chatArguments (whose
+--     inline code was the module's code word for word) returns the golden outputs generated once
+--     from the code at a50e99c
 --   - `/horde` with no target sends one horde per region, half a region step past each: the same
 --     points as at f35d32f for five regions, and 30 degrees past each with a sixth
 --
@@ -251,11 +253,6 @@ function Reference.giftLabel(query)
 		else nil
 	return label
 end
--- Admin.start's TextChatCommand handler: the arguments it passed to Admin.run.
-function Reference.chatArguments(text)
-	local words = string.split(text, " ")
-	return words[2], words[3], words[4]
-end
 -- Admin.run's meteors branch.
 function Reference.meteorSeconds(first)
 	return math.clamp(tonumber(first) or 30, 5, 120)
@@ -339,22 +336,28 @@ for _, query in items do
 end
 
 Check.section("AdminCommands.chatArguments")
-local texts = {
-	"/give me rocket",
-	"/give all mac permanent",
-	"/give all mac permanent extra words",
-	"/give",
-	"/give ",
-	"",
-	" ",
-	"/give  me  rocket",
-	" /give me",
-	"/meteors 60",
-	"/horde\tsam",
+-- Golden outputs of AdminCommands.chatArguments (text -> the three arguments), generated once from
+-- the code at a50e99c: they pin its behaviour. A deliberate change updates this table.
+-- A tab is no separator; doubled spaces give empty arguments; case passes through.
+local CHAT_ARGUMENTS = {
+	{ "/give me rocket", "me", "rocket", nil },
+	{ "/give all mac permanent", "all", "mac", "permanent" },
+	{ "/give all mac permanent extra words", "all", "mac", "permanent" },
+	{ "/give", nil, nil, nil },
+	{ "/give ", "", nil, nil },
+	{ "", nil, nil, nil },
+	{ " ", "", nil, nil },
+	{ "/give  me  rocket", "", "me", "" },
+	{ " /give me", "/give", "me", nil },
+	{ "/meteors 60", "60", nil, nil },
+	{ "/horde\tsam", nil, nil, nil },
+	{ "/GIVE Sam ROCKET Permanent", "Sam", "ROCKET", "Permanent" },
+	{ "/Give ALL Mac", "ALL", "Mac", nil },
 }
-for _, text in texts do
+for _, row in CHAT_ARGUMENTS do
+	local text = row[1]
 	check(
-		same({ AdminCommands.chatArguments(text) }, { Reference.chatArguments(text) }),
+		same({ AdminCommands.chatArguments(text) }, { row[2], row[3], row[4] }),
 		"chatArguments " .. show(text)
 	)
 	equal(select("#", AdminCommands.chatArguments(text)), 3, "chatArguments returns 3 values")

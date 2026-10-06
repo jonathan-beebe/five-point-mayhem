@@ -6,8 +6,9 @@
 -- says in its header what it owns. Requires inside the folder (each row requires only rows above
 -- it, so there are no cycles):
 --   FallbackModels, Effects   none (FallbackModels: WeaponCatalog and WeaponModel only)
+--   Pieces                    none (WeaponModel and util/Parts only)
 --   Aim                       Effects
---   Tools                     FallbackModels
+--   Tools                     FallbackModels, Pieces
 --   Projectiles               Aim, Effects
 --   kinds/<kind>              Aim, Effects; kinds/projectile Aim, Projectiles
 --   kinds (init)              Aim, kinds/<kind>

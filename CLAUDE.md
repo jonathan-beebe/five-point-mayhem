@@ -49,9 +49,10 @@ src/server/   ServerScriptService.Server. init.server.luau boots in this order:
     Weapons/  init.luau is the facade (createTool, displayModel, give, holds) and wires it.
               Modules: FallbackModels (models by catalog shape, loads under Lune), Effects
               (WeaponEffects folder, the shared Random, beam/flash/lightning), Aim (Shot, spread,
-              raycast), Tools (model files, tools, display models), Projectiles (flight, IMPACTS),
-              Firing (FireWeapon remote, cooldowns), kinds/ (one module per kind; kinds/init.luau
-              is the FIRE table). init.luau's header lists the require graph.
+              raycast), Pieces (piece parts, loads under Lune), Tools (model files, tools, display
+              models), Projectiles (flight, IMPACTS), Firing (FireWeapon remote, cooldowns), kinds/
+              (one module per kind; kinds/init.luau is the FIRE table). init.luau's header lists
+              the require graph.
     util/     Instance helpers the systems share: Characters, Seats, Prompts, Parts, Ownership
               (tested in tools/tests/server_helpers.luau); Guard (tools/tests/guard.luau)
   vehicleModels/ weaponModels/ creatureModels/   one model file per catalog id
@@ -110,8 +111,14 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   `tools/tests/collision_groups.luau`.
 - Pure logic lives in `src/shared`; the server or client module applies it to Instances; a Lune
   test in `tools/tests/<name>.luau` (`tools/lib/Check`: `check`, `equal`, `isNear`, `section`,
-  `finish`) compares logic moved out of a module with the code it replaced. A deliberate tuning
-  change updates that reference too. Raycasts, the clock, render steps, camera writes and every
+  `finish`) checks it in one of two ways. A reference: the inline code it replaced, frozen in the
+  test, run beside the module on the same inputs. A golden table: inputs and the outputs the code
+  gave at a named commit, generated once by a script and pasted in; a reference that is a copy of
+  the current code becomes a golden table. A deliberate tuning change updates the reference, or
+  regenerates the golden table from the new code. A test runs src code by loading its module
+  (`Sandbox.load`, `Sandbox.loadIsolated`), never by running lines cut out of a source file: code
+  a test needs from a module that does not load moves to one that does. Raycasts, the clock,
+  render steps, camera writes and every
   Instance write stay in the applying module (PodFlight also keeps the seat locks; PromptPanel the
   `MaxActivationDistance` save/restore). Lune cannot load `src/client`, so client rules and math
   go in `src/shared` too. Small math several modules share (`moveToward`, `wrapAngle`, `yawOf`,
@@ -190,6 +197,8 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   nothing is measurable (`HudLayout.*Fallback`: no jump button on desktop). A gap from a measured
   edge (`RightColumn.MARGIN`, `GAP`) is a spacing value, not a guess. Fixed offsets the user
   accepted: `VehicleHealth` `BAR_BOTTOM`, LobbyUI's CHOOSE WEAPONS `-110`. Not precedent.
+- On desktop the GOD MODE/MAC column overlaps Roblox's PlayerList (CoreGui, not measurable). The
+  user accepted the overlap; do not offset the column or disable the PlayerList for it.
 - Build client UI with `src/client/ui` (each header lists its functions):
   - `Create`: `create(className, properties, children?)`, `corner(radius)`,
     `stroke(color, thickness?, mode?)`, `padding(horizontal, vertical)`, `label(...)` (LobbyUI's)

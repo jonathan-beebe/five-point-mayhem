@@ -1,12 +1,13 @@
 -- Parts built from model-file pieces (VehicleModel, CreatureModel and WeaponModel piece specs)
--- and welds holding them. `fromPiece` sets what all three model formats share; each caller sets
--- its own extras after it:
---   Vehicles   CastShadow from Transparency, HideInCockpit attribute; then Anchored false and
---              Massless true before welding
---   Creatures  Massless, smooth Top and Bottom surfaces
---   Weapons    CanQuery false, Massless
--- tools/tests/server_helpers.luau builds every piece of every model file both ways (this module,
--- and the inline code it replaced) and compares the results property by property.
+-- and welds holding them. `fromPiece` sets what all three model formats share; each format's
+-- builder sets its own extras after it:
+--   Vehicles/Placement.addPieces  CastShadow from Transparency, HideInCockpit attribute; then
+--                                 Anchored false and Massless true before welding
+--   CreatureModel.addPieces       Massless, smooth Top and Bottom surfaces
+--   Weapons/Pieces.createPart     CanQuery false, Massless
+-- tools/tests/server_helpers.luau builds every piece of every model file through those builders
+-- and through the inline code they replaced (frozen in the test), and compares the results
+-- property by property.
 
 local Parts = {}
 

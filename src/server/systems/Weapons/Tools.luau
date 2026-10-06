@@ -9,8 +9,8 @@ local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 local WeaponMath = require(ReplicatedStorage.Shared.WeaponMath)
 local WeaponModel = require(script.Parent.Parent.WeaponModel)
 local WeaponSounds = require(script.Parent.Parent.WeaponSounds)
-local Parts = require(script.Parent.Parent.util.Parts)
 local FallbackModels = require(script.Parent.FallbackModels)
+local Pieces = require(script.Parent.Pieces)
 
 local modelFiles = script.Parent.Parent.Parent:FindFirstChild("weaponModels")
 
@@ -21,8 +21,6 @@ local Tools = {}
 local M = Enum.Material
 local GRIP = FallbackModels.GRIP
 local pieces = FallbackModels.pieces
-
-type PieceSpec = WeaponModel.PieceSpec
 
 -- A weapon's file in `weaponModels`, or a model built from its catalog shape.
 local models: { [string]: WeaponModel.Model } = {}
@@ -37,19 +35,6 @@ local function modelFor(weapon: Weapon): WeaponModel.Model
 		else { pieces = pieces(weapon) }
 	models[weapon.id] = model
 	return model
-end
-
--- A piece's part, invisible to queries and massless. Without a piece name it keeps the class's
--- default Name.
-local function createPart(spec: PieceSpec, scale: number?): BasePart
-	local part = Parts.fromPiece(spec, nil, scale)
-	part.CanQuery = false
-	part.Massless = true
-	return part
-end
-
-local function attach(handle: BasePart, spec: PieceSpec, parent: Instance)
-	Parts.weldTo(handle, createPart(spec), spec.offset, parent)
 end
 
 local function makeHandle(weapon: Weapon): Part
@@ -78,7 +63,7 @@ function Tools.createTool(weapon: Weapon): Tool
 	WeaponSounds.equip(handle, weapon.id)
 	handle.Parent = tool
 	for _, spec in modelFor(weapon).pieces do
-		attach(handle, spec, tool)
+		Pieces.attach(handle, spec, tool)
 	end
 	return tool
 end
@@ -104,7 +89,7 @@ function Tools.displayModel(weaponId: string): Model?
 	handle.PivotOffset = hold:Inverse()
 	handle.Parent = model
 	for _, piece in spec.pieces do
-		local part = createPart(piece, SCALE)
+		local part = Pieces.createPart(piece, SCALE)
 		part.Anchored = true
 		part.CFrame = hold * CFrame.new(piece.offset.Position * SCALE) * piece.offset.Rotation
 		part.Parent = model

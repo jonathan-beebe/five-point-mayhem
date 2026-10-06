@@ -6,6 +6,8 @@
 --     inline code it replaced in PodFlight.luau, copied below word for word as the reference, over
 --     a sweep of inputs: zero, -0, negatives, values on each threshold and a hair either side,
 --     math.huge, NaN
+--   - sideways returns the golden outputs generated once from the code at a50e99c (its inline code
+--     was the module's code word for word): odd and even seats, 0, -0, negatives, fractions, NaN
 --   - the autopilot flown home step by step both ways from a spread of starting points
 --   - a few plain values (constants, worked examples)
 
@@ -167,11 +169,6 @@ function Reference.level(pod, sideways, hitY)
 	local level = spot.Rotation
 		+ Vector3.new(spot.Position.X, groundY + pod.exit.Position.Y, spot.Position.Z)
 	return level
-end
-
--- land: each passenger's side.
-function Reference.sideways(index)
-	return if index % 2 == 1 then -3.5 else 3.5
 end
 
 -- A landed pod hovers HOVER over the ground, level, where it is.
@@ -571,8 +568,26 @@ for rootIndex, rootFrame in DOCKS do
 		end
 	end
 end
-for index = 1, 40 do
-	equal(PodPilot.sideways(index), Reference.sideways(index), "sideways " .. index)
+-- Golden outputs of PodPilot.sideways (seat index -> studs to the exit's right), generated once
+-- from the code at a50e99c: they pin its behaviour. A deliberate change updates this table.
+local SIDEWAYS = {
+	{ 1, -3.5 },
+	{ 2, 3.5 },
+	{ 3, -3.5 },
+	{ 4, 3.5 },
+	{ 39, -3.5 },
+	{ 40, 3.5 },
+	{ 0, 3.5 },
+	{ -0, 3.5 },
+	{ -1, -3.5 },
+	{ -2, 3.5 },
+	{ 1.5, 3.5 },
+	{ 2.5, 3.5 },
+	{ nan, 3.5 },
+	{ inf, 3.5 },
+}
+for _, row in SIDEWAYS do
+	check(same(PodPilot.sideways(row[1]), row[2]), "sideways " .. show(row[1]))
 end
 
 Check.finish()
