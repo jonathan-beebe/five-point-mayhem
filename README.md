@@ -32,6 +32,11 @@ runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is
 | `src/shared/RemoteActions.luau` | The action strings remotes carry: pod and MAC commands, announcement styles |
 | `src/shared/MathUtil.luau` | Small math helpers shared by server and client (move toward, angle wrap, yaw, inside a box, clamp to range, follow rates) |
 | `src/shared/WeaponMath.luau` | Weapon math the server applies (spread, cooldown, melee reach, push cone, projectile step and size, display centering) |
+| `src/shared/VehicleDrive.luau` | Drive math the server applies (target speed, yaw rate, settling, constraint strengths) |
+| `src/shared/VehicleSizing.luau` | Sizes derived from a vehicle model (solid height, pod box, crash sizes, reach box, prompt reach, pod frames) |
+| `src/shared/VehicleRam.luau` | Ram and contact math (pace, sweep box, shoves, flings, tree breaks) |
+| `src/shared/VehicleLayout.luau` | Where vehicles park (motor pool spots, walker guard ring), the respawn rule, spawn placement |
+| `src/shared/PodPilot.luau` | Pod flight math the server applies (pilot controls, autopilot home, hover, launch prompt, rider stand spot) |
 | `src/shared/HudLayout.luau` | Layout math for the measured HUD: the touch button columns beside the jump button, the prompt card stack |
 | `src/shared` client logic | The pure rules and math the client modules apply: `Loadout` (armory), `PodButtons` (pod controls), `PromptRules` (prompt cards), `HealthBar` (vehicle health bar), `DriveAxes` (car input), `EngineEnvelope` and `NearestSet` (vehicle sounds), `ScopeMath` (sniper scope), `FootfallShake` (walker camera shake), `NukeMath` (NUKE), `ConfirmTap` (the MAC's two-tap NUKE) |
 | `src/server/vehicleModels` | One part-built model per vehicle (format: `src/server/systems/VehicleModel.luau`) |
@@ -39,7 +44,7 @@ runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is
 | `src/server/creatureModels` | One part-built model per monster (format: `src/server/systems/CreatureModel.luau`) |
 | `tools/check.luau` | Runs every check: format, line length, lint, types, tests (`lune run tools/check [--fast]`) |
 | `tools/test.luau` | Runs every test (`lune run tools/test [filter]`) |
-| `tools/tests` | Tests for shared game logic, models and data (`data_integrity`: catalogs, model files, sounds, regions; `names`: the shared names' values; `math_util`; `weapon_math`; `creature_brain`; `admin_commands`: every command has a handler; `collision_groups`: the collision matrix; `hud_layout`; `ui_kit`: the client UI kit's widgets against the code they replaced; `client_logic`: the client logic modules against the code they replaced), run under Lune |
+| `tools/tests` | 17 tests, run under Lune. Data: `data_integrity` (catalogs, model files, sounds, regions), `names` (shared names' values), `collision_groups` (the collision matrix). Shared logic: `math_util`, `day_night`, `mech_gait`, `mech_climb`, `vehicle_damage`, `vehicle_logic`, `pod_pilot`, `weapon_math`, `creature_brain`, `admin_commands` (every command has a handler), `hud_layout`, `client_logic`. Server and client helpers: `server_helpers` (`systems/util`), `ui_kit` (`src/client/ui`). `vehicle_logic`, `pod_pilot`, `weapon_math`, `creature_brain`, `admin_commands`, `client_logic`, `server_helpers` and `ui_kit` also compare each module with the code it replaced |
 | `tools/lib` | Lune harness: `Sandbox` loads game files outside Roblox, `Check` tallies assertions, `ModelChecks` validates model files |
 | `tools/preview` | Renders a vehicle, weapon or creature model file to a PNG of orthographic views |
 | `tools/audition.luau` | Plays every weapon and vehicle sound; paste into the Studio Command Bar during Play |
@@ -47,7 +52,7 @@ runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is
 | `src/server/systems` | Combat, weapons, players/teams, creatures, vehicles, admin powers, collision groups (`CollisionGroups.luau`: every group and pair) |
 | `src/server/systems/Vehicles` | Vehicles, one module per job behind `init.luau`: `Registry` (live cars), `Specs` (model files), `Placement`, `Climb`, `Drive`, `Health` (crashes, wrecks), `Trees`, `Contact` (rams), `Boarding` (prompts, cab), `Builder`, `Parking` (spots, respawn) |
 | `src/server/systems/Weapons` | Weapons, one module per job behind `init.luau`: `Tools` (tools, display stands), `FallbackModels` (models by catalog shape), `Effects` (beams, flashes, lightning), `Aim` (the shot record, spread, raycast), `Projectiles`, `Firing` (the FireWeapon remote, cooldowns), `kinds/` (one module per weapon kind) |
-| `src/client` | Armory UI, weapon input, car input, vehicle health bar, mech animation and camera, admin panel, announcer |
+| `src/client` | Feature modules started by `init.client.luau`: `LobbyUI` (armory), `WeaponInput`, `SniperScope`, `CarInput`, `VehicleHealth`, `VehicleSounds`, `MechMotion` (walker animation), `MechCamera`, `PodControls`, `PromptPanel` (prompt cards), `AdminPanel` (GOD MODE), `MacPanel`, `NukeStrike`, `Announcer`; `SoundProbe` is a TEMPORARY diagnostic |
 | `src/client/ui` | Client UI kit: `Create` (instance builders), `Theme` (fonts, shared colours, every ScreenGui's DisplayOrder), `TouchButton`, `Hud` (jump button lookup, inset matching, bottom-right controls list), `RightColumn` (GOD MODE and MAC toggles and panels) |
 
 ## UI conventions
@@ -387,8 +392,9 @@ Scope (sniper in hand):
 Scoped, the view zooms to a 12° field of view and shots go where the reticle is. Turning is slow
 on every input: 0.02° per pixel of mouse movement, 0.03° per pixel of touch drag, 18° per second at
 full right-stick deflection. The view eases toward where the input points (0.15 s time
-constant). Tuning lives at the top of `src/client/SniperScope.luau`. Unequipping, dying, or
-losing the tool ends the scope.
+constant). Field of view, turn rates and easing are at the top of
+`src/client/SniperScope.luau`; the pitch limit (`MAX_PITCH`) and scope size (`VIEW_FRACTION`) are
+in `src/shared/ScopeMath.luau`. Unequipping, dying, or losing the tool ends the scope.
 
 ## Weapon ids
 

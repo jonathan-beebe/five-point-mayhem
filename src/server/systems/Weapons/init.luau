@@ -10,7 +10,7 @@
 --   Tools                     FallbackModels
 --   Projectiles               Aim, Effects
 --   kinds/<kind>              Aim, Effects; kinds/projectile Aim, Projectiles
---   kinds (init)              kinds/<kind>
+--   kinds (init)              Aim, kinds/<kind>
 --   Firing                    kinds, Tools
 --   init                      Firing, Projectiles, Tools
 -- Requiring this module wires the system, in this order (CLAUDE.md, Hazards): the WeaponEffects

@@ -21,12 +21,8 @@ placement on phone/tablet/desktop, network ownership, sounds by ear (`tools/audi
 ```
 src/shared/   ReplicatedStorage.Shared. Every file --!strict. Loads under Lune.
   *Catalog    data only: WeaponCatalog, VehicleCatalog, CreatureCatalog, SoundCatalog
-  pure logic  DayNight, VehicleDamage, MechGait, MechClimb, VehicleDefaults, MathUtil, and the
-              vehicle math Vehicles applies: VehicleDrive, VehicleSizing, VehicleRam,
-              VehicleLayout; the pod flight math PodFlight applies: PodPilot; the weapon math
-              Weapons applies: WeaponMath; the creature rules Creatures applies: CreatureBrain;
-              HudLayout, the client's HUD layout math; the client's rules and math (Conventions
-              lists them) (all tested in tools/tests)
+  pure logic  DayNight, MathUtil, MechGait, MechClimb, VehicleDefaults, and the modules in the
+              Conventions table (applied by a server or client module); tested in tools/tests
   registry    AdminCommands: admin command ids, chat list, panel buttons, gifts, power tuning
   Config      world layout, REGIONS, teams, admin ids;  Remotes: every RemoteEvent, typed record
   contracts   Names (attributes, tags, collision groups, instance names), PodState, RemoteActions
@@ -41,8 +37,9 @@ src/server/   ServerScriptService.Server. init.server.luau boots in this order:
   FireWeapon: see Hazards.)
   4. CharacterAutoLoads back on: nobody spawns before the lobby exists
   world/      Build helpers, Lobby, Roads, Landscape, Regions (per-landmark data), buildings/
-  systems/    Combat, Weapons, Session, Creatures, Vehicles, PodFlight, Admin, MacAccess, DayNight,
-              CollisionGroups, and the model formats VehicleModel, WeaponModel, CreatureModel
+  systems/    Combat, Weapons, WeaponSounds, Session, Creatures, Vehicles, PodFlight, Admin,
+              MacAccess, DayNight, CollisionGroups, WalkerProbe (TEMPORARY), and the model formats
+              VehicleModel, WeaponModel, CreatureModel
     Vehicles/ init.luau is the facade (damage, spawnNear, start) and wires the system. Modules:
               Registry (folder, `cars`, Car/Crash), Specs (model files, placeholder), Placement
               (vehicle space, welds, onTerrain), Climb, Drive, Health (crashes, wrecks), Trees,
@@ -78,24 +75,25 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
 ## Conventions
 
 - Conventional Commits: `type(scope): imperative summary`. Scopes in use: `vehicles`, `weapons`,
-  `creatures`, `admin`, `mac`, `map`, `ui`, `sounds`, `daynight`, `combat`, `debug`, `readme`
-  (`docs(readme)`); `build:` and `test:` unscoped. Branches: `feat/`, `fix/`, `refactor/<slug>`.
+  `creatures`, `admin`, `mac`, `map`, `ui`, `sounds`, `daynight`, `combat`, `debug`, `server`,
+  `client`, `readme` (`docs(readme)`). Unscoped: `build:`, `test:`, `refactor:`, `docs:`.
+  Branches: `feat/`, `fix/`, `refactor/<slug>`.
 - stylua (tabs, 100 columns), selene (`std = "roblox"`), luau-lsp; versions pinned in `rokit.toml`.
   `tools/check` fails any line over 100 columns in src, tools, CLAUDE.md and AGENTS.md, comments
   included (a tab counts 4); model files in vehicleModels, weaponModels and creatureModels are
   exempt. Rewrap; do not delete content.
   `src/shared` is `--!strict`; the rest of `src` is nonstrict (`.luaurc`) for now.
-- Pure logic goes in `src/shared` with a Lune test in `tools/tests/<name>.luau` (uses
-  `tools/lib/Check`: `check`, `equal`, `isNear`, `section`, `finish`).
 - Tests load game files only through `tools/lib/Sandbox` (`Sandbox.load(path)`, or
   `Sandbox.require(Sandbox.game:GetService("ReplicatedStorage").Shared.X)`). It swaps in a correct
   `CFrame`: Lune 0.10.5's `CFrame.lookAt` faces +Z. It also stubs `Random` (deterministic, not
-  Roblox's sequence) and resolves `script`/`require`. Modules that build Instances at require
-  time (Weapons, Combat, Landscape) do not load under Lune. `data_integrity` reads the weapon
-  tables (kinds FIRE, Projectiles.IMPACTS, kinds/strike STYLES) through `Sandbox.loadIsolated`,
-  which runs a module with `require`, `game`, `workspace` and `Instance` stubbed: keep those
-  tables free of top-level work on required values (arithmetic, comparisons, iteration). Combat's
-  effects and Landscape's tree builders are still read as text.
+  Roblox's sequence) and resolves `script`/`require`. Server systems and world modules do not
+  load under Lune: Sandbox maps only ReplicatedStorage and ServerScriptService, and Weapons
+  (`Effects`), Vehicles (`Registry`) and Creatures create workspace folders at require time.
+  `Sandbox.loadIsolated` runs a module with `require`, `game`, `workspace` and `Instance` stubbed;
+  `data_integrity` reads kinds FIRE, Projectiles.IMPACTS and kinds/strike STYLES through it, and
+  `admin_commands` reads `Admin.HANDLERS` and `Admin.POWER_UP`. Keep those tables free of
+  top-level work on required values (arithmetic, comparisons, iteration). Combat's effects and
+  Landscape's tree builders are read as text.
   `Sandbox.globals` adds globals to every later load, requires included (`ui_kit` sets
   `Instance` so the kit's modules can require each other).
 - Cross-module names come from `src/shared/Names.luau` (attributes, tags, collision groups,
@@ -105,57 +103,35 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
 - Collision groups and the pairs that pass through each other are all in
   `src/server/systems/CollisionGroups.luau`; a new group or pair also goes in the golden matrix in
   `tools/tests/collision_groups.luau`.
-- Vehicle math is in `src/shared` and `Vehicles` applies it to instances: `VehicleDrive` (target
-  speed, yaw, settling, constraint strengths), `VehicleSizing` (solid height, pod box, crash sizes,
-  reach box, prompt reach, pod frames), `VehicleRam` (pace, sweep box, shoves, flings, tree
-  breaks), `VehicleDamage` (crash health, crash point, smoke/fire shares), `VehicleLayout` (lobby
-  clearance, parking spots from an injected `Random`, guard ring, respawn rule), `PodState`
-  (`canSit`, `driveSeat`). `tools/tests/vehicle_logic.luau` compares each with the inline code it
-  replaced; a deliberate tuning change updates that reference too.
-- Weapon math is in `src/shared/WeaponMath.luau` and `systems/Weapons` applies it:
-  `spreadDirection` (from an injected `Random`, two draws, pitch first), `coolingDown` (with
-  `COOLDOWN_SLACK` 0.85), `inMeleeReach`, `inPushCone`, `projectileStep`, `projectileSize`,
-  `centerUpright` (display stands). `tools/tests/weapon_math.luau` compares each with the inline
-  code it replaced.
-- Pod flight math is in `src/shared/PodPilot.luau` and `PodFlight` applies it: `fly` (turn, speed,
-  `rise` with ground clearance, launch rise and ceiling, bank and pitch), `home` (the autopilot's
-  climb, cross, settle phases from the dock frame and root position; `onDock` ends a settle),
-  `hover`, `canLand`, `prompt` (launch prompt text and enabled per state), `standFrame` and
-  `sideways` (where a rider put outside stands). PodFlight keeps the raycasts, the clock, the seat
-  locks and every Instance write. `tools/tests/pod_pilot.luau` compares each with the inline code
-  it replaced.
-- Creature rules are in `src/shared/CreatureBrain.luau` and `Creatures` applies them:
-  `acceptsGroundPoint`, `groundPoint` (spawn spot from an injected `Random`, two draws per attempt,
-  one more for the fallback), `wander` (next wander time, then the goal: one draw, plus two unless
-  heading home), `lairOpens`, `hordeSize`, `lairKind` (brute cadence). Counts, kind lists and
-  timings are in `CreatureCatalog` (`ROAMING`, `THEMED_COUNT`, `HORDE_KINDS`, `LAIR_*`,
-  `RESPAWN_SECONDS`, `THINK_INTERVAL`, `ATTACK_INTERVAL`). `tools/tests/creature_brain.luau`
-  compares each with the inline code it replaced and pins the catalog numbers.
-- Admin commands are registered in `src/shared/AdminCommands.luau`: `COMMANDS` (id, `chat`,
-  optional `panel` button with `slot`), derived `CHAT` (chat order) and `POWERS` (panel order),
-  `POWER_UPS`, the panel's `GIFTS`, `TUNING`, and the pure rules `resolveTargets`, `giftLabel`,
-  `chatArguments`, `meteorSeconds`. `Admin.HANDLERS` maps each id to its handler; `Admin.run`
-  dispatches through it. `Admin.POWER_UP` maps each power-up but `arsenal` and `car` to its effect;
-  `gift` checks it after the living-character check and before vehicle and weapon matches
-  (`WeaponCatalog.find` matches by prefix: `giant`, `heal`). `HANDLERS`, `POWER_UP` and `gift` are
-  exposed on `Admin` for the test only. `tools/tests/admin_commands.luau` checks ids against
-  handlers and power-ups against `POWER_UP` both ways (via `Sandbox.loadIsolated`: keep both tables
-  free of top-level work on required values), runs `gift` against its old code with recording
-  fakes, and pins the lists, tuning and helpers.
-- Client rules and math are in `src/shared` and the client module applies them (Lune cannot load
-  `src/client`): LobbyUI `Loadout` (speed and stat texts, admin-only availability, prune, toggle
-  returning `"full"`), PodControls `PodButtons` (pod button text/colour/active, LAND and ▲▼
-  visibility, jump lock, the command sent), PromptPanel `PromptRules` (`useful`, key text, input
-  type, card order; the MaxActivationDistance save/restore stays in PromptPanel), VehicleHealth
-  `HealthBar`, CarInput `DriveAxes` (keys over seat floats over move vector, clamps, lift, the
-  resend rule), VehicleSounds `EngineEnvelope` (follow, fade, loop pitch/volume, walker targets)
-  and `NearestSet` (nearest N with hysteresis), SniperScope `ScopeMath` (overlay, turn, pitch),
-  MechCamera `FootfallShake`, NukeStrike `NukeMath` (fall, wave, shake; follows
-  `Config.NUKE_*`), MacPanel `ConfirmTap` (two-tap arm/fire). Render steps and camera writes stay
-  in the client module. `tools/tests/client_logic.luau` compares each with the inline code it
-  replaced; a deliberate change updates that reference too.
-- Small math shared across modules (`moveToward`, `wrapAngle`, `yawOf`, `insideBox`,
-  `clampToRange`, `rateAlpha`/`timeAlpha` follow fractions) comes from `src/shared/MathUtil.luau`.
+- Pure logic lives in `src/shared`; the server or client module applies it to Instances; a Lune
+  test in `tools/tests/<name>.luau` (`tools/lib/Check`: `check`, `equal`, `isNear`, `section`,
+  `finish`) compares logic moved out of a module with the code it replaced. A deliberate tuning
+  change updates that reference too. Raycasts, the clock, render steps, camera writes and every
+  Instance write stay in the applying module (PodFlight also keeps the seat locks; PromptPanel the
+  `MaxActivationDistance` save/restore). Lune cannot load `src/client`, so client rules and math
+  go in `src/shared` too. Small math several modules share (`moveToward`, `wrapAngle`, `yawOf`,
+  `insideBox`, `clampToRange`, `rateAlpha`/`timeAlpha` follow fractions) comes from `MathUtil`.
+
+  ```
+  src/shared                               applied by     tools/tests
+  VehicleDrive VehicleSizing VehicleRam    Vehicles       vehicle_logic
+    VehicleLayout VehicleDamage PodState
+  WeaponMath (COOLDOWN_SLACK 0.85)         Weapons        weapon_math
+  PodPilot                                 PodFlight      pod_pilot
+  CreatureBrain                            Creatures      creature_brain (+ CreatureCatalog)
+  AdminCommands                            Admin          admin_commands
+  Loadout                                  LobbyUI        client_logic
+  PodButtons                               PodControls    client_logic
+  PromptRules                              PromptPanel    client_logic
+  HealthBar                                VehicleHealth  client_logic
+  DriveAxes                                CarInput       client_logic
+  EngineEnvelope NearestSet                VehicleSounds  client_logic
+  ScopeMath                                SniperScope    client_logic
+  FootfallShake                            MechCamera     client_logic
+  NukeMath (follows Config.NUKE_*)         NukeStrike     client_logic
+  ConfirmTap                               MacPanel       client_logic
+  HudLayout                                client HUD     hud_layout
+  ```
 - Server systems use `systems/util/` instead of writing these inline:
   - `Characters`: `parts(player)` (character, Humanoid, root; no health check), `living(player)`
     (all three and `Health > 0`, else nils), `humanoidOf`, `rootOf`, `isInside(player, box)`,
@@ -168,8 +144,7 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
     Weapons CanQuery false/Massless). `Parts.weldTo(base, part, offset, parent)` places, welds, and
     parents last.
   - `Ownership.set(part, player?)` (pcall'd SetNetworkOwner), `Ownership.isServerSimulated(part)`.
-  A change to a builder's output must keep `tools/tests/server_helpers.luau` passing: it compares
-  each helper with the inline code it replaced.
+  `tools/tests/server_helpers.luau` compares each helper with the inline code it replaced.
 - Every file opens with a header comment saying what it is; match the surrounding comment density.
 
 ## UI rules
@@ -191,8 +166,8 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   - `RightColumn`: the GOD MODE/MAC column's constants, `makeToggle`, `makePanel`, `toggle`,
     `panels`, `opened`
   Layout arithmetic goes in `src/shared/HudLayout.luau` with a case in
-  `tools/tests/hud_layout.luau`. A change to a kit builder must keep `tools/tests/ui_kit.luau`
-  passing: it compares each widget with the inline code it replaced.
+  `tools/tests/hud_layout.luau`. `tools/tests/ui_kit.luau` compares each widget with the inline
+  code it replaced.
 - Persistent HUD never sits at the screen center. Exempt: UI the player opens and closes (MAC and
   GOD MODE panels, the lobby armory), transient prompt cards, the sniper scope's lens and
   reticle, full-screen flashes (MAYHEM, alarms).
@@ -242,19 +217,26 @@ counts and timings in `CreatureCatalog` (update `tools/tests/creature_brain.luau
 a gameplay change). Enforced: kind ↔ model file both ways, `ModelChecks` pass, no aliased kind
 tables, every kind `ROAMING`, `HORDE_KINDS` and the lair names exists.
 
-**Admin power.** 1) One `AdminCommands.COMMANDS` entry: `id` (lower case; its place in the list
-is its chat order), `chat`, and a `panel` button (`slot`, `label`, `color`, `hint`, `targeted`)
-if it has one. Tuning numbers go in `AdminCommands.TUNING`. 2) One handler in `Admin.HANDLERS`
-under the same id, and a line in Admin's header comment. The chat command and the panel button
-follow. A power-up gift is a `POWER_UPS` id plus its function in `Admin.POWER_UP`;
-an `AdminCommands.GIFTS` entry puts it in the panel's gift menu. 3) Client effects: a new field in
-`src/shared/Remotes.luau` and a client module with `start()` listed in `init.client.luau`.
-4) README God mode: panel, chat table, power. 5) `tools/tests/admin_commands.luau`: add the new
-id, button, gift or tuning value to its pinned lists. The `AdminCommand` remote forwards two
-arguments (`first`, `second`): a third works from chat only (known gap).
+**Admin power.** Registry: `src/shared/AdminCommands.luau` (`COMMANDS`; derived `CHAT`, chat
+order, and `POWERS`, panel order; `POWER_UPS`; `GIFTS`; `TUNING`; the rules `resolveTargets`,
+`giftLabel`, `chatArguments`, `meteorSeconds`). `Admin.run` dispatches through `Admin.HANDLERS`.
+1) One `COMMANDS` entry: `id` (lower case; its place in the list is its chat order), `chat`, and a
+`panel` button (`slot`, `label`, `color`, `hint`, `targeted`) if it has one. Tuning numbers go in
+`TUNING`. 2) One handler in `Admin.HANDLERS` under the same id, and a line in Admin's header
+comment. The chat command and the panel button follow. A power-up gift is a `POWER_UPS` id plus
+its function in `Admin.POWER_UP` (every power-up but `arsenal` and `car`); an `AdminCommands.GIFTS`
+entry puts it in the panel's gift menu. `gift` checks `POWER_UP` after the living-character check
+and before the vehicle and weapon matches: `WeaponCatalog.find` matches by prefix (`giant`,
+`heal`). 3) Client effects: a new field in `src/shared/Remotes.luau` and a client module with
+`start()` listed in `init.client.luau`. 4) README God mode: panel, chat table, power.
+5) `tools/tests/admin_commands.luau`: add the new id, button, gift or tuning value to its pinned
+lists. `HANDLERS`, `POWER_UP` and `gift` are exposed on `Admin` for that test only. The
+`AdminCommand` remote forwards two arguments (`first`, `second`): a third works from chat only
+(known gap).
 Enforced: every id has a handler and every handler an id, unique lower-case ids, panel slots
 1..n, `POWER_UP` (plus `arsenal`, `car`) equals `POWER_UPS`, every panel gift is a power-up or a
-weapon id, `gift`'s branches and effects match its code at 3c65531.
+weapon id, `gift`'s branches and effects match the code before the admin registry refactor (run
+with recording fakes).
 
 **HUD element.** 1) A client module with `start()` listed in `init.client.luau`; its ScreenGui's
 `DisplayOrder` from a `Theme.DisplayOrder` layer (a new layer goes in Theme's header table and in
@@ -282,9 +264,11 @@ After one failed guess at a bug only Studio shows, ship a probe and ask the user
 - One module, header line 1: `-- TEMPORARY diagnostic: <the question>.`, then what it logs, then
   `Delete this file and its line in init.<server|client>.luau once the cause is known.`
 - Every wiring line ends in `-- TEMPORARY`; output lines start with a tag (`[WalkerProbe] ...`).
-  `tools/check` lists every `TEMPORARY` line as a warning. Remove the probe before merge.
-- Live now, awaiting the user (do not remove): `src/server/systems/WalkerProbe.luau` (walker skids
-  under the ground) and `src/client/SoundProbe.luau` (which sound plays at game start).
+  `tools/check` lists every `TEMPORARY` line as a warning. Remove a probe once the user confirms
+  the cause is known.
+- Two probes predate this branch and await the user: `src/server/systems/WalkerProbe.luau`
+  (walker skids under the ground) and `src/client/SoundProbe.luau` (which sound plays at game
+  start).
 
 ## Hazards
 
@@ -325,11 +309,11 @@ Move these word for word; do not "simplify" them.
 - Instance, attribute, tag, collision group and prompt names, pod states and remote action strings
   (`src/shared/Names.luau`, `PodState.luau`, `RemoteActions.luau`) are a contract between server
   and client: never change a value. `tools/tests/names.luau` pins each one.
-- Numbers in `VehicleDamage`, `VehicleDrive`, `VehicleSizing`, `VehicleRam`, `VehicleLayout`,
-  `PodPilot`, `WeaponMath`, `CreatureBrain`, `MechClimb`, `MechGait` and `DayNight`, and the
-  creature numbers in `CreatureCatalog` and `AdminCommands.TUNING`, are tuning pinned by tests;
-  changing one is a gameplay change. `VehicleLayout.randomSpot` draws four numbers per call, in a
-  fixed order, from the `Random` it is given; `WeaponMath.spreadDirection` two (none at no spread);
-  `CreatureBrain.groundPoint` and `wander` as the Conventions say.
+- Numbers in the shared modules of the Conventions table, `MechClimb`, `MechGait`, `DayNight`, and
+  the creature numbers in `CreatureCatalog`, are tuning pinned by tests; changing one is a
+  gameplay change. Functions given a `Random` draw a fixed count in a fixed order:
+  `VehicleLayout.randomSpot` four per call; `WeaponMath.spreadDirection` two, pitch first (none at
+  no spread); `CreatureBrain.groundPoint` two per attempt, one more for the fallback;
+  `CreatureBrain.wander` one (next wander time), plus two for the goal unless heading home.
 - Admin command ids (`AdminCommands`) are a contract between AdminPanel, chat and the server:
   never change one.
