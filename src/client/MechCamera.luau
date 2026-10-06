@@ -21,6 +21,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
+local MathUtil = require(ReplicatedStorage.Shared.MathUtil)
 local Names = require(ReplicatedStorage.Shared.Names)
 local PodState = require(ReplicatedStorage.Shared.PodState)
 local MechMotion = require(script.Parent.MechMotion)
@@ -231,8 +232,7 @@ local function heading(current: Session): number?
 	if not root then
 		return nil
 	end
-	local look = root.CFrame.LookVector
-	return math.atan2(-look.X, -look.Z)
+	return MathUtil.yawOf(root.CFrame.LookVector)
 end
 
 -- Before the default camera: undo last frame's shake, then turn the view with the vehicle.
@@ -246,7 +246,7 @@ local function turn()
 	applied = CFrame.identity
 	local yaw = heading(current)
 	if yaw and current.yaw then
-		local delta = (yaw - current.yaw + math.pi) % (2 * math.pi) - math.pi
+		local delta = MathUtil.wrapAngle(yaw - current.yaw)
 		camera.CFrame = CFrame.new(camera.CFrame.Position)
 			* CFrame.Angles(0, delta, 0)
 			* camera.CFrame.Rotation
@@ -360,13 +360,7 @@ end
 local function cabAt(position: Vector3): Model?
 	for _, cab in CollectionService:GetTagged(Names.Tags.MechCab) do
 		if cab:IsA("BasePart") and cab.Parent and cab.Parent:IsA("Model") then
-			local offset = cab.CFrame:PointToObjectSpace(position)
-			local half = cab.Size / 2
-			if
-				math.abs(offset.X) <= half.X
-				and math.abs(offset.Y) <= half.Y
-				and math.abs(offset.Z) <= half.Z
-			then
+			if MathUtil.insideBox(cab.CFrame, cab.Size, position) then
 				return cab.Parent
 			end
 		end

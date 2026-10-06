@@ -2,6 +2,7 @@
 -- Characters stay unloaded until the lobby exists so nobody spawns into the void.
 
 local Lighting = game:GetService("Lighting")
+local PhysicsService = game:GetService("PhysicsService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -19,6 +20,7 @@ local Regions = require(World.Regions)
 local Roads = require(World.Roads)
 
 local Admin = require(Systems.Admin)
+local CollisionGroups = require(Systems.CollisionGroups)
 local Combat = require(Systems.Combat)
 local Creatures = require(Systems.Creatures)
 local DayNight = require(Systems.DayNight)
@@ -86,8 +88,7 @@ local function buildWorld()
 end
 
 clearTemplate()
-Session.registerCollisionGroups()
-Vehicles.registerCollisionGroups()
+CollisionGroups.register(PhysicsService)
 Combat.setBarrelFactory(Landscape.explosiveBarrel)
 atmosphere()
 DayNight.start()

@@ -4,7 +4,6 @@
 -- lobby with a loadout of up to three weapons. Every respawn returns the player to the lobby.
 
 local Players = game:GetService("Players")
-local PhysicsService = game:GetService("PhysicsService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Teams = game:GetService("Teams")
@@ -16,21 +15,6 @@ local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 local Weapons = require(script.Parent.Weapons)
 
 local Session = {}
-
--- Collision groups: lobby gates stop undeployed players (and creatures) but let deployed ones out.
--- Once a deployed non-admin has left the lobby they are LockedOut: the gates stop them again, so
--- only admins can walk back in.
-function Session.registerCollisionGroups()
-	local Groups = Names.CollisionGroups
-	for _, group in
-		{ Groups.LobbyPlayers, Groups.DeployedPlayers, Groups.LockedOutPlayers, Groups.LobbyGate }
-	do
-		if not PhysicsService:IsCollisionGroupRegistered(group) then
-			PhysicsService:RegisterCollisionGroup(group)
-		end
-	end
-	PhysicsService:CollisionGroupSetCollidable(Groups.LobbyGate, Groups.DeployedPlayers, false)
-end
 
 local function groupFor(player: Player): string
 	if not player:GetAttribute(Names.Attributes.Deployed) then

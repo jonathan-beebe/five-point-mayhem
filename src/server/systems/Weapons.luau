@@ -10,6 +10,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local MathUtil = require(ReplicatedStorage.Shared.MathUtil)
 local Names = require(ReplicatedStorage.Shared.Names)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
@@ -870,10 +871,7 @@ end
 
 local function fireStrike(shot: Shot)
 	local weapon = shot.weapon
-	local offset = shot.aim - shot.root.Position
-	local target = if offset.Magnitude > weapon.range
-		then shot.root.Position + offset.Unit * weapon.range
-		else shot.aim
+	local target = MathUtil.clampToRange(shot.root.Position, shot.aim, weapon.range)
 	local radius = weapon.radius or 10
 	if weapon.style == "meteor" then
 		local rock = Instance.new("Part")
@@ -942,10 +940,7 @@ end
 
 local function fireBlink(shot: Shot)
 	local weapon = shot.weapon
-	local offset = shot.aim - shot.root.Position
-	local target = if offset.Magnitude > weapon.range
-		then shot.root.Position + offset.Unit * weapon.range
-		else shot.aim
+	local target = MathUtil.clampToRange(shot.root.Position, shot.aim, weapon.range)
 	if Config.isInLobby(target) then
 		return
 	end

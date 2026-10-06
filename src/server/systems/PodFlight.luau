@@ -26,6 +26,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local MathUtil = require(ReplicatedStorage.Shared.MathUtil)
 local Names = require(ReplicatedStorage.Shared.Names)
 local PodState = require(ReplicatedStorage.Shared.PodState)
 local RemoteActions = require(ReplicatedStorage.Shared.RemoteActions)
@@ -96,22 +97,6 @@ export type Pod = {
 
 local pods: { [Model]: Pod } = {}
 
-local function moveToward(current: number, target: number, step: number): number
-	if current < target then
-		return math.min(current + step, target)
-	end
-	return math.max(current - step, target)
-end
-
-local function wrap(angle: number): number
-	return (angle + math.pi) % (2 * math.pi) - math.pi
-end
-
-local function yawOf(cframe: CFrame): number
-	local look = cframe.LookVector
-	return math.atan2(-look.X, -look.Z)
-end
-
 -- Where the pod bone sits when docked: the joint's rest frame on its parent bone.
 local function dock(pod: Pod): CFrame
 	local joint = pod.joint
@@ -172,13 +157,7 @@ local function launch(pod: Pod)
 			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 			local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 			if humanoid and root and not humanoid.SeatPart then
-				local offset = cab.CFrame:PointToObjectSpace(root.Position)
-				local half = cab.Size / 2
-				if
-					math.abs(offset.X) <= half.X
-					and math.abs(offset.Y) <= half.Y
-					and math.abs(offset.Z) <= half.Z
-				then
+				if MathUtil.insideBox(cab.CFrame, cab.Size, root.Position) then
 					pod.eject(player)
 				end
 			end
@@ -191,7 +170,7 @@ local function launch(pod: Pod)
 	local mass = root.AssemblyMass
 	pod.mover.MaxForce = mass * (workspace.Gravity + 400)
 	pod.mover.VectorVelocity = Vector3.zero
-	pod.yaw = yawOf(root.CFrame)
+	pod.yaw = MathUtil.yawOf(root.CFrame.LookVector)
 	pod.aligner.CFrame = CFrame.Angles(0, pod.yaw, 0)
 	pod.mover.Enabled = true
 	pod.aligner.Enabled = true
@@ -226,12 +205,12 @@ end
 
 -- The pilot's controls.
 local function fly(pod: Pod, dt: number)
-	pod.yaw = wrap(pod.yaw - pod.steer * TURN_RATE * dt)
+	pod.yaw = MathUtil.wrapAngle(pod.yaw - pod.steer * TURN_RATE * dt)
 	local target = pod.throttle * SPEED
 	if pod.throttle < 0 then
 		target = pod.throttle * SPEED * REVERSE
 	end
-	pod.speed = moveToward(pod.speed, target, ACCELERATION * dt)
+	pod.speed = MathUtil.moveToward(pod.speed, target, ACCELERATION * dt)
 
 	local rise = pod.lift * CLIMB
 	if os.clock() - pod.launchedAt < LAUNCH_TIME then
@@ -250,7 +229,7 @@ local function fly(pod: Pod, dt: number)
 
 	local heading = CFrame.Angles(0, pod.yaw, 0)
 	pod.mover.VectorVelocity = heading.LookVector * pod.speed + Vector3.new(0, rise, 0)
-	local follow = 1 - math.exp(-TILT_RATE * dt)
+	local follow = MathUtil.rateAlpha(TILT_RATE, dt)
 	pod.bank += (-pod.steer * BANK - pod.bank) * follow
 	local pitch = -PITCH * pod.speed / SPEED + LIFT_PITCH * pod.lift
 	pod.pitch += (pitch - pod.pitch) * follow
@@ -268,7 +247,7 @@ local function returnHome(pod: Pod, dt: number)
 	local cruise = math.max(target.Position.Y + HOME_HEIGHT, position.Y)
 	local flat = Vector3.new(target.Position.X - position.X, 0, target.Position.Z - position.Z)
 	local distance = flat.Magnitude
-	local dockYaw = yawOf(target)
+	local dockYaw = MathUtil.yawOf(target.LookVector)
 	local wantYaw = dockYaw
 	local velocity = Vector3.zero
 
@@ -282,9 +261,9 @@ local function returnHome(pod: Pod, dt: number)
 		velocity = if distance > 0.01 then flat.Unit * pace else Vector3.zero
 		velocity += Vector3.new(0, math.clamp((cruise - position.Y) * 2, -CLIMB, CLIMB), 0)
 		if distance > 8 then
-			wantYaw = math.atan2(-flat.X, -flat.Z)
+			wantYaw = MathUtil.yawOf(flat)
 		end
-		if distance < 0.6 and math.abs(wrap(pod.yaw - dockYaw)) < DOCK_ANGLE then
+		if distance < 0.6 and math.abs(MathUtil.wrapAngle(pod.yaw - dockYaw)) < DOCK_ANGLE then
 			pod.phase = "settle"
 		end
 	else
@@ -299,16 +278,16 @@ local function returnHome(pod: Pod, dt: number)
 		velocity = correction - Vector3.new(0, down, 0)
 		if
 			(target.Position - position).Magnitude < DOCK_DISTANCE
-			and math.abs(wrap(pod.yaw - dockYaw)) < DOCK_ANGLE
+			and math.abs(MathUtil.wrapAngle(pod.yaw - dockYaw)) < DOCK_ANGLE
 		then
 			docked(pod)
 			return
 		end
 	end
 
-	local turn = wrap(wantYaw - pod.yaw)
-	pod.yaw = wrap(pod.yaw + math.clamp(turn, -HOME_TURN * dt, HOME_TURN * dt))
-	local follow = 1 - math.exp(-TILT_RATE * dt)
+	local turn = MathUtil.wrapAngle(wantYaw - pod.yaw)
+	pod.yaw = MathUtil.wrapAngle(pod.yaw + math.clamp(turn, -HOME_TURN * dt, HOME_TURN * dt))
+	local follow = MathUtil.rateAlpha(TILT_RATE, dt)
 	pod.bank += (0 - pod.bank) * follow
 	pod.pitch += (0 - pod.pitch) * follow
 	pod.mover.VectorVelocity = velocity

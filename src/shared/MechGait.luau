@@ -15,6 +15,8 @@
 --   +Y  the front turns left
 --   +Z  a hanging segment swings toward +X; the +X side rises
 
+local MathUtil = require(script.Parent.MathUtil)
+
 local MechGait = {}
 
 local rad = math.rad
@@ -246,7 +248,7 @@ function MechGait.step(state: State, input: Input, dt: number): { Footfall }
 	state.time = input.time
 	state.topSpeed = math.max(input.topSpeed, 1)
 	state.turnRate = math.max(input.turnRate, 0.01)
-	state.accel += ((v - state.forward) / dt - state.accel) * (1 - math.exp(-dt / ACCEL_TAU))
+	state.accel += ((v - state.forward) / dt - state.accel) * MathUtil.timeAlpha(ACCEL_TAU, dt)
 	state.forward = v
 	state.yawRate = omega
 
@@ -316,7 +318,7 @@ function MechGait.step(state: State, input: Input, dt: number): { Footfall }
 		end
 	end
 
-	state.weight += (math.clamp(g / FULL_GAIT, 0, 1) - state.weight) * (1 - math.exp(-dt / W_TAU))
+	state.weight += (math.clamp(g / FULL_GAIT, 0, 1) - state.weight) * MathUtil.timeAlpha(W_TAU, dt)
 
 	local idleTarget = if input.occupied then 1 else 0
 	state.idle = math.clamp(state.idle + math.sign(idleTarget - state.idle) * dt / IDLE_RAMP, 0, 1)

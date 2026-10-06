@@ -27,17 +27,18 @@ check is skipped with a warning. `lune run tools/test [filter]` runs only the te
 | `src/shared/Names.luau` | Attribute, tag, collision group and instance names shared between modules and with the client |
 | `src/shared/PodState.luau` | A flying pod's states and the rules read from them (server and client) |
 | `src/shared/RemoteActions.luau` | The action strings remotes carry: pod and MAC commands, announcement styles |
+| `src/shared/MathUtil.luau` | Small math helpers shared by server and client (move toward, angle wrap, yaw, inside a box, clamp to range, follow rates) |
 | `src/server/vehicleModels` | One part-built model per vehicle (format: `src/server/systems/VehicleModel.luau`) |
 | `src/server/weaponModels` | One part-built model per weapon (format: `src/server/systems/WeaponModel.luau`) |
 | `src/server/creatureModels` | One part-built model per monster (format: `src/server/systems/CreatureModel.luau`) |
 | `tools/check.luau` | Runs every check: format, lint, types, tests (`lune run tools/check [--fast]`) |
 | `tools/test.luau` | Runs every test (`lune run tools/test [filter]`) |
-| `tools/tests` | Tests for shared game logic, models and data (`data_integrity`: catalogs, model files, sounds, regions; `names`: the shared names' values), run under Lune |
+| `tools/tests` | Tests for shared game logic, models and data (`data_integrity`: catalogs, model files, sounds, regions; `names`: the shared names' values; `math_util`; `collision_groups`: the collision matrix), run under Lune |
 | `tools/lib` | Lune harness: `Sandbox` loads game files outside Roblox, `Check` tallies assertions, `ModelChecks` validates model files |
 | `tools/preview` | Renders a vehicle, weapon or creature model file to a PNG of orthographic views |
 | `tools/audition.luau` | Plays every weapon and vehicle sound; paste into the Studio Command Bar during Play |
 | `src/server/world` | Lobby, roads, terrain/scenery, the five landmarks (`Regions.luau`: each landmark's building module, ground and tree styles) |
-| `src/server/systems` | Combat, weapons, players/teams, creatures, vehicles, admin powers |
+| `src/server/systems` | Combat, weapons, players/teams, creatures, vehicles, admin powers, collision groups (`CollisionGroups.luau`: every group and pair) |
 | `src/client` | Armory UI, weapon input, car input, vehicle health bar, mech animation and camera, admin panel, announcer |
 
 ## UI conventions

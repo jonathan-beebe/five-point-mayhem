@@ -49,8 +49,8 @@ Names.Tags = table.freeze({
 	Tree = "Tree", -- Landscape: rams fell it (Vehicles)
 })
 
--- PhysicsService collision groups: one namespace for the whole place. Session registers the
--- player groups and LobbyGate, Vehicles the rest and the Wreckage rules over both.
+-- PhysicsService collision groups: one namespace for the whole place. The server's
+-- systems/CollisionGroups registers them all and sets which pairs pass through each other.
 Names.CollisionGroups = table.freeze({
 	DeployedPlayers = "DeployedPlayers",
 	LobbyGate = "LobbyGate",

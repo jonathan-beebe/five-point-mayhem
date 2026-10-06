@@ -13,12 +13,12 @@
 
 local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
-local PhysicsService = game:GetService("PhysicsService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local MathUtil = require(ReplicatedStorage.Shared.MathUtil)
 local MechClimb = require(ReplicatedStorage.Shared.MechClimb)
 local Names = require(ReplicatedStorage.Shared.Names)
 local PodState = require(ReplicatedStorage.Shared.PodState)
@@ -135,13 +135,6 @@ type Car = {
 
 -- Every live car, by model.
 local cars: { [Model]: Car } = {}
-
-local function moveToward(current: number, target: number, step: number): number
-	if current < target then
-		return math.min(current + step, target)
-	end
-	return math.max(current - step, target)
-end
 
 local function setLimits(car: Car, force: number, torque: number)
 	-- Compared with slack: the properties store single precision.
@@ -315,7 +308,8 @@ local function drive(car: Car, dt: number)
 			car.mover.PlaneVelocity = if flat.Magnitude > 0
 				then flat.Unit * slowed
 				else Vector2.zero
-			car.turner.AngularVelocity = Vector3.new(0, moveToward(spin, 0, SPIN_SETTLING * dt), 0)
+			car.turner.AngularVelocity =
+				Vector3.new(0, MathUtil.moveToward(spin, 0, SPIN_SETTLING * dt), 0)
 		end
 		return
 	end
@@ -333,7 +327,7 @@ local function drive(car: Car, dt: number)
 		then car.coasting
 		elseif math.sign(target) ~= math.sign(speed) and math.abs(speed) > 1 then car.braking
 		else car.acceleration
-	local newSpeed = moveToward(speed, target, rate * dt)
+	local newSpeed = MathUtil.moveToward(speed, target, rate * dt)
 	local climb = climbStep(car, forward, dt)
 	if climb and climb.press then
 		newSpeed = climb.press
@@ -343,7 +337,7 @@ local function drive(car: Car, dt: number)
 	local grip = if car.turnInPlace then 1 else math.clamp(newSpeed / 20, -1, 1)
 	local yaw = if climb and climb.climbing then 0 else -car.steer * car.turnRate * grip
 	if car.turnAcceleration then
-		yaw = moveToward(car.yaw, yaw, car.turnAcceleration * dt)
+		yaw = MathUtil.moveToward(car.yaw, yaw, car.turnAcceleration * dt)
 	end
 	car.yaw = yaw
 	car.turner.AngularVelocity = Vector3.new(0, yaw, 0)
@@ -468,34 +462,6 @@ local function buildBones(
 	return bones
 end
 
--- Collision groups. Every vehicle's solid parts are in Vehicles; a vehicle that steps over things
--- (spec.stepsOver) is in Walkers, which passes through Vehicles and Scenery (trees, rocks, crates,
--- barrels). Buildings, roads, terrain and players stay solid to both. A felled tree is Wreckage:
--- it falls through vehicles and players onto the ground. Player groups come from Session.
-function Vehicles.registerCollisionGroups()
-	local Groups = Names.CollisionGroups
-	for _, group in { Groups.Vehicles, Groups.Walkers, Groups.Scenery, Groups.Wreckage } do
-		if not PhysicsService:IsCollisionGroupRegistered(group) then
-			PhysicsService:RegisterCollisionGroup(group)
-		end
-	end
-	PhysicsService:CollisionGroupSetCollidable(Groups.Walkers, Groups.Vehicles, false)
-	PhysicsService:CollisionGroupSetCollidable(Groups.Walkers, Groups.Scenery, false)
-	for _, group in
-		{
-			Groups.Vehicles,
-			Groups.Walkers,
-			Groups.LobbyPlayers,
-			Groups.DeployedPlayers,
-			Groups.LockedOutPlayers,
-		}
-	do
-		if PhysicsService:IsCollisionGroupRegistered(group) then
-			PhysicsService:CollisionGroupSetCollidable(Groups.Wreckage, group, false)
-		end
-	end
-end
-
 -- An Attachment "Smoke" at each smokestack mouth, on its bone. Clients (MechMotion) emit from it.
 local function addSmoke(skid: BasePart, bones: { [string]: Bone }, spec: VehicleModel.Model)
 	for _, stack in (spec.smoke or {}) :: { VehicleModel.SmokeSpec } do
@@ -612,15 +578,6 @@ local function newCrash(id: string, spec: VehicleModel.Model): Crash
 		smoke = nil,
 		fire = nil,
 	}
-end
-
--- Whether `position` is inside the box `part`.
-local function inside(part: BasePart, position: Vector3): boolean
-	local offset = part.CFrame:PointToObjectSpace(position)
-	local half = part.Size / 2
-	return math.abs(offset.X) <= half.X
-		and math.abs(offset.Y) <= half.Y
-		and math.abs(offset.Z) <= half.Z
 end
 
 -- A crash's sound and a burst of sparks at `at`.
@@ -802,7 +759,7 @@ local function wreck(model: Model, car: Car)
 			for _, player in Players:GetPlayers() do
 				local character = player.Character
 				local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-				if root and inside(cab, root.Position) then
+				if root and MathUtil.insideBox(cab.CFrame, cab.Size, root.Position) then
 					climbOut(player)
 				end
 			end
@@ -1830,7 +1787,7 @@ local function isOccupied(model: Model): boolean
 		for _, player in Players:GetPlayers() do
 			local character = player.Character
 			local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-			if root and inside(cab, root.Position) then
+			if root and MathUtil.insideBox(cab.CFrame, cab.Size, root.Position) then
 				return true
 			end
 		end

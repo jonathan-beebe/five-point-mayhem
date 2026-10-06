@@ -14,6 +14,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
+local MathUtil = require(ReplicatedStorage.Shared.MathUtil)
 local Names = require(ReplicatedStorage.Shared.Names)
 
 local SniperScope = {}
@@ -247,7 +248,7 @@ local function viewStep(dt: number)
 	if stick.Magnitude > GAMEPAD_DEADZONE then
 		turn(current, stick.X * GAMEPAD_RATE * dt, -stick.Y * GAMEPAD_RATE * dt)
 	end
-	local ease = 1 - math.exp(-dt / EASE_SECONDS)
+	local ease = MathUtil.timeAlpha(EASE_SECONDS, dt)
 	current.yaw += (current.targetYaw - current.yaw) * ease
 	current.pitch += (current.targetPitch - current.pitch) * ease
 	local root = rootPart()
@@ -285,7 +286,7 @@ local function scopeIn()
 		return
 	end
 	local look = camera.CFrame.LookVector
-	local yaw = math.atan2(-look.X, -look.Z)
+	local yaw = MathUtil.yawOf(look)
 	local pitch = math.clamp(math.asin(math.clamp(look.Y, -1, 1)), -MAX_PITCH, MAX_PITCH)
 	local root = rootPart()
 	saved = {

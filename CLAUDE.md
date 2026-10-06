@@ -21,17 +21,19 @@ placement on phone/tablet/desktop, network ownership, sounds by ear (`tools/audi
 ```
 src/shared/   ReplicatedStorage.Shared. Every file --!strict. Loads under Lune.
   *Catalog    data only: WeaponCatalog, VehicleCatalog, CreatureCatalog, SoundCatalog
-  pure logic  DayNight, VehicleDamage, MechGait, MechClimb, VehicleDefaults (tested in tools/tests)
+  pure logic  DayNight, VehicleDamage, MechGait, MechClimb, VehicleDefaults, MathUtil (tested in
+              tools/tests)
   Config      world layout, REGIONS, teams, admin ids;  Remotes: every RemoteEvent, typed record
   contracts   Names (attributes, tags, collision groups, instance names), PodState, RemoteActions
 src/server/   ServerScriptService.Server. init.server.luau boots in this order:
-  1. collision groups, barrel factory, lighting, DayNight.start, gravity
+  1. CollisionGroups.register (every group and pair), barrel factory, lighting, DayNight.start,
+     gravity
   2. buildWorld(): Lobby, Roads, one building per Config.REGIONS entry (in order), Landscape
   3. Session, Creatures, Vehicles (PodFlight.start, then layOut), Admin, MacAccess .start()
   4. CharacterAutoLoads back on: nobody spawns before the lobby exists
   world/      Build helpers, Lobby, Roads, Landscape, Regions (per-landmark data), buildings/
   systems/    Combat, Weapons, Session, Creatures, Vehicles, PodFlight, Admin, MacAccess, DayNight,
-              and the model formats VehicleModel, WeaponModel, CreatureModel
+              CollisionGroups, and the model formats VehicleModel, WeaponModel, CreatureModel
   vehicleModels/ weaponModels/ creatureModels/   one model file per catalog id
 src/client/   StarterPlayerScripts.Client. Feature modules with start(), each task.spawned by
               init.client.luau so one failure cannot stop the rest.
@@ -66,6 +68,11 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   instance names set in one module and read in another), `PodState.luau` (pod states) and
   `RemoteActions.luau` (remote action strings). Module-private names stay local literals. Add a
   new shared name to its module and to the golden list in `tools/tests/names.luau`.
+- Collision groups and the pairs that pass through each other are all in
+  `src/server/systems/CollisionGroups.luau`; a new group or pair also goes in the golden matrix in
+  `tools/tests/collision_groups.luau`.
+- Small math shared across modules (`moveToward`, `wrapAngle`, `yawOf`, `insideBox`,
+  `clampToRange`, `rateAlpha`/`timeAlpha` follow fractions) comes from `src/shared/MathUtil.luau`.
 - Every file opens with a header comment saying what it is; match the surrounding comment density.
 
 ## UI rules

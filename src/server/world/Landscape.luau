@@ -348,7 +348,7 @@ function Landscape.build(parent: Instance)
 	scatter(45, 4, function(position)
 		Landscape.explosiveBarrel(obstacles, CFrame.new(position + Vector3.new(0, 2, 0)))
 	end)
-	-- Walkers (the mech) step through scenery; see Vehicles.registerCollisionGroups.
+	-- Walkers (the mech) step through scenery; see systems/CollisionGroups.luau.
 	for _, part in model:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.CollisionGroup = Names.CollisionGroups.Scenery

@@ -7,6 +7,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local MathUtil = require(ReplicatedStorage.Shared.MathUtil)
 local MechGait = require(ReplicatedStorage.Shared.MechGait)
 local Names = require(ReplicatedStorage.Shared.Names)
 local SoundCatalog = require(ReplicatedStorage.Shared.SoundCatalog)
@@ -88,7 +89,7 @@ local function engineHandler(model: Model, profile: SoundCatalog.VehicleSounds):
 			end
 		end
 
-		local follow = 1 - math.exp(-dt * SETTINGS.smoothing)
+		local follow = MathUtil.rateAlpha(SETTINGS.smoothing, dt)
 		local velocity = skid.AssemblyLinearVelocity
 		local speed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
 		local target = math.clamp(speed / topSpeed, 0, 1)
@@ -198,7 +199,7 @@ local function mechHandler(model: Model, profile: SoundCatalog.MechSounds): Hand
 			local cycle = MechGait.CYCLE * gait.rig.scale
 			targetCadence = math.clamp(gait.rate * cycle / gait.topSpeed, 0, 1)
 		end
-		local follow = 1 - math.exp(-dt * profile.smoothing)
+		local follow = MathUtil.rateAlpha(profile.smoothing, dt)
 		speed += (targetSpeed - speed) * follow
 		cadence += (targetCadence - cadence) * follow
 
