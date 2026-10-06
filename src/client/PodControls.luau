@@ -1,11 +1,11 @@
 -- Screen controls for flying pods (server PodFlight). While the local player sits in the driver
 -- seat of a walker with a pod (model attribute PodBone), a wide button above MechCamera's STAND
 -- reads LAUNCH (pod docked), RETURN HOME (flying) or RETURNING (the autopilot has it). On touch,
--- while flying, ▲ and ▼ beside the column climb and descend; keyboards use E and Q (CarInput
--- reads both). Passengers get only the jump lock. Near the ground (server attribute PodCanLand) a LAND button (or L) appears left of
--- it: the pod settles to hover and the pilot gets out. While the pod flies the seat is locked
--- here too: jumping is disabled. The console button's prompt (PodFlight) is drawn at the side of
--- the screen with every other prompt (PromptPanel).
+-- while flying, ▲ and ▼ beside the column climb and descend; keyboards use E and Q (CarInput reads
+-- both). Passengers get only the jump lock. Near the ground (server attribute PodCanLand) a LAND
+-- button (or L) appears left of it: the pod settles to hover and the pilot gets out. While the pod
+-- flies the seat is locked here too: jumping is disabled. The console button's prompt (PodFlight)
+-- is drawn at the side of the screen with every other prompt (PromptPanel).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

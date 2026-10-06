@@ -16,8 +16,8 @@
 -- `load(path, extra)`: `extra` adds or overrides globals for that file only; modules it requires
 -- get the plain sandbox.
 --
--- `Sandbox.game` and `Sandbox.require` are the same `game` and `require` outside a loaded file, so a
--- tool can require a module by the instance path the game uses:
+-- `Sandbox.game` and `Sandbox.require` are the same `game` and `require` outside a loaded file, so
+-- a tool can require a module by the instance path the game uses:
 --   Sandbox.require(Sandbox.game:GetService("ReplicatedStorage").Shared.CreatureCatalog)
 --
 -- Relative paths resolve against the repository root, so tools run from any directory in it.
@@ -52,8 +52,8 @@ local function resolve(path: string): string
 	return "/" .. table.concat(parts, "/")
 end
 
--- Lune's CFrame.lookAt (and CFrame.new(position, target)) disagree with Roblox; rebuild them
--- from fromMatrix the way Roblox defines them: -Z toward the target, +Y as close to `up` as possible.
+-- Lune's CFrame.lookAt (and CFrame.new(position, target)) disagree with Roblox; rebuild them from
+-- fromMatrix the way Roblox defines them: -Z toward the target, +Y as close to `up` as possible.
 local RobloxCFrame = roblox.CFrame
 local function lookAt(at, target, up)
 	up = up or roblox.Vector3.yAxis

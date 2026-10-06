@@ -67,7 +67,8 @@ local function lowestPoint(pieces: { any }): number
 	local lowest = math.huge
 	for _, piece in pieces do
 		if ModelChecks.renderable(piece) then
-			-- Lowest point of the piece's box: |R1j| * size_j / 2 summed over its axes (c[7..9] is row Y).
+			-- Lowest point of the piece's box: |R1j| * size_j / 2 summed over its axes (c[7..9] is
+			-- row Y).
 			local c = { piece.offset:GetComponents() }
 			local size = { piece.size.X, piece.size.Y, piece.size.Z }
 			local half = 0

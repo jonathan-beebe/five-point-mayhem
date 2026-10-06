@@ -42,7 +42,8 @@ type PieceSpec = WeaponModel.PieceSpec
 local CYLINDER_Z = WeaponModel.CYLINDER_Z
 local CYLINDER_Y = WeaponModel.CYLINDER_Y
 
--- Fallback pieces for weapons without a file in `weaponModels`, in handle space. The hand holds the handle; local -Z points away from the wielder.
+-- Fallback pieces for weapons without a file in `weaponModels`, in handle space. The hand holds the
+-- handle; local -Z points away from the wielder.
 local function pieces(weapon: Weapon): { PieceSpec }
 	local c = weapon.color
 	local glow = if weapon.neon then M.Neon else M.Metal

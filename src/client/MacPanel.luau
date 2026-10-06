@@ -1,6 +1,6 @@
 -- The MAC (mini admin console): a panel below the GOD MODE button. Every player sees it. Players
--- without the MAC (the server's HasMac attribute) see it locked. The server re-checks HasMac on every
--- command.
+-- without the MAC (the server's HasMac attribute) see it locked. The server re-checks HasMac on
+-- every command.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

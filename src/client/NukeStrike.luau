@@ -311,7 +311,8 @@ local function puff(
 	smoke.Shape = Enum.ParticleEmitterShape.Sphere
 	smoke.ShapeStyle = Enum.ParticleEmitterShapeStyle.Surface
 	smoke.Color = ColorSequence.new(color)
-	smoke.Size = NumberSequence.new(toSize * 0.35, math.min(toSize * 0.7, 100)) -- Roblox caps at 100
+	-- Roblox caps at 100.
+	smoke.Size = NumberSequence.new(toSize * 0.35, math.min(toSize * 0.7, 100))
 	smoke.Transparency = NumberSequence.new({
 		NumberSequenceKeypoint.new(0, 1),
 		NumberSequenceKeypoint.new(0.2, 0.55),

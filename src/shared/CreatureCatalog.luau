@@ -98,7 +98,8 @@ local REGION_KIND =
 -- Where each landmark's horde appears and walks out to, in the landmark's local frame (local -Z
 -- faces the lobby). `y` is the floor height inside; `xs` are the doors used.
 local LAIRS = {
-	castle = { inside = 10, outside = -105, y = 1.6, xs = { 0 } }, -- out of the keep, through the gate
+	-- Out of the keep, through the gate.
+	castle = { inside = 10, outside = -105, y = 1.6, xs = { 0 } },
 	pagoda = { inside = -27, outside = -80, y = 5, xs = { 0 } },
 	tower = { inside = -24, outside = -55, y = 1.8, xs = { 0 } },
 	pyramid = { inside = -72, outside = -105, y = 0.6, xs = { -40, 40 } },

@@ -257,7 +257,12 @@ local WEAPONS: { [string]: WeaponSounds } = {
 		hit = MELEE({ key = "HIT_BLADE", volume = 0.28 }),
 	},
 	katana = {
-		fire = MELEE({ key = "SWISH_THIN", volume = 0.24, pitch = 0.95, effects = { eq(0, 0, 2) } }),
+		fire = MELEE({
+			key = "SWISH_THIN",
+			volume = 0.24,
+			pitch = 0.95,
+			effects = { eq(0, 0, 2) },
+		}),
 		hit = MELEE({ key = "HIT_BLADE", volume = 0.25, pitch = 1.15 }),
 	},
 	battle_axe = {
@@ -1015,7 +1020,13 @@ local NUKE = {
 		effects = { { class = "PitchShiftSoundEffect", Octave = 2 } },
 	} :: Cue,
 	swell = 0.05,
-	rush = { key = "FIREBALL_BY", volume = 0.6, pitch = 0.6, jitter = { 0, 0 }, range = "large" } :: Cue,
+	rush = {
+		key = "FIREBALL_BY",
+		volume = 0.6,
+		pitch = 0.6,
+		jitter = { 0, 0 },
+		range = "large",
+	} :: Cue,
 	rushLead = 2.3,
 	blast = {
 		key = "EXPL_LARGE",

@@ -5,8 +5,8 @@
 --              Massless true before welding
 --   Creatures  Massless, smooth Top and Bottom surfaces
 --   Weapons    CanQuery false, Massless
--- tools/tests/server_helpers.luau builds every piece of every model file both ways (this module, and the
--- inline code it replaced) and compares the results property by property.
+-- tools/tests/server_helpers.luau builds every piece of every model file both ways (this module,
+-- and the inline code it replaced) and compares the results property by property.
 
 local Parts = {}
 

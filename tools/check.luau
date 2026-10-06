@@ -2,8 +2,10 @@
 -- step fails.
 -- Usage: lune run tools/check [--fast]   (--fast skips the type check)
 --
--- Steps: stylua --check src tools; selene src tools; rojo sourcemap + luau-lsp analyze over src;
--- lune run tools/test. TEMPORARY markers in src and tools print as warnings and do not fail the run.
+-- Steps: stylua --check src tools; no line over 100 columns in src, tools, CLAUDE.md and AGENTS.md
+-- (model files under vehicleModels, weaponModels and creatureModels exempt); selene src tools; rojo
+-- sourcemap + luau-lsp analyze over src; lune run tools/test. TEMPORARY markers in src and tools
+-- print as warnings and do not fail the run.
 -- luau-lsp checks src only: the Lune scripts under tools are not type-analyzed. Its Roblox type
 -- definitions download once into .cache/ (gitignored), for the luau-lsp version in rokit.toml.
 -- Without luau-lsp (rokit install) the type check is skipped with a warning.
@@ -158,43 +160,101 @@ local function typeCheck()
 	record(name, if result.ok then "PASS" else "FAIL")
 end
 
+-- Every .luau file under `dir` (relative to the root), as relative paths in sorted order.
+local function luauFiles(dir: string, found: { string }?): { string }
+	local files = found or {}
+	local entries = fs.readDir(Sandbox.ROOT .. "/" .. dir)
+	table.sort(entries)
+	for _, entry in entries do
+		local path = dir .. "/" .. entry
+		if fs.isDir(Sandbox.ROOT .. "/" .. path) then
+			luauFiles(path, files)
+		elseif string.match(entry, "%.luau$") then
+			table.insert(files, path)
+		end
+	end
+	return files
+end
+
+-- The lines of the file at `path` (relative to the root).
+local function fileLines(path: string): { string }
+	local lines = {}
+	for line in string.gmatch(fs.readFile(Sandbox.ROOT .. "/" .. path) .. "\n", "([^\n]*)\n") do
+		table.insert(lines, line)
+	end
+	return lines
+end
+
+local SOURCES = luauFiles("tools", luauFiles("src"))
+-- Docs held to the same width. README.md is not: its tables run wider.
+local DOCS = { "CLAUDE.md", "AGENTS.md" }
+
 -- Every line in src and tools marked TEMPORARY, as "path:line: text". Skips this file.
 local function temporaryMarkers(): { string }
 	local found = {}
-	local function walk(dir: string)
-		local entries = fs.readDir(Sandbox.ROOT .. "/" .. dir)
-		table.sort(entries)
-		for _, entry in entries do
-			local path = dir .. "/" .. entry
-			if fs.isDir(Sandbox.ROOT .. "/" .. path) then
-				walk(path)
-			elseif string.match(entry, "%.luau$") and path ~= "tools/check.luau" then
-				local number = 0
-				for line in
-					string.gmatch(fs.readFile(Sandbox.ROOT .. "/" .. path) .. "\n", "([^\n]*)\n")
-				do
-					number += 1
-					if string.find(line, "TEMPORARY", 1, true) then
-						table.insert(
-							found,
-							string.format(
-								"%s:%d: %s",
-								path,
-								number,
-								(string.gsub(line, "^%s+", ""))
-							)
-						)
-					end
+	for _, path in SOURCES do
+		if path ~= "tools/check.luau" then
+			for number, line in fileLines(path) do
+				if string.find(line, "TEMPORARY", 1, true) then
+					table.insert(
+						found,
+						string.format("%s:%d: %s", path, number, (string.gsub(line, "^%s+", "")))
+					)
 				end
 			end
 		end
 	end
-	walk("src")
-	walk("tools")
 	return found
 end
 
+-- stylua's column_width. Model files are data and may be wider (long header comments).
+local MAX_COLUMNS = 100
+local WIDE_DIRS =
+	{ "src/server/vehicleModels/", "src/server/weaponModels/", "src/server/creatureModels/" }
+
+-- Columns `line` takes, a tab reaching the next multiple of 4 (stylua's indent width).
+local function columns(line: string): number
+	if not utf8.len(line) then
+		return #line
+	end
+	local width = 0
+	for _, code in utf8.codes(line) do
+		width += if code == 9 then 4 - width % 4 else 1
+	end
+	return width
+end
+
+-- Fails on any line in src, tools and DOCS wider than MAX_COLUMNS, outside WIDE_DIRS. stylua
+-- leaves comments and some expressions as they are, so its check does not catch these.
+local function lineLength()
+	local name = "line length"
+	print(string.format("\n== %s", name))
+	local long = 0
+	local paths = table.clone(SOURCES)
+	table.move(DOCS, 1, #DOCS, #paths + 1, paths)
+	for _, path in paths do
+		local wide = false
+		for _, dir in WIDE_DIRS do
+			wide = wide or string.sub(path, 1, #dir) == dir
+		end
+		if not wide then
+			for number, line in fileLines(path) do
+				local width = columns(line)
+				if width > MAX_COLUMNS then
+					long += 1
+					print(string.format("%s:%d: %d columns", path, number, width))
+				end
+			end
+		end
+	end
+	if long > 0 then
+		print(string.format("%d lines over %d columns", long, MAX_COLUMNS))
+	end
+	record(name, if long == 0 then "PASS" else "FAIL")
+end
+
 step("stylua", "stylua", { "--check", "src", "tools" })
+lineLength()
 step("selene", "selene", { "src", "tools" })
 typeCheck()
 step("tests", "lune", { "run", "tools/test" })

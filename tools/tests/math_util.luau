@@ -27,7 +27,8 @@ local Reference = luau.load(
 	[[
 local Reference = {}
 
--- Vehicles.luau and PodFlight.luau `moveToward` (identical copies).
+-- `moveToward` as VehicleDrive.luau (from the old Vehicles.luau) and PodFlight.luau had it
+-- (identical copies).
 function Reference.moveToward(current: number, target: number, step: number): number
 	if current < target then
 		return math.min(current + step, target)
@@ -47,8 +48,8 @@ function Reference.cameraDelta(yaw: number, current: number): number
 	return (yaw - current + math.pi) % (2 * math.pi) - math.pi
 end
 
--- PodFlight.luau `yawOf(cframe)` and the `flat` heading; MechCamera.luau `heading`; SniperScope.luau
--- `scopeIn`.
+-- PodFlight.luau `yawOf(cframe)` and the `flat` heading; MechCamera.luau `heading`;
+-- SniperScope.luau `scopeIn`.
 function Reference.yawOfCFrame(cframe: CFrame): number
 	local look = cframe.LookVector
 	return math.atan2(-look.X, -look.Z)
@@ -57,7 +58,8 @@ function Reference.yawOfFlat(flat: Vector3): number
 	return math.atan2(-flat.X, -flat.Z)
 end
 
--- Vehicles.luau `inside(part, position)`; PodFlight.luau's cab check; MechCamera.luau `cabAt`.
+-- `inside(part, position)` from the old Vehicles.luau (now util/Characters.luau `isInside`);
+-- PodFlight.luau's cab check; MechCamera.luau `cabAt`.
 function Reference.inside(cframe: CFrame, size: Vector3, position: Vector3): boolean
 	local offset = cframe:PointToObjectSpace(position)
 	local half = size / 2

@@ -10,11 +10,12 @@ rojo serve      # then connect from the Rojo plugin in Studio and press Play
 lune run tools/check  # format, lint, types, tests; exits 1 on any failure
 ```
 
-`lune run tools/check` runs stylua, selene, the luau-lsp type check over `src` and every test,
-and lists `TEMPORARY` markers as warnings. `--fast` skips the type check. The first full run
-downloads the Roblox type definitions to `.cache/` (needs network); without luau-lsp the type
-check is skipped with a warning. `lune run tools/test [filter]` runs only the tests. Files in
-`src/shared` are `--!strict`; the rest of `src` is nonstrict (`.luaurc`).
+`lune run tools/check` runs stylua, a 100-column line limit (model files exempt), selene, the
+luau-lsp type check over `src` and every test, and lists `TEMPORARY` markers as warnings. `--fast`
+skips the type check. The first full run downloads the Roblox type definitions to `.cache/` (needs
+network); without luau-lsp the type check is skipped with a warning. `lune run tools/test [filter]`
+runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is nonstrict
+(`.luaurc`).
 
 ## Layout
 
@@ -31,7 +32,7 @@ check is skipped with a warning. `lune run tools/test [filter]` runs only the te
 | `src/server/vehicleModels` | One part-built model per vehicle (format: `src/server/systems/VehicleModel.luau`) |
 | `src/server/weaponModels` | One part-built model per weapon (format: `src/server/systems/WeaponModel.luau`) |
 | `src/server/creatureModels` | One part-built model per monster (format: `src/server/systems/CreatureModel.luau`) |
-| `tools/check.luau` | Runs every check: format, lint, types, tests (`lune run tools/check [--fast]`) |
+| `tools/check.luau` | Runs every check: format, line length, lint, types, tests (`lune run tools/check [--fast]`) |
 | `tools/test.luau` | Runs every test (`lune run tools/test [filter]`) |
 | `tools/tests` | Tests for shared game logic, models and data (`data_integrity`: catalogs, model files, sounds, regions; `names`: the shared names' values; `math_util`; `collision_groups`: the collision matrix), run under Lune |
 | `tools/lib` | Lune harness: `Sandbox` loads game files outside Roblox, `Check` tallies assertions, `ModelChecks` validates model files |
@@ -39,6 +40,7 @@ check is skipped with a warning. `lune run tools/test [filter]` runs only the te
 | `tools/audition.luau` | Plays every weapon and vehicle sound; paste into the Studio Command Bar during Play |
 | `src/server/world` | Lobby, roads, terrain/scenery, the five landmarks (`Regions.luau`: each landmark's building module, ground and tree styles) |
 | `src/server/systems` | Combat, weapons, players/teams, creatures, vehicles, admin powers, collision groups (`CollisionGroups.luau`: every group and pair) |
+| `src/server/systems/Vehicles` | Vehicles, one module per job behind `init.luau`: `Registry` (live cars), `Specs` (model files), `Placement`, `Climb`, `Drive`, `Health` (crashes, wrecks), `Trees`, `Contact` (rams), `Boarding` (prompts, cab), `Builder`, `Parking` (spots, respawn) |
 | `src/client` | Armory UI, weapon input, car input, vehicle health bar, mech animation and camera, admin panel, announcer |
 
 ## UI conventions
@@ -285,8 +287,8 @@ size sets how much. Size is bulk: footprint × the height of its solid parts, ov
   (the server keeps them after the driver gets out), shoved ones, and flying pods. One a
   player's client simulates (carrying only passengers, or never driven and near a player) takes
   no crash damage of its own, but rams damage every vehicle.
-- Tuning lives at the top of `src/shared/VehicleDamage.luau` (formulas, crash detection) and in the
-  crash damage section of `src/server/systems/Vehicles.luau` (wreck, smoke and fire);
+- Tuning lives at the top of `src/shared/VehicleDamage.luau` (formulas, crash detection) and at the
+  top of `src/server/systems/Vehicles/Health.luau` (wreck, smoke and fire);
   `lune run tools/test vehicle_damage` checks it.
 
 ### OG

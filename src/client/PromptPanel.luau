@@ -440,7 +440,7 @@ local function layout()
 	end
 end
 
--- Start ---------------------------------------------------------------------------------------------
+-- Start -------------------------------------------------------------------------------------------
 
 local function onCharacter(character: Model)
 	local humanoid = character:WaitForChild("Humanoid") :: Humanoid

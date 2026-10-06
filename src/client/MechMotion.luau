@@ -32,7 +32,8 @@ local SMOKE_RATE = 14 -- particles per second per stack at top speed
 local SMOKE_PUFF = 5 -- particles per stack on each step
 
 local footfallEvent = Instance.new("BindableEvent")
--- Fires (model: Model, foot: "L" | "R", strength: number) on every heel strike this client animates.
+-- Fires (model: Model, foot: "L" | "R", strength: number) on every heel strike this client
+-- animates.
 MechMotion.footfall = footfallEvent.Event
 
 type Mech = {

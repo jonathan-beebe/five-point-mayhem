@@ -105,7 +105,14 @@ function Reference.settle(car, velocity, spin, mass, size, dt)
 		else Vector2.zero
 	local angular =
 		Vector3.new(0, MathUtil.moveToward(spin, 0, SPIN_SETTLING * dt), 0)
-	return { settling = settling, held = held, force = force, torque = torque, plane = plane, angular = angular }
+	return {
+		settling = settling,
+		held = held,
+		force = force,
+		torque = torque,
+		plane = plane,
+		angular = angular,
+	}
 end
 -- climbStep
 function Reference.climbForce(mass, gravity)
@@ -384,7 +391,8 @@ function Reference.spoke(order)
 	local spoke = (order - 1) % #Config.REGIONS + 1
 	return spoke
 end
--- Vehicles.start: `distance` from home, seconds since LastUsed, and the skid's height.
+-- Vehicles/Parking.luau `Parking.start`: `distance` from home, seconds since LastUsed, and the
+-- skid's height.
 function Reference.repark(distance, idleSeconds, y)
 	local away = distance > 30
 	local idle = idleSeconds > 60
@@ -675,8 +683,9 @@ for _, entry in specs do
 	check(same(VehicleSizing.solidHeight(spec), Reference.solidHeight(spec)), "solidHeight " .. id)
 	check(same(VehicleSizing.podSize(spec), Reference.podSize(spec)), "podSize " .. id)
 	for _, override in { false, 0.1, 1, 3.5, 80 } do
+		local sized = VehicleSizing.crash(spec, override or nil)
 		check(
-			same(VehicleSizing.crash(spec, override or nil), Reference.crash(spec, override or nil)),
+			same(sized, Reference.crash(spec, override or nil)),
 			"crash " .. id .. " " .. tostring(override)
 		)
 	end
@@ -783,8 +792,9 @@ for _, entry in specs do
 		local otherCar = ramCar(other.spec)
 		local crash = VehicleSizing.crash(other.spec, nil)
 		for _, mass in { otherCar.mass, crash.podMass } do
+			local transfer = VehicleRam.transfer(car.mass, mass, car.ram)
 			check(
-				same(VehicleRam.transfer(car.mass, mass, car.ram), Reference.ramTransfer(car, mass)),
+				same(transfer, Reference.ramTransfer(car, mass)),
 				"transfer " .. entry.id .. " into " .. other.id .. " " .. show(mass)
 			)
 		end

@@ -2,7 +2,8 @@
 -- gait "mech") outside Roblox.
 -- Usage: lune run tools/tests/mech_gait.luau
 --
--- Drives each walker's gait, at its own top speed and turn rate, through walking, reversing, turning in place, starting and stopping, and checks:
+-- Drives each walker's gait, at its own top speed and turn rate, through walking, reversing,
+-- turning in place, starting and stopping, and checks:
 --   - a planted foot does not skate: its ground point moves < 0.05 studs per frame
 --   - a planted ankle sits on the ground (the IK reaches it)
 --   - every channel stays inside the bone limits before clamping

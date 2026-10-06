@@ -34,11 +34,14 @@ local Remotes = {
 	Deploy = remote("Deploy"), -- client -> server: { weaponId, weaponId, weaponId }
 	ChooseTeam = remote("ChooseTeam"), -- client -> server: teamName
 	FireWeapon = remote("FireWeapon"), -- client -> server: weaponId, aimPosition
-	DriveInput = remote("DriveInput"), -- client -> server: throttle, steer, lift (each -1..1; lift for flying pods)
-	PodCommand = remote("PodCommand"), -- client -> server: action (RemoteActions.PodCommand), for the pod the player drives
+	-- client -> server: throttle, steer, lift (each -1..1; lift for flying pods)
+	DriveInput = remote("DriveInput"),
+	-- client -> server: action (RemoteActions.PodCommand), for the pod the player drives
+	PodCommand = remote("PodCommand"),
 	AdminCommand = remote("AdminCommand"), -- client -> server: command, target, item
 	MacCommand = remote("MacCommand"), -- client -> server: action (RemoteActions.MacCommand)
-	Announce = remote("Announce"), -- server -> client: text, color, seconds, style (RemoteActions.AnnounceStyle or nil)
+	-- server -> client: text, color, seconds, style (RemoteActions.AnnounceStyle or nil)
+	Announce = remote("Announce"),
 	Nuke = remote("Nuke"), -- server -> client: the MAC's NUKE is falling (Config.NUKE_GROUND)
 }
 

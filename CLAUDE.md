@@ -6,7 +6,7 @@ Gameplay, controls and tuning numbers: [README.md](README.md).
 ## Verify
 
 ```sh
-lune run tools/check         # before every commit: stylua, selene, luau-lsp, tests
+lune run tools/check         # before every commit: stylua, line length, selene, luau-lsp, tests
 lune run tools/check --fast  # while iterating: skips the luau-lsp type check
 lune run tools/test [filter] # tests only, e.g. `lune run tools/test mech_`
 python3 tools/preview/render.py src/server/vehicleModels/<id>.luau out.png  # look at a model
@@ -31,10 +31,17 @@ src/server/   ServerScriptService.Server. init.server.luau boots in this order:
      gravity
   2. buildWorld(): Lobby, Roads, one building per Config.REGIONS entry (in order), Landscape
   3. Session, Creatures, Vehicles (PodFlight.start, then layOut), Admin, MacAccess .start()
+  (Requiring Systems.Vehicles, first from Admin, creates the workspace Vehicles folder and
+  connects its Heartbeats, DriveInput and the Tree tag listener: see Hazards.)
   4. CharacterAutoLoads back on: nobody spawns before the lobby exists
   world/      Build helpers, Lobby, Roads, Landscape, Regions (per-landmark data), buildings/
   systems/    Combat, Weapons, Session, Creatures, Vehicles, PodFlight, Admin, MacAccess, DayNight,
               CollisionGroups, and the model formats VehicleModel, WeaponModel, CreatureModel
+    Vehicles/ init.luau is the facade (damage, spawnNear, start) and wires the system. Modules:
+              Registry (folder, `cars`, Car/Crash), Specs (model files, placeholder), Placement
+              (vehicle space, welds, onTerrain), Climb, Drive, Health (crashes, wrecks), Trees,
+              Contact (rams, contact damage), Boarding (prompts, cab), Builder, Parking (spots,
+              respawn loop). init.luau's header lists the require graph.
     util/     Instance helpers the systems share: Characters, Seats, Prompts, Parts, Ownership
               (tested in tools/tests/server_helpers.luau)
   vehicleModels/ weaponModels/ creatureModels/   one model file per catalog id
@@ -50,7 +57,7 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   the game. Format and units are documented in `systems/VehicleModel.luau` and
   `systems/CreatureModel.luau`. Weapon model files require `WeaponModel` and return
   `WeaponModel.define({...})`.
-- A broken vehicle file becomes a grey placeholder (`pcall` in `Vehicles`). A broken creature
+- A broken vehicle file becomes a grey placeholder (`pcall` in `Vehicles/Specs`). A broken creature
   file stops server boot (`Creatures` requires every one at load, no `pcall`).
 
 ## Conventions
@@ -59,6 +66,9 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   `creatures`, `admin`, `mac`, `map`, `ui`, `sounds`, `daynight`, `combat`, `debug`, `readme`
   (`docs(readme)`); `build:` and `test:` unscoped. Branches: `feat/`, `fix/`, `refactor/<slug>`.
 - stylua (tabs, 100 columns), selene (`std = "roblox"`), luau-lsp; versions pinned in `rokit.toml`.
+  `tools/check` fails any line over 100 columns in src, tools, CLAUDE.md and AGENTS.md, comments
+  included (a tab counts 4); model files in vehicleModels, weaponModels and creatureModels are
+  exempt. Rewrap; do not delete content.
   `src/shared` is `--!strict`; the rest of `src` is nonstrict (`.luaurc`) for now.
 - Pure logic goes in `src/shared` with a Lune test in `tools/tests/<name>.luau` (uses
   `tools/lib/Check`: `check`, `equal`, `isNear`, `section`, `finish`).
@@ -126,6 +136,11 @@ MECHS menu and climbs unless `climbs = false`. Render mid-stride with `--phase 0
 Enforced: id pattern, unique id, name, icon; id ↔ model file; `define()`/`ModelChecks`;
 `mech` ↔ `gait`; sound entry in the right table.
 
+*Vehicle behaviour:* change the module that owns it in `systems/Vehicles/`
+(each header says what it owns); math goes in the `src/shared/Vehicle*` modules with a test. State
+every module reads goes in `Registry`. A new public function goes through `init.luau`
+(`Vehicles.x = Module.x`); callers keep `require(Systems.Vehicles)`.
+
 **Weapon.** 1) Entry in `src/shared/WeaponCatalog.luau`: `category` from `CATEGORIES`, `kind` a key
 of `FIRE` in `systems/Weapons.luau`, `shape`, optional `effect` (handled in
 `Combat.applyEffect`); kind-specific fields only on their kind (header comment lists them).
@@ -171,15 +186,23 @@ After one failed guess at a bug only Studio shows, ship a probe and ask the user
 
 Move these word for word; do not "simplify" them.
 
-- `systems/Vehicles.luau`
-  - `setLimits` compares with slack (`> 1`): the properties store single precision.
-  - `wreck`: a stunned vehicle brakes after its stun (`task.delay(stun, brake)`) so a wrecking
-    ram's throw flies first; cab ejection (`climbOut`) is deferred until the weld removal lands.
-  - `shove`: `stunnedUntil` is set before `rammed`; under `VehicleRam.MIN_SHOVE` there is no stun.
-  - `watchDriver`: the server takes the skid's network ownership when a driver sits and hands
-    the leaving driver's character back in a `task.defer`.
-  - Heartbeat connections: the one calling `drive` first, then crash/contact.
-  - `Vehicles.start` calls `PodFlight.start()` before `layOut()`.
+- `systems/Vehicles/`
+  - `Registry.setLimits` compares with slack (`> 1`): the properties store single precision.
+  - `Health.wreck`: a stunned vehicle brakes after its stun (`task.delay(stun, brake)`) so a
+    wrecking ram's throw flies first; cab ejection (`climbOut`) is deferred until the weld removal
+    lands.
+  - `Contact.shove`: `stunnedUntil` is set before `rammed`; under `VehicleRam.MIN_SHOVE` there is
+    no stun.
+  - `Builder.build`'s `watchDriver`: the server takes the skid's network ownership when a driver
+    sits and hands the leaving driver's character back in a `task.defer`.
+  - `init.luau` wires everything at require time, in this order: Heartbeat `Drive.heartbeat`,
+    DriveInput `Drive.onInput`, the Tree tag listener (`Contact.addGrove`), Heartbeat
+    `Contact.heartbeat` (crash, then contact). Registry creates the Vehicles folder when first
+    required, before any of them. Keep new require-time work in init.luau, in that order.
+  - `Parking.start` (`Vehicles.start`) calls `PodFlight.start()` before `layOut()`.
+  - Requires inside the folder stay acyclic: a module requires only modules above it in the
+    table in init.luau's header. Two modules that need each other share a lower module or an
+    injected callback.
 - `systems/PodFlight.luau`: a pilot who leaves the seat in flight is re-seated in a `task.defer`,
   with `task.wait(0.5)` before the pod gives up and flies home.
 - Render steps, offset from `RenderPriority.Camera`: MechCamera undo shake + turn −1, shake +1;

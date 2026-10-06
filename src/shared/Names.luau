@@ -15,7 +15,8 @@ local Names = {}
 -- Instance attributes, by the module that sets them.
 Names.Attributes = table.freeze({
 	Aim = "Aim", -- bone part, Vehicles: the bone turns toward the camera's aim (MechMotion)
-	BaseWalkSpeed = "BaseWalkSpeed", -- humanoid, Session/Creatures/Admin: the unslowed speed (Combat)
+	-- Humanoid, Session/Creatures/Admin: the unslowed speed (Combat).
+	BaseWalkSpeed = "BaseWalkSpeed",
 	Climbing = "Climbing", -- walker model, Vehicles: lifting itself up a wall (MechMotion)
 	CockpitCamera = "CockpitCamera", -- driver seat, Vehicles: the cockpit view (MechCamera)
 	Deployed = "Deployed", -- player, Session: out of the lobby (Creatures, LobbyUI)
@@ -28,7 +29,8 @@ Names.Attributes = table.freeze({
 	LegsSeat = "LegsSeat", -- pod walker's legs seat, Vehicles (MechCamera)
 	MaxHealth = "MaxHealth", -- vehicle model, Vehicles (VehicleHealth)
 	MayhemCar = "MayhemCar", -- driver or legs seat, Vehicles (CarInput, VehicleSounds)
-	PodBone = "PodBone", -- pod walker model, PodFlight: the bone that flies (PodControls, MechCamera)
+	-- Pod walker model, PodFlight: the bone that flies (PodControls, MechCamera).
+	PodBone = "PodBone",
 	PodCanLand = "PodCanLand", -- pod walker model, PodFlight: low enough to land (PodControls)
 	PodState = "PodState", -- pod walker model, PodFlight: a PodState value (Vehicles, clients)
 	Steer = "Steer", -- bone part, Vehicles: the bone turns with steering (MechMotion)

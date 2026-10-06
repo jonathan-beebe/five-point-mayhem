@@ -124,7 +124,7 @@ end
 
 local Before = {}
 
--- Vehicles.luau `attach`, `attachTo` and the piece loop in `build`.
+-- Vehicles/Placement.luau `attach`, `attachTo` and the piece loop in Vehicles/Builder.luau `build`.
 local SKID_TO_GROUND = CFrame.new(0, -0.5, 0)
 function Before.vehicleAttach(model: any, skid: any, part: any, offset: CFrame)
 	local relative = SKID_TO_GROUND * offset
@@ -235,7 +235,7 @@ function Before.weaponAttach(handle: any, spec: any, parent: any): any
 	return part
 end
 
--- Vehicles.luau `addPrompts`/`addCab` `prompt` (identical copies).
+-- Vehicles/Boarding.luau `addPrompts`/`addCab` `prompt` (identical copies).
 function Before.vehiclePrompt(
 	anchor: any,
 	objectText: string,
@@ -364,7 +364,7 @@ function After.boardPrompt(root: any, modelName: string, reach: number): any
 	}, root)
 end
 
--- Parts --------------------------------------------------------------------------------------------
+-- Parts -------------------------------------------------------------------------------------------
 
 local BASE_AT = CFrame.new(12, 3.5, -40) * CFrame.Angles(0.1, 2.3, -0.2)
 
@@ -525,7 +525,7 @@ local wedge = Parts.fromPiece({
 })
 equal(wedge.ClassName, "WedgePart", "a WedgePart ignores a shape")
 
--- Prompts ------------------------------------------------------------------------------------------
+-- Prompts -----------------------------------------------------------------------------------------
 
 Check.section("prompts")
 local function promptPair(label: string, before: (any) -> any, after: (any) -> any)
@@ -562,7 +562,7 @@ end, function(anchor)
 	return After.boardPrompt(anchor, "OG", 12)
 end)
 
--- Characters ---------------------------------------------------------------------------------------
+-- Characters --------------------------------------------------------------------------------------
 
 -- Stand-ins with only what the lookups touch (Lune parts have no Position).
 local function fakeCharacter(humanoid: any?, root: any?): any
@@ -667,7 +667,7 @@ do
 end
 equal(Characters.isInside({}, box), false, "isInside without a character")
 
--- Seats --------------------------------------------------------------------------------------------
+-- Seats -------------------------------------------------------------------------------------------
 
 Check.section("seats")
 for _, hasWeld in { true, false } do

@@ -1,13 +1,13 @@
 -- Camera for walkers: while the local player drives a vehicle whose driver seat has attribute
--- CockpitCamera (or one of its passenger seats), the view starts first person from the pilot's head, looking out the chest
--- window. V, gamepad Y, or the on-screen VIEW button (touch) switches to an outside view orbiting
--- the model's CameraFocus part and back. The STAND button (or jumping) gets out of the seat; the
--- driver then stands in the cab (a part tagged MechCab) and the view stays first person until
--- they leave it (the cab's Climb out prompt). Heel strikes shake the view a little (MechMotion
--- footfalls). The view turns with the vehicle. Leaving the vehicle or dying restores the camera.
--- In the first-person views, pieces marked HideInCockpit (a tinted canopy) are hidden, so the pilot
--- sees straight through them. While a flying pod (server PodFlight) is away, STAND is hidden and
--- the view turns with the pod.
+-- CockpitCamera (or one of its passenger seats), the view starts first person from the pilot's
+-- head, looking out the chest window. V, gamepad Y, or the on-screen VIEW button (touch) switches
+-- to an outside view orbiting the model's CameraFocus part and back. The STAND button (or jumping)
+-- gets out of the seat; the driver then stands in the cab (a part tagged MechCab) and the view
+-- stays first person until they leave it (the cab's Climb out prompt). Heel strikes shake the view
+-- a little (MechMotion footfalls). The view turns with the vehicle. Leaving the vehicle or dying
+-- restores the camera. In the first-person views, pieces marked HideInCockpit (a tinted canopy) are
+-- hidden, so the pilot sees straight through them. While a flying pod (server PodFlight) is away,
+-- STAND is hidden and the view turns with the pod.
 --
 -- The default camera builds each frame's CFrame from the previous frame's look direction, so
 -- anything written to the camera after it runs carries into the next frame. Before it runs, this
