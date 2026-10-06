@@ -21,6 +21,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
+local FootfallShake = require(ReplicatedStorage.Shared.FootfallShake)
 local HudLayout = require(ReplicatedStorage.Shared.HudLayout)
 local MathUtil = require(ReplicatedStorage.Shared.MathUtil)
 local Names = require(ReplicatedStorage.Shared.Names)
@@ -41,12 +42,7 @@ local OUTSIDE_START_ZOOM = 70
 local RENDER_STEP = "MechCameraShake"
 local TURN_STEP = "MechCameraTurn"
 
--- Heel-strike shake: a damped vertical sine.
-local SHAKE_LIFT = 0.12 -- studs at strength 1
-local SHAKE_PITCH = math.rad(0.35)
-local SHAKE_DECAY = 0.12 -- seconds
-local SHAKE_FREQUENCY = 9 -- Hz
-local SHAKE_LENGTH = 0.4 -- seconds
+-- Heel-strike shake: a damped vertical sine (FootfallShake.sum).
 local OUTSIDE_SHAKE = 0.5 -- amplitude scale in the outside view
 
 type Session = {
@@ -68,7 +64,7 @@ export type Layout = { size: number, gap: number, corner: UDim2, ignoreInset: bo
 MechCamera.layout = nil :: Layout?
 local layoutEvent = Instance.new("BindableEvent")
 MechCamera.layoutChanged = layoutEvent.Event
-local shakes: { { start: number, strength: number } } = {}
+local shakes: { FootfallShake.Shake } = {}
 local applied = CFrame.identity -- the shake added to the camera last frame
 
 -- Buttons ---------------------------------------------------------------------------------------
@@ -222,21 +218,7 @@ local function shake()
 	if not current or #shakes == 0 then
 		return
 	end
-	local now = os.clock()
-	local lift, pitch = 0, 0
-	for index = #shakes, 1, -1 do
-		local each = shakes[index]
-		local t = now - each.start
-		if t > SHAKE_LENGTH then
-			table.remove(shakes, index)
-		else
-			local wave = each.strength
-				* math.exp(-t / SHAKE_DECAY)
-				* math.sin(2 * math.pi * SHAKE_FREQUENCY * t)
-			lift += SHAKE_LIFT * wave
-			pitch += SHAKE_PITCH * wave
-		end
-	end
+	local lift, pitch = FootfallShake.sum(shakes, os.clock())
 	local scale = if current.outside then OUTSIDE_SHAKE else 1
 	applied = CFrame.new(0, -lift * scale, 0) * CFrame.Angles(-pitch * scale, 0, 0)
 	Workspace.CurrentCamera.CFrame *= applied

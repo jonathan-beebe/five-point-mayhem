@@ -11,6 +11,7 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local NukeMath = require(ReplicatedStorage.Shared.NukeMath)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local SoundCatalog = require(ReplicatedStorage.Shared.SoundCatalog)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
@@ -29,20 +30,10 @@ local BOMB_OLIVE = rgb(85, 95, 60)
 local BOMB_DARK = rgb(50, 55, 40)
 local BOMB_STRIPE = rgb(255, 205, 0)
 local BOMB_RADIUS = 12
-local BOMB_BOTTOM = 34 -- studs from the body's center down to the tip of the nose
-local DROP_HEIGHT = 1400 -- studs above the ground at release
-local DROP_SPIN = math.rad(200) -- turn about its axis over the whole fall
 
 -- Blast ---------------------------------------------------------------------------------------
 
 local FLASH_SIZE = 700
-local WAVE_SEGMENTS = 72
-local WAVE_HEIGHT = { 45, 10 } -- studs, at impact and at the edge of the board
-local WAVE_HOT = rgb(255, 245, 210)
-local WAVE_COOL = rgb(255, 120, 40)
-local SHAKE_SECONDS = 3.5
-local SHAKE_ANGLE = math.rad(1.2) -- at strength 1
-local SHAKE_REACH = 1500 -- studs from impact where the shake bottoms out at 0.3
 local SHAKE_UNDO_STEP = "NukeShakeUndo"
 local SHAKE_STEP = "NukeShake"
 
@@ -177,7 +168,7 @@ local function playFallSounds(): Sound
 	return whistle
 end
 
--- Drops the bomb from DROP_HEIGHT, accelerating like a falling body. Yields until impact.
+-- Drops the bomb from NukeMath.DROP_HEIGHT, accelerating like a falling body. Yields until impact.
 local function fall(bomb: Model, ground: Vector3)
 	local start = os.clock()
 	while true do
@@ -185,10 +176,8 @@ local function fall(bomb: Model, ground: Vector3)
 		if t >= 1 then
 			return
 		end
-		local height = BOMB_BOTTOM + DROP_HEIGHT * (1 - t * t)
-		bomb:PivotTo(
-			CFrame.new(ground + Vector3.new(0, height, 0)) * CFrame.Angles(0, t * DROP_SPIN, 0)
-		)
+		local height, spin = NukeMath.bomb(t)
+		bomb:PivotTo(CFrame.new(ground + Vector3.new(0, height, 0)) * CFrame.Angles(0, spin, 0))
 		RunService.RenderStepped:Wait()
 	end
 end
@@ -219,13 +208,13 @@ end
 -- server kills them.
 local function wave(parent: Instance, ground: Vector3)
 	local segments = {}
-	for index = 1, WAVE_SEGMENTS do
+	for index = 1, NukeMath.WAVE_SEGMENTS do
 		segments[index] = part(
 			parent,
 			Enum.PartType.Block,
 			Vector3.one,
 			CFrame.new(ground),
-			WAVE_HOT,
+			NukeMath.WAVE_HOT,
 			Enum.Material.Neon
 		)
 	end
@@ -240,20 +229,14 @@ local function wave(parent: Instance, ground: Vector3)
 			end
 			return
 		end
-		local t = elapsed / Config.NUKE_WAVE_SECONDS
-		local radius = math.max(Config.nukeWaveRadius(elapsed), 4)
-		local height = WAVE_HEIGHT[1] + (WAVE_HEIGHT[2] - WAVE_HEIGHT[1]) * t
-		local size = Vector3.new(2 * math.pi * radius / WAVE_SEGMENTS * 1.15, height, 6)
-		local color = WAVE_HOT:Lerp(WAVE_COOL, math.min(t * 2, 1))
-		local transparency = 0.1 + 0.85 * t
+		local front = NukeMath.wave(elapsed)
 		for index, segment in segments do
-			local angle = index / WAVE_SEGMENTS * 2 * math.pi
-			segment.Size = size
+			segment.Size = front.size
 			segment.CFrame = CFrame.new(ground)
-				* CFrame.Angles(0, angle, 0)
-				* CFrame.new(0, height / 2, -radius)
-			segment.Color = color
-			segment.Transparency = transparency
+				* CFrame.Angles(0, NukeMath.waveAngle(index), 0)
+				* CFrame.new(0, front.height / 2, -front.radius)
+			segment.Color = front.color
+			segment.Transparency = front.transparency
 		end
 	end)
 end
@@ -263,7 +246,7 @@ end
 local function shake(ground: Vector3)
 	local camera = Workspace.CurrentCamera
 	local distance = (camera.CFrame.Position - ground).Magnitude
-	local strength = math.clamp(1 - 0.7 * distance / SHAKE_REACH, 0.3, 1)
+	local strength = NukeMath.shakeStrength(distance)
 	local start = os.clock()
 	local applied = CFrame.identity
 	RunService:BindToRenderStep(SHAKE_UNDO_STEP, Enum.RenderPriority.Camera.Value - 2, function()
@@ -271,13 +254,13 @@ local function shake(ground: Vector3)
 		applied = CFrame.identity
 	end)
 	RunService:BindToRenderStep(SHAKE_STEP, Enum.RenderPriority.Camera.Value + 2, function()
-		local t = (os.clock() - start) / SHAKE_SECONDS
+		local t = (os.clock() - start) / NukeMath.SHAKE_SECONDS
 		if t >= 1 then
 			RunService:UnbindFromRenderStep(SHAKE_UNDO_STEP)
 			RunService:UnbindFromRenderStep(SHAKE_STEP)
 			return
 		end
-		local angle = SHAKE_ANGLE * strength * (1 - t) ^ 2
+		local angle = NukeMath.shakeAngle(strength, t)
 		applied =
 			CFrame.Angles(random:NextNumber(-angle, angle), random:NextNumber(-angle, angle), 0)
 		camera.CFrame *= applied

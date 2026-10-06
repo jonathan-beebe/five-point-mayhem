@@ -5,6 +5,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local ConfirmTap = require(ReplicatedStorage.Shared.ConfirmTap)
 local Names = require(ReplicatedStorage.Shared.Names)
 local RemoteActions = require(ReplicatedStorage.Shared.RemoteActions)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -94,23 +95,20 @@ local function build()
 		Font = Theme.Fonts.title,
 		Parent = frame,
 	}, { corner() })
-	local armedAt: number? = nil
+	local confirm = ConfirmTap.new()
 	nuke.Activated:Connect(function()
 		if not hasMac() then
 			return
 		end
-		if armedAt and os.clock() - armedAt < CONFIRM_SECONDS then
-			armedAt = nil
+		local fired, stamp = ConfirmTap.tap(confirm, CONFIRM_SECONDS, os.clock)
+		if fired then
 			nuke.Text = NUKE_TEXT
 			Remotes.MacCommand:FireServer(RemoteActions.MacCommand.NUKE)
 			return
 		end
-		local stamp = os.clock()
-		armedAt = stamp
 		nuke.Text = "TAP AGAIN TO NUKE EVERYONE"
 		task.delay(CONFIRM_SECONDS, function()
-			if armedAt == stamp then
-				armedAt = nil
+			if ConfirmTap.expire(confirm, stamp) then
 				nuke.Text = NUKE_TEXT
 			end
 		end)

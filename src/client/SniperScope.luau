@@ -17,6 +17,7 @@ local Workspace = game:GetService("Workspace")
 local HudLayout = require(ReplicatedStorage.Shared.HudLayout)
 local MathUtil = require(ReplicatedStorage.Shared.MathUtil)
 local Names = require(ReplicatedStorage.Shared.Names)
+local ScopeMath = require(ReplicatedStorage.Shared.ScopeMath)
 local Create = require(script.Parent.ui.Create)
 local Hud = require(script.Parent.ui.Hud)
 local Theme = require(script.Parent.ui.Theme)
@@ -37,8 +38,6 @@ local TOUCH_RATE = 0.03 -- per pixel of drag
 local GAMEPAD_RATE = 18 -- per second at full right-stick deflection
 local GAMEPAD_DEADZONE = 0.15
 local EASE_SECONDS = 0.15 -- time constant of the view easing toward the target heading
-local MAX_PITCH = math.rad(80)
-local VIEW_FRACTION = 0.9 -- scope circle diameter as a fraction of the shorter screen side
 
 type Saved = {
 	camera: Camera,
@@ -116,21 +115,17 @@ dot.BackgroundTransparency = 0
 Create.corner(Theme.Radius.round).Parent = dot
 
 local function layoutOverlay()
-	local viewport = Workspace.CurrentCamera.ViewportSize
-	local diameter = math.floor(math.min(viewport.X, viewport.Y) * VIEW_FRACTION)
-	local x0 = math.floor((viewport.X - diameter) / 2)
-	local y0 = math.floor((viewport.Y - diameter) / 2)
-	lens.Size = UDim2.fromOffset(diameter, diameter)
-	-- A square's corner sits radius * (sqrt(2) - 1) outside its inscribed circle.
-	lensStroke.Thickness = math.ceil(diameter / 2 * (math.sqrt(2) - 1)) + 2
-	top.Position = UDim2.fromOffset(0, 0)
-	top.Size = UDim2.new(1, 0, 0, y0)
-	bottom.Position = UDim2.fromOffset(0, y0 + diameter)
-	bottom.Size = UDim2.new(1, 0, 1, -(y0 + diameter))
-	left.Position = UDim2.fromOffset(0, y0)
-	left.Size = UDim2.fromOffset(x0, diameter)
-	right.Position = UDim2.fromOffset(x0 + diameter, y0)
-	right.Size = UDim2.new(1, -(x0 + diameter), 0, diameter)
+	local placed = ScopeMath.overlay(Workspace.CurrentCamera.ViewportSize)
+	lens.Size = placed.lensSize
+	lensStroke.Thickness = placed.stroke
+	top.Position = placed.topPosition
+	top.Size = placed.topSize
+	bottom.Position = placed.bottomPosition
+	bottom.Size = placed.bottomSize
+	left.Position = placed.leftPosition
+	left.Size = placed.leftSize
+	right.Position = placed.rightPosition
+	right.Size = placed.rightSize
 end
 
 -- Touch button --------------------------------------------------------------------------------
@@ -190,9 +185,8 @@ local function hideCharacter()
 end
 
 local function turn(current: Saved, yawDegrees: number, pitchDegrees: number)
-	current.targetYaw -= math.rad(yawDegrees)
-	current.targetPitch =
-		math.clamp(current.targetPitch - math.rad(pitchDegrees), -MAX_PITCH, MAX_PITCH)
+	current.targetYaw, current.targetPitch =
+		ScopeMath.turn(current.targetYaw, current.targetPitch, yawDegrees, pitchDegrees)
 end
 
 local function rootPart(): BasePart?
@@ -250,7 +244,7 @@ local function scopeIn()
 	end
 	local look = camera.CFrame.LookVector
 	local yaw = MathUtil.yawOf(look)
-	local pitch = math.clamp(math.asin(math.clamp(look.Y, -1, 1)), -MAX_PITCH, MAX_PITCH)
+	local pitch = ScopeMath.pitchOf(look)
 	local root = rootPart()
 	saved = {
 		camera = camera,

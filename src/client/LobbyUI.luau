@@ -7,6 +7,7 @@ local Teams = game:GetService("Teams")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Loadout = require(ReplicatedStorage.Shared.Loadout)
 local Names = require(ReplicatedStorage.Shared.Names)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
@@ -36,32 +37,11 @@ local CATEGORY_COLORS = {
 	Silly = rgb(230, 110, 170),
 }
 
-local KIND_LABELS = {
-	melee = "Melee",
-	hitscan = "Gun",
-	projectile = "Launcher",
-	strike = "Spell",
-	heal = "Support",
-	blink = "Mobility",
-	push = "Blast",
-}
-
 local selected: { string } = {}
 local category = "All"
 
 local function corner(radius: number): UICorner
 	return Create.corner(UDim.new(0, radius))
-end
-
-local function speedLabel(cooldown: number): string
-	if cooldown <= 0.15 then
-		return "rapid fire"
-	elseif cooldown <= 0.5 then
-		return "fast"
-	elseif cooldown <= 1.2 then
-		return "medium"
-	end
-	return "slow"
 end
 
 -- Layout --------------------------------------------------------------------------------------
@@ -245,24 +225,10 @@ local deployButton = create("TextButton", {
 
 local cards: { [string]: TextButton } = {}
 
--- Admin-only weapons are listed for admins only. The server refuses them for everyone else.
-local function isAvailable(weapon: WeaponCatalog.Weapon): boolean
-	return not weapon.adminOnly or player:GetAttribute(Names.Attributes.IsAdmin) == true
-end
-
 local function refresh()
-	local available = 0
-	for _, weapon in WeaponCatalog.ALL do
-		if isAvailable(weapon) then
-			available += 1
-		end
-	end
-	for index = #selected, 1, -1 do
-		local weapon = WeaponCatalog.get(selected[index])
-		if not weapon or not isAvailable(weapon) then
-			table.remove(selected, index)
-		end
-	end
+	local isAdmin = player:GetAttribute(Names.Attributes.IsAdmin) == true
+	local available = Loadout.availableCount(isAdmin)
+	Loadout.prune(selected, isAdmin)
 	counter.Text = string.format(
 		"%d weapons in the armory · carry up to %d · %d/%d chosen",
 		available,
@@ -277,7 +243,8 @@ local function refresh()
 		stroke.Enabled = isSelected
 		check.Visible = isSelected
 		local weapon = WeaponCatalog.get(id) :: WeaponCatalog.Weapon
-		card.Visible = isAvailable(weapon) and (category == "All" or weapon.category == category)
+		card.Visible = Loadout.isAvailable(weapon, isAdmin)
+			and (category == "All" or weapon.category == category)
 	end
 	for index, slot in slots do
 		local weapon = selected[index] and WeaponCatalog.get(selected[index])
@@ -295,12 +262,7 @@ local function refresh()
 end
 
 local function toggle(id: string)
-	local index = table.find(selected, id)
-	if index then
-		table.remove(selected, index)
-	elseif #selected < Config.LOADOUT_SIZE then
-		table.insert(selected, id)
-	else
+	if Loadout.toggle(selected, id) == "full" then
 		Announcer.show(
 			string.format(
 				"You can carry %d weapons. Tap one in your loadout to swap it.",
@@ -341,39 +303,20 @@ for order, weapon in WeaponCatalog.ALL do
 			Size = UDim2.fromOffset(130, 22),
 			TextTruncate = Enum.TextTruncate.AtEnd,
 		}),
-		label(
-			string.format(
-				"%s · %s",
-				KIND_LABELS[weapon.kind] or weapon.kind,
-				speedLabel(weapon.cooldown)
-			),
-			12,
-			GOLD,
-			{
-				Position = UDim2.fromOffset(8, 30),
-				Size = UDim2.fromOffset(150, 16),
-			}
-		),
+		label(Loadout.subtitle(weapon), 12, GOLD, {
+			Position = UDim2.fromOffset(8, 30),
+			Size = UDim2.fromOffset(150, 16),
+		}),
 		label(weapon.description, 12, MUTED, {
 			Position = UDim2.fromOffset(8, 48),
 			Size = UDim2.fromOffset(150, 44),
 			Font = Theme.Fonts.regular,
 			TextYAlignment = Enum.TextYAlignment.Top,
 		}),
-		label(
-			if weapon.kind == "heal"
-				then "HEAL " .. weapon.damage
-				elseif weapon.damage > 0 then "DMG " .. weapon.damage .. (if weapon.pellets
-					then "×" .. weapon.pellets
-					else "")
-				else "",
-			12,
-			TEXT,
-			{
-				Position = UDim2.fromOffset(8, 92),
-				Size = UDim2.fromOffset(150, 16),
-			}
-		),
+		label(Loadout.statText(weapon), 12, TEXT, {
+			Position = UDim2.fromOffset(8, 92),
+			Size = UDim2.fromOffset(150, 16),
+		}),
 		label("✔", 22, GOLD, {
 			Name = "Check",
 			AnchorPoint = Vector2.new(1, 0),

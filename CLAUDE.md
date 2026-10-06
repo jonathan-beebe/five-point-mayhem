@@ -23,7 +23,8 @@ src/shared/   ReplicatedStorage.Shared. Every file --!strict. Loads under Lune.
   *Catalog    data only: WeaponCatalog, VehicleCatalog, CreatureCatalog, SoundCatalog
   pure logic  DayNight, VehicleDamage, MechGait, MechClimb, VehicleDefaults, MathUtil, and the
               vehicle math Vehicles applies: VehicleDrive, VehicleSizing, VehicleRam,
-              VehicleLayout; HudLayout, the client's HUD layout math (tested in tools/tests)
+              VehicleLayout; HudLayout, the client's HUD layout math; the client's rules and
+              math (Conventions lists them) (all tested in tools/tests)
   Config      world layout, REGIONS, teams, admin ids;  Remotes: every RemoteEvent, typed record
   contracts   Names (attributes, tags, collision groups, instance names), PodState, RemoteActions
 src/server/   ServerScriptService.Server. init.server.luau boots in this order:
@@ -94,6 +95,18 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   clearance, parking spots from an injected `Random`, guard ring, respawn rule), `PodState`
   (`canSit`, `driveSeat`). `tools/tests/vehicle_logic.luau` compares each with the inline code it
   replaced; a deliberate tuning change updates that reference too.
+- Client rules and math are in `src/shared` and the client module applies them (Lune cannot load
+  `src/client`): LobbyUI `Loadout` (speed and stat texts, admin-only availability, prune, toggle
+  returning `"full"`), PodControls `PodButtons` (pod button text/colour/active, LAND and ▲▼
+  visibility, jump lock, the command sent), PromptPanel `PromptRules` (`useful`, key text, input
+  type, card order; the MaxActivationDistance save/restore stays in PromptPanel), VehicleHealth
+  `HealthBar`, CarInput `DriveAxes` (keys over seat floats over move vector, clamps, lift, the
+  resend rule), VehicleSounds `EngineEnvelope` (follow, fade, loop pitch/volume, walker targets)
+  and `NearestSet` (nearest N with hysteresis), SniperScope `ScopeMath` (overlay, turn, pitch),
+  MechCamera `FootfallShake`, NukeStrike `NukeMath` (fall, wave, shake; follows
+  `Config.NUKE_*`), MacPanel `ConfirmTap` (two-tap arm/fire). Render steps and camera writes stay
+  in the client module. `tools/tests/client_logic.luau` compares each with the inline code it
+  replaced; a deliberate change updates that reference too.
 - Small math shared across modules (`moveToward`, `wrapAngle`, `yawOf`, `insideBox`,
   `clampToRange`, `rateAlpha`/`timeAlpha` follow fractions) comes from `src/shared/MathUtil.luau`.
 - Server systems use `systems/util/` instead of writing these inline:

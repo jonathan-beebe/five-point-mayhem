@@ -17,7 +17,8 @@
 --   - on the player's own vehicle, Ride, Board and Climb out
 --   - Drive, unless the player sits in a passenger seat (Drive moves them to the free driver seat)
 --   - the pod console's prompt, unless the player sits in the driver seat (only the pilot launches)
--- Out of a seat (standing in a walker's cab too), every prompt works as the server set it.
+-- Out of a seat (standing in a walker's cab too), every prompt works as the server set it. The
+-- rule is PromptRules.useful; the key text and card order are PromptRules too.
 
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
@@ -29,6 +30,7 @@ local Workspace = game:GetService("Workspace")
 
 local HudLayout = require(ReplicatedStorage.Shared.HudLayout)
 local Names = require(ReplicatedStorage.Shared.Names)
+local PromptRules = require(ReplicatedStorage.Shared.PromptRules)
 local Create = require(script.Parent.ui.Create)
 local Hud = require(script.Parent.ui.Hud)
 local RightColumn = require(script.Parent.ui.RightColumn)
@@ -74,19 +76,11 @@ end
 -- Whether `prompt` does anything for a player sitting in `sitting` aboard `own`.
 local function useful(prompt: ProximityPrompt, sitting: BasePart, own: Model): boolean
 	local vehicle = vehicleOf(prompt)
-	if not vehicle then
-		return true
-	end
-	if vehicle ~= own then
-		return false
-	end
-	if prompt.Name == Names.Instances.PodPrompt then
-		return sitting.Name == Names.Instances.DriverSeat
-	end
-	if prompt.Name == Names.Instances.DrivePrompt then
-		return sitting:IsA("Seat") -- a passenger seat; driver seats are VehicleSeats
-	end
-	return false
+	local where: PromptRules.Where = if not vehicle
+		then "none"
+		elseif vehicle == own then "own"
+		else "other"
+	return PromptRules.useful(where, prompt.Name, sitting.Name, sitting:IsA("Seat"))
 end
 
 local function apply(prompt: ProximityPrompt)
@@ -155,16 +149,7 @@ local function text(name: string, font: Enum.Font, color: Color3, parent: Instan
 end
 
 local function keyText(prompt: ProximityPrompt, inputType: Enum.ProximityPromptInputType): string
-	if inputType == Enum.ProximityPromptInputType.Touch then
-		return "TAP"
-	end
-	local code = if inputType == Enum.ProximityPromptInputType.Gamepad
-		then prompt.GamepadKeyCode
-		else prompt.KeyboardKeyCode
-	if code.Value == 0 then -- no key (KeyCode Unknown)
-		return ""
-	end
-	return (string.gsub(code.Name, "^Button", ""))
+	return PromptRules.keyText(inputType, prompt.GamepadKeyCode, prompt.KeyboardKeyCode)
 end
 
 local function release(card: Card)
@@ -305,24 +290,9 @@ function removeCard(prompt: ProximityPrompt)
 	card.frame:Destroy()
 end
 
--- The prompt input type matching a last input type, or nil for one that says nothing (focus,
--- text input).
-local function promptInputType(inputType: Enum.UserInputType): Enum.ProximityPromptInputType?
-	if inputType == Enum.UserInputType.Touch then
-		return Enum.ProximityPromptInputType.Touch
-	end
-	if string.match(inputType.Name, "^Gamepad") then
-		return Enum.ProximityPromptInputType.Gamepad
-	end
-	if inputType == Enum.UserInputType.Keyboard or string.match(inputType.Name, "^Mouse") then
-		return Enum.ProximityPromptInputType.Keyboard
-	end
-	return nil
-end
-
 -- Redraws every shown card's key for a new input type (TAP on touch, the gamepad or keyboard key).
 local function refreshKeys(inputType: Enum.UserInputType)
-	local promptType = promptInputType(inputType)
+	local promptType = PromptRules.inputType(inputType)
 	if not promptType then
 		return
 	end
@@ -343,8 +313,7 @@ local function layout()
 	end
 	-- Keyboard key order: Drive (E) above Ride and the console (F) above Climb out (Q).
 	table.sort(ordered, function(a, b)
-		local ka, kb = a.prompt.KeyboardKeyCode.Value, b.prompt.KeyboardKeyCode.Value
-		return if ka ~= kb then ka < kb else a.prompt:GetFullName() < b.prompt:GetFullName()
+		return PromptRules.before(a.prompt, b.prompt)
 	end)
 
 	local toggle = RightColumn.toggle
