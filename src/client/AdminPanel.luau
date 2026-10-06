@@ -165,6 +165,7 @@ local function build()
 
 	-- Powers sit two to a row under the target button. An odd last power fills its row.
 	local GRID_TOP = targetButton.Position.Y.Offset + targetButton.Size.Y.Offset + 8
+	local FULL_WIDTH = targetButton.Size.X.Offset
 	local CELL_WIDTH, CELL_HEIGHT = 138, 40
 	local COLUMN_PITCH, ROW_PITCH = 142, 46
 	local rows = math.ceil(#POWERS / 2)
@@ -174,10 +175,7 @@ local function build()
 		local alone = index == #POWERS and column == 0
 		local button = create("TextButton", {
 			Position = UDim2.fromOffset(10 + column * COLUMN_PITCH, GRID_TOP + row * ROW_PITCH),
-			Size = UDim2.fromOffset(
-				if alone then COLUMN_PITCH + CELL_WIDTH else CELL_WIDTH,
-				CELL_HEIGHT
-			),
+			Size = UDim2.fromOffset(if alone then FULL_WIDTH else CELL_WIDTH, CELL_HEIGHT),
 			BackgroundColor3 = power.color,
 			Text = power.label,
 			TextColor3 = rgb(255, 255, 255),
@@ -196,7 +194,7 @@ local function build()
 
 	local heading = create("TextLabel", {
 		Position = UDim2.fromOffset(10, GRID_TOP + rows * ROW_PITCH + 4),
-		Size = UDim2.fromOffset(280, 22),
+		Size = UDim2.fromOffset(FULL_WIDTH, 22),
 		BackgroundTransparency = 1,
 		TextColor3 = rgb(255, 210, 60),
 		TextSize = 16,

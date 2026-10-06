@@ -9,6 +9,8 @@
 --   - jumpHours runs forward across a sunrise or sunset and the shorter way within a phase,
 --     so a same-phase jump never passes through the other phase
 --   - blend hits its endpoints and clamps
+--   - sample/jump: the clock is continuous across a fade's end, a jump pressed mid-fade starts
+--     from the blended clock, and the fade is dropped once it has run
 
 local fs = require("@lune/fs")
 local luau = require("@lune/luau")
@@ -173,6 +175,61 @@ check(near(DayNight.blend(14, 5, 2), 19), "blend clamps above 1")
 check(near(DayNight.blend(14, 5, 0.5), 16.5), "blend at 0.5 is halfway")
 check(near(DayNight.blend(23, 2, 1), 1), "blend wraps past midnight")
 check(near(DayNight.blend(1, -3, 1), 22), "blend wraps backwards past midnight")
+
+-- The fade state machine, with the shipped settings.
+local SETTINGS = {
+	cycleSeconds = 300,
+	dayFraction = 0.5,
+	fadeSeconds = 3,
+	dayClock = 7,
+	nightClock = 19,
+}
+local FADE = SETTINGS.fadeSeconds
+
+do
+	local state = DayNight.begin(14, 100, SETTINGS)
+	local clock = DayNight.sample(state, 100, SETTINGS)
+	check(near(clock, 14), string.format("begin shows its clock, got %.4f", clock))
+
+	-- NIGHT at t = 160: the fade runs from the displayed clock to 19, then the cycle carries on.
+	local shown
+	shown, state = DayNight.sample(state, 160, SETTINGS)
+	state = DayNight.jump(shown, true, 160, SETTINGS)
+	check(near(DayNight.sample(state, 160, SETTINGS), shown), "a jump starts from the shown clock")
+	local before = DayNight.sample(state, 160 + FADE - 1e-4, SETTINGS)
+	local after, cleared = DayNight.sample(state, 160 + FADE + 1e-4, SETTINGS)
+	check(
+		clockNear(before, 19) and math.abs(before - after) < 1e-3,
+		string.format("clock continuous across fade end: %.5f then %.5f", before, after)
+	)
+	check(state.fade ~= nil, "fade set during a jump")
+	check(cleared.fade == nil, "fade cleared after FADE seconds")
+	local _, still = DayNight.sample(state, 160 + FADE - 1e-4, SETTINGS)
+	check(still.fade ~= nil, "fade kept until FADE seconds")
+	local later = DayNight.sample(cleared, 160 + FADE + 30, SETTINGS)
+	check(
+		clockNear(later, 19 + 30 / 150 * 12),
+		string.format("cycle carries on from the target, got %.4f", later)
+	)
+
+	-- DAY pressed halfway through the NIGHT fade starts from the blended clock.
+	local mid = 160 + FADE / 2
+	local blended = DayNight.sample(state, mid, SETTINGS)
+	check(
+		near(blended, DayNight.blend(shown, DayNight.jumpHours(shown, 19), 0.5)),
+		"alpha 0.5 shows the blended clock"
+	)
+	local again = DayNight.jump(blended, false, mid, SETTINGS)
+	check(near(again.fade.from, blended), "a re-press mid-fade starts from the blended clock")
+	check(
+		near(DayNight.sample(again, mid, SETTINGS), blended),
+		"no jump in the clock at the re-press"
+	)
+	check(
+		clockNear(DayNight.sample(again, mid + FADE, SETTINGS), 7),
+		"the re-press lands on its target"
+	)
+end
 
 print(string.format("%d checks, %d failures", checks, failures))
 if failures > 0 then

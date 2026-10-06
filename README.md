@@ -200,7 +200,8 @@ Both `<who>` and `<item>` are required. Examples: `/give all rocket`, `/give me 
   server starts mid-afternoon.
 - DAY fades to just after sunrise over 3 seconds; NIGHT fades to just after dusk. The cycle
   carries on from there.
-- Pressing the phase it already is (DAY by day, NIGHT by night) restarts that phase.
+- Pressing the phase it already is (DAY by day, NIGHT by night) restarts that phase. DAY pressed
+  in the afternoon runs the clock back to morning.
 - Tunables are `Config.DAY_NIGHT_*`.
 
 ## Vehicles

@@ -60,4 +60,63 @@ function DayNight.cycleClock(
 	return DayNight.clockAt(anchorPhase + (now - anchorTime) / cycleSeconds, dayFraction)
 end
 
+-- The running cycle as a value. The cycle was at `anchorPhase` at `anchorTime`. During a jump,
+-- `fade` blends the clock from `from` by `hours` starting at `start`; the anchor then sits at the
+-- target, `fadeSeconds` after the jump.
+export type Fade = { from: number, hours: number, start: number }
+export type State = { anchorPhase: number, anchorTime: number, fade: Fade? }
+export type Settings = {
+	cycleSeconds: number,
+	dayFraction: number,
+	fadeSeconds: number,
+	dayClock: number,
+	nightClock: number,
+}
+
+-- A cycle showing `clock` at `now`.
+function DayNight.begin(clock: number, now: number, settings: Settings): State
+	return { anchorPhase = DayNight.phaseAt(clock, settings.dayFraction), anchorTime = now }
+end
+
+-- The ClockTime at `now`, and the state to keep. A fade that has run its course is dropped.
+function DayNight.sample(state: State, now: number, settings: Settings): (number, State)
+	local fade = state.fade
+	if fade then
+		local alpha = (now - fade.start) / settings.fadeSeconds
+		if alpha < 1 then
+			return DayNight.blend(fade.from, fade.hours, alpha), state
+		end
+		state = { anchorPhase = state.anchorPhase, anchorTime = state.anchorTime }
+	end
+	local clock = DayNight.cycleClock(
+		state.anchorPhase,
+		state.anchorTime,
+		now,
+		settings.cycleSeconds,
+		settings.dayFraction
+	)
+	return clock, state
+end
+
+-- A jump at `now` from the clock on screen to just after sunrise (night = false) or dusk
+-- (night = true). The fade starts from `displayedClock`, so a jump pressed mid-fade starts from
+-- the blended value.
+function DayNight.jump(
+	displayedClock: number,
+	night: boolean,
+	now: number,
+	settings: Settings
+): State
+	local target = if night then settings.nightClock else settings.dayClock
+	return {
+		anchorPhase = DayNight.phaseAt(target, settings.dayFraction),
+		anchorTime = now + settings.fadeSeconds,
+		fade = {
+			from = displayedClock,
+			hours = DayNight.jumpHours(displayedClock, target),
+			start = now,
+		},
+	}
+end
+
 return DayNight
