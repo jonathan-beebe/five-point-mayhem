@@ -56,6 +56,8 @@ local DOCK_DISTANCE = 0.3 -- studs from the dock that count as docked
 local DOCK_ANGLE = math.rad(2)
 local HOME_TIMEOUT = 60 -- seconds; past this the pod snaps onto the dock
 
+local WRECK_FRICTION = 0.8 -- a wrecked pod's hull away from its legs
+
 export type State = "docked" | "flying" | "returning" | "landed" | "wrecked"
 
 export type Pod = {
@@ -597,6 +599,17 @@ end
 -- Kills the pod (its vehicle is wrecked): it lets go of its pilot and riders, so nobody is put
 -- back in a seat, and stops flying wherever it is.
 function PodFlight.wreck(pod: Pod)
+	-- Away from the legs, the hull grinds to a stop on the ground: its boxes are frictionless.
+	if pod.state ~= "docked" then
+		local body = pod.root.AssemblyRootPart
+		for _, part in pod.model:GetDescendants() do
+			if part:IsA("BasePart") and part.CanCollide and part.AssemblyRootPart == body then
+				local physical = part.CurrentPhysicalProperties
+				part.CustomPhysicalProperties =
+					PhysicalProperties.new(physical.Density, WRECK_FRICTION, 0, 100, 1)
+			end
+		end
+	end
 	pod.pilot = nil
 	table.clear(pod.riders)
 	setState(pod, "wrecked")
