@@ -25,6 +25,7 @@ check is skipped with a warning. `lune run tools/test [filter]` runs only the te
 | `src/shared/VehicleCatalog.luau` | All vehicles (data only) |
 | `src/shared/CreatureCatalog.luau` | Monster kinds, each landmark's themed monster and zombie lair (data only) |
 | `src/server/vehicleModels` | One part-built model per vehicle (format: `src/server/systems/VehicleModel.luau`) |
+| `src/server/weaponModels` | One part-built model per weapon (format: `src/server/systems/WeaponModel.luau`) |
 | `src/server/creatureModels` | One part-built model per monster (format: `src/server/systems/CreatureModel.luau`) |
 | `tools/check.luau` | Runs every check: format, lint, types, tests (`lune run tools/check [--fast]`) |
 | `tools/test.luau` | Runs every test (`lune run tools/test [filter]`) |
