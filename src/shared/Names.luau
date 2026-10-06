@@ -47,6 +47,9 @@ Names.Attributes = table.freeze({
 Names.Tags = table.freeze({
 	ExplosiveBarrel = "ExplosiveBarrel", -- Landscape (Combat, Weapons, Vehicles)
 	MechCab = "MechCab", -- a walker's cab volume, Vehicles (MechCamera)
+	-- Lamps and landmark buildings: a lamp, lantern, torch or firefly host that glows by night
+	-- (NightLights).
+	NightLight = "NightLight",
 	NoClimb = "NoClimb", -- Lobby: walkers climb no part of it (Vehicles)
 	Tree = "Tree", -- Landscape: rams fell it (Vehicles)
 })

@@ -31,6 +31,7 @@ runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is
 | `src/shared/PodState.luau` | A flying pod's states and the rules read from them (server and client) |
 | `src/shared/RemoteActions.luau` | The action strings remotes carry: pod and MAC commands, announcement styles |
 | `src/shared/RemoteGuard.luau` | What the server accepts from a client over a remote: finite drive axes, finite aim points, string arguments, and the per-player DriveInput rate limit |
+| `src/shared/NightLights.luau` | Night lighting rules the server applies (light level from the clock with dusk and dawn bands, where road and lobby lamps stand, which carry a light, firefly tree picks) |
 | `src/shared/MathUtil.luau` | Small math helpers shared by server and client (move toward, angle wrap, yaw, inside a box, clamp to range, follow rates) |
 | `src/shared/WeaponMath.luau` | Weapon math the server applies (spread, cooldown, melee reach, push cone, projectile step and size, display centering) |
 | `src/shared/VehicleDrive.luau` | Drive math the server applies (target speed, yaw rate, settling, constraint strengths) |
@@ -45,12 +46,12 @@ runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is
 | `src/server/creatureModels` | One part-built model per monster (format: `src/server/systems/CreatureModel.luau`) |
 | `tools/check.luau` | Runs every check: format, line length, lint, types, tests (`lune run tools/check [--fast]`) |
 | `tools/test.luau` | Runs every test (`lune run tools/test [filter]`) |
-| `tools/tests` | 18 tests, run under Lune. Data: `data_integrity` (catalogs, model files, sounds, regions), `names` (shared names' values), `collision_groups` (the collision matrix). Shared logic: `math_util`, `day_night`, `mech_gait`, `mech_climb`, `vehicle_damage`, `vehicle_logic`, `pod_pilot`, `weapon_math`, `creature_brain`, `admin_commands` (every command has a handler), `hud_layout`, `client_logic`. Server and client helpers: `server_helpers` (`systems/util`), `ui_kit` (`src/client/ui`). Client lifecycle: `client_lifecycle` (LobbyUI and Announcer build nothing when required). `vehicle_logic`, `pod_pilot`, `weapon_math`, `creature_brain`, `admin_commands`, `client_logic`, `server_helpers` and `ui_kit` also compare each module with the code it replaced |
+| `tools/tests` | 25 tests, run under Lune. Data: `data_integrity` (catalogs, model files, sounds, regions), `names` (shared names' values), `collision_groups` (the collision matrix). Shared logic: `math_util`, `day_night`, `night_lights`, `mech_gait`, `mech_climb`, `vehicle_damage`, `vehicle_logic`, `pod_pilot`, `weapon_math`, `creature_brain`, `admin_commands` (every command has a handler), `hud_layout`, `client_logic`. Server and client helpers: `server_helpers` (`systems/util`), `ui_kit` (`src/client/ui`). Client lifecycle: `client_lifecycle` (LobbyUI and Announcer build nothing when required). `vehicle_logic`, `pod_pilot`, `weapon_math`, `creature_brain`, `admin_commands`, `client_logic`, `server_helpers` and `ui_kit` also compare each module with the code it replaced |
 | `tools/lib` | Lune harness: `Sandbox` loads game files outside Roblox, `Check` tallies assertions, `ModelChecks` validates model files |
 | `tools/preview` | Renders a vehicle, weapon or creature model file to a PNG of orthographic views |
 | `tools/audition.luau` | Plays every weapon and vehicle sound; paste into the Studio Command Bar during Play |
-| `src/server/world` | Lobby, roads, terrain/scenery, the five landmarks (`Regions.luau`: each landmark's building module, ground and tree styles) |
-| `src/server/systems` | Combat, weapons, players/teams, creatures, vehicles, admin powers, collision groups (`CollisionGroups.luau`: every group and pair) |
+| `src/server/world` | Lobby, roads, terrain/scenery, the five landmarks (`Regions.luau`: each landmark's building module, ground and tree styles), night lamps and fireflies (`Lamps.luau`) |
+| `src/server/systems` | Combat, weapons, players/teams, creatures, vehicles, admin powers, collision groups (`CollisionGroups.luau`: every group and pair), day and night (`DayNight.luau`: the clock; `NightLights.luau`: lamps on at dusk, off at dawn) |
 | `src/server/systems/Vehicles` | Vehicles, one module per job behind `init.luau`: `Registry` (live cars), `Specs` (model files), `Placement`, `Climb`, `Drive`, `Health` (crashes, wrecks), `Trees`, `Contact` (rams), `Boarding` (prompts, cab), `Builder`, `Parking` (spots, respawn) |
 | `src/server/systems/Weapons` | Weapons, one module per job behind `init.luau`: `Tools` (tools, display stands), `FallbackModels` (models by catalog shape), `Effects` (beams, flashes, lightning), `Aim` (the shot record, spread, raycast), `Projectiles`, `Firing` (the FireWeapon remote, cooldowns), `kinds/` (one module per weapon kind) |
 | `src/client` | Feature modules started by `init.client.luau`: `LobbyUI` (armory), `WeaponInput`, `SniperScope`, `CarInput`, `VehicleHealth`, `VehicleSounds`, `MechMotion` (walker animation), `MechCamera`, `PodControls`, `PromptPanel` (prompt cards), `AdminPanel` (GOD MODE), `MacPanel`, `NukeStrike`, `Announcer` |
@@ -256,6 +257,19 @@ Both `<who>` and `<item>` are required. Examples: `/give all rocket`, `/give me 
 - Pressing the phase it already is (DAY by day, NIGHT by night) restarts that phase. DAY pressed
   in the afternoon runs the clock back to morning.
 - Tunables are `Config.DAY_NIGHT_*`.
+
+Night lighting follows the clock, DAY and NIGHT jumps included:
+
+- Lamps, lanterns and torches fade on over the hour around dusk (17:30–18:30) and off over the
+  hour around dawn (5:30–6:30). By day their glass is plain and their lights are off.
+- Street lamps line the ring roads, the cross roads and the spokes past the motor pools, 72 studs
+  apart on alternating sides; none stand in the motor pools or the landmark clearings. Two lamps stand outside each lobby gate.
+- Landmarks: torches on the castle gatehouse, the Sakura Hall lanterns, the Mayhem Tower plaza
+  lamps, the Jaguar Pyramid's summit torches and the Frost Palace porch lanterns. The torches in
+  the pyramid's treasure chamber burn all day.
+- Fireflies drift under 24 trees once night is half in.
+- Lamp posts are scenery you pass through: vehicles, players and shots go through them.
+- Tunables are in `src/shared/NightLights.luau`.
 
 ## Vehicles
 

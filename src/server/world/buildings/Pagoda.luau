@@ -78,6 +78,7 @@ local function lantern(parent: Instance, base: CFrame)
 	glow.Color = rgb(255, 190, 110)
 	glow.Range = 16
 	glow.Parent = light
+	Build.nightLight(light)
 	Build.part(parent, Vector3.new(3.6, 0.8, 3.6), base * CFrame.new(0, 7.6, 0), STONE, M.Concrete)
 	Build.part(parent, Vector3.new(1, 1, 1), base * CFrame.new(0, 8.5, 0), STONE, M.Concrete)
 end

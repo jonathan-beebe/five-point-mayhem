@@ -18,7 +18,9 @@ local TIERS = 8
 local TIER_HEIGHT = 12
 local SHRINK = 18
 
-local function torch(parent: Instance, frame: CFrame)
+-- A torch on a post. `nightOnly` lights it by night only (Build.nightLight); the chamber's burn
+-- all day.
+local function torch(parent: Instance, frame: CFrame, nightOnly: boolean?)
 	Build.part(
 		parent,
 		Vector3.new(0.8, 5, 0.8),
@@ -42,6 +44,9 @@ local function torch(parent: Instance, frame: CFrame)
 	light.Range = 24
 	light.Brightness = 2
 	light.Parent = bowl
+	if nightOnly then
+		Build.nightLight(bowl)
+	end
 end
 
 local function serpentHead(parent: Instance, frame: CFrame)
@@ -259,7 +264,7 @@ function Pyramid.build(parent: Instance, base: CFrame): Model
 	end
 	Build.ball(model, (summit * CFrame.new(0, temple.roofTop + 15, -10)).Position, 5, GOLD, M.Foil)
 	for _, side in { -1, 1 } do
-		torch(model, summit * CFrame.new(side * 8, 1, -19))
+		torch(model, summit * CFrame.new(side * 8, 1, -19), true)
 	end
 	return model
 end

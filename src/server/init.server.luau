@@ -14,6 +14,7 @@ require(ReplicatedStorage.Shared.Remotes)
 local World = script.world
 local Systems = script.systems
 local Build = require(World.Build)
+local Lamps = require(World.Lamps)
 local Landscape = require(World.Landscape)
 local Lobby = require(World.Lobby)
 local Regions = require(World.Regions)
@@ -26,6 +27,7 @@ local Creatures = require(Systems.Creatures)
 local DayNight = require(Systems.DayNight)
 local Guard = require(Systems.util.Guard)
 local MacAccess = require(Systems.MacAccess)
+local NightLights = require(Systems.NightLights)
 local Session = require(Systems.Session)
 local Vehicles = require(Systems.Vehicles)
 local Weapons = require(Systems.Weapons)
@@ -84,6 +86,8 @@ local function buildWorld()
 		end
 	end
 	Landscape.build(world)
+	-- Lamps and fireflies last: fireflies gather under the trees. Each lamp is guarded inside.
+	Guard.run("build Lamps", Lamps.build, world)
 	print(string.format("[Mayhem] world built in %.1fs", os.clock() - started))
 end
 
@@ -96,6 +100,7 @@ workspace.Gravity = Config.NORMAL_GRAVITY
 buildWorld()
 
 -- Each start is guarded: one that throws is warned and the rest still start, in this order.
+Guard.run("start NightLights", NightLights.start)
 Guard.run("start Session", Session.start)
 Guard.run("start Creatures", Creatures.start)
 Guard.run("start Vehicles", Vehicles.start)

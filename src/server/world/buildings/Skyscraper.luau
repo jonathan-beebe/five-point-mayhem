@@ -110,6 +110,7 @@ local function streetLamp(parent: Instance, frame: CFrame)
 	light.Range = 22
 	light.Brightness = 1.5
 	light.Parent = bulb
+	Build.nightLight(bulb)
 end
 
 local function statue(parent: Instance, frame: CFrame)
