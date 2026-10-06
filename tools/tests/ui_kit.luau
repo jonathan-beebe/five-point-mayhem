@@ -8,7 +8,8 @@
 --     buttons, grid and a weapon card
 --   - Theme: every DisplayOrder, colour, font and radius equals the literal it replaced, and every
 --     client ScreenGui takes its DisplayOrder from Theme
---   - RightColumn's constants equal MacPanel's old ones; notifyOpened fires `opened`
+--   - RightColumn's constants equal MacPanel's old ones (PANEL_TOP follows the column's new top);
+--     notifyOpened fires `opened`
 --   - Hud: jumpButton, shownIn, edgeY and bottomControls give what the inline lookups gave (the
 --     bottom-right guis found by name before, listed with addBottomControls now); jumpWatcher hooks
 --     a jump button once and lays out on every call
@@ -112,10 +113,13 @@ local function read(instance: any, property: string): any
 	return if ok then value else "<none>"
 end
 
--- Compares two instance trees: every property, then the children in order.
-local function sameTree(got: any, want: any, label: string)
+-- Compares two instance trees: every property (but the root's in `except`), then the children in
+-- order.
+local function sameTree(got: any, want: any, label: string, except: { [string]: boolean }?)
 	for _, property in PROPERTIES do
-		equal(read(got, property), read(want, property), label .. " " .. property)
+		if not (except and except[property]) then
+			equal(read(got, property), read(want, property), label .. " " .. property)
+		end
 	end
 	local gotChildren, wantChildren = got:GetChildren(), want:GetChildren()
 	equal(#gotChildren, #wantChildren, label .. " children")
@@ -128,8 +132,8 @@ local function sameTree(got: any, want: any, label: string)
 end
 
 -- Compares two roots and their parents' names.
-local function sameWidget(got: any, want: any, label: string)
-	sameTree(got, want, label)
+local function sameWidget(got: any, want: any, label: string, except: { [string]: boolean }?)
+	sameTree(got, want, label, except)
 	equal(got.Parent and got.Parent.Name, want.Parent and want.Parent.Name, label .. " parent")
 end
 
@@ -732,7 +736,7 @@ end
 function Now.adminPanel(gui: any): any
 	local width = RightColumn.PANEL_WIDTH
 	return RightColumn.makePanel("ScrollingFrame", gui, rgb(255, 200, 40), {
-		Size = UDim2.new(0, width, 1, -(RightColumn.PANEL_TOP + RightColumn.MARGIN)),
+		Size = RightColumn.fullHeight(width),
 		BackgroundColor3 = rgb(20, 16, 10),
 		BorderSizePixel = 0,
 		ScrollBarThickness = 6,
@@ -894,22 +898,36 @@ sameWidget(Now.healthBar(holder("A")), Before.healthBar(holder("A")), "health ba
 sameWidget(Now.card(holder("A")), Before.card(holder("A")), "prompt card")
 
 Check.section("right column")
+-- The column's top moved from a guessed 60 below the top bar to MARGIN (12) below it, where the
+-- ScreenGui's CoreUISafeInsets area starts (HudLayout.columnToggle): everything else matches the
+-- code before; the positions and the GOD MODE panel's height are golden values.
 local panelsBefore = #RightColumn.panels
-sameWidget(Now.macToggle(holder("Mac")), Before.macToggle(holder("Mac")), "MAC toggle")
+local PLACED = { Position = true, Size = true }
+local macToggle = Now.macToggle(holder("Mac"))
+sameWidget(macToggle, Before.macToggle(holder("Mac")), "MAC toggle", PLACED)
 local macPanel = Now.macPanel(holder("Mac"))
-sameWidget(macPanel, Before.macPanel(holder("Mac")), "MAC panel")
-sameWidget(Now.adminToggle(holder("Admin")), Before.adminToggle(holder("Admin")), "GOD toggle")
+sameWidget(macPanel, Before.macPanel(holder("Mac")), "MAC panel", PLACED)
+local adminToggle = Now.adminToggle(holder("Admin"))
+sameWidget(adminToggle, Before.adminToggle(holder("Admin")), "GOD toggle", PLACED)
 local adminPanel = Now.adminPanel(holder("Admin"))
-sameWidget(adminPanel, Before.adminPanel(holder("Admin")), "GOD MODE panel")
+sameWidget(adminPanel, Before.adminPanel(holder("Admin")), "GOD MODE panel", PLACED)
+equal(adminToggle.Position, UDim2.new(1, -12, 0, 12), "GOD toggle position")
+equal(macToggle.Position, UDim2.new(1, -12, 0, 58), "MAC toggle position")
+equal(macPanel.Position, UDim2.new(1, -12, 0, 104), "MAC panel position")
+equal(adminPanel.Position, UDim2.new(1, -12, 0, 104), "GOD MODE panel position")
+for _, each in { { macToggle, "MAC toggle" }, { adminToggle, "GOD toggle" } } do
+	equal(each[1].Size, UDim2.fromOffset(130, 40), each[2] .. " size")
+end
+equal(macPanel.Size, UDim2.fromOffset(300, 142), "MAC panel size")
+equal(adminPanel.Size, UDim2.new(0, 300, 1, -116), "GOD MODE panel fills the column")
 equal(#RightColumn.panels, panelsBefore + 2, "makePanel lists each panel")
 check(RightColumn.panels[panelsBefore + 1] == macPanel, "MAC panel listed first")
 check(RightColumn.panels[panelsBefore + 2] == adminPanel, "GOD MODE panel listed second")
 sameTree(Create.corner(Theme.Radius.panel), Before.panelCorner(), "panel corner")
-equal(RightColumn.TOGGLE_TOP, 60, "TOGGLE_TOP")
 equal(RightColumn.TOGGLE_HEIGHT, 40, "TOGGLE_HEIGHT")
 equal(RightColumn.TOGGLE_WIDTH, 130, "TOGGLE_WIDTH")
 equal(RightColumn.GAP, 6, "GAP")
-equal(RightColumn.PANEL_TOP, 152, "PANEL_TOP")
+equal(RightColumn.PANEL_TOP, 104, "PANEL_TOP")
 equal(RightColumn.PANEL_WIDTH, 300, "PANEL_WIDTH")
 equal(RightColumn.MARGIN, 12, "MARGIN")
 equal(RightColumn.opened.name, "opened", "opened is the BindableEvent's Event")
@@ -1158,13 +1176,25 @@ for _, ownerInset in { true, false, nil } do
 			)
 		end
 	end
-	local gui = { IgnoreGuiInset = "unset" }
-	Hud.matchInset(gui, standIn(ownerInset, 0, 0, 1, 1))
+end
+-- matchInset copies ScreenInsets, which carries every inset mode (the IgnoreGuiInset boolean
+-- covers only two of the four) and sets IgnoreGuiInset to match in Roblox.
+for _, insets in { "none", unpack(Enum.ScreenInsets:GetEnumItems()) } do
+	local object = standIn(false, 0, 0, 1, 1)
+	local owner = object:FindFirstAncestorOfClass("ScreenGui")
+	if insets == "none" then
+		object = standIn(nil, 0, 0, 1, 1)
+	else
+		owner.ScreenInsets = insets
+	end
+	local gui = { ScreenInsets = "unset", IgnoreGuiInset = "unset" }
+	Hud.matchInset(gui, object)
 	equal(
-		gui.IgnoreGuiInset,
-		if ownerInset == nil then "unset" else ownerInset,
-		"matchInset " .. tostring(ownerInset)
+		gui.ScreenInsets,
+		if insets == "none" then "unset" else insets,
+		"matchInset " .. tostring(insets)
 	)
+	equal(gui.IgnoreGuiInset, "unset", "matchInset leaves IgnoreGuiInset to the engine")
 end
 
 -- jumpWatcher: a Hud whose player finds a stand-in jump button with countable signals.

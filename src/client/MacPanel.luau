@@ -43,6 +43,7 @@ local function build()
 	local gui = create("ScreenGui", {
 		Name = "MayhemMac",
 		ResetOnSpawn = false,
+		ScreenInsets = RightColumn.SCREEN_INSETS,
 		DisplayOrder = Theme.DisplayOrder.panels,
 		Parent = player:WaitForChild("PlayerGui"),
 	})
