@@ -215,7 +215,8 @@ press **E** to move to the empty driver's seat. The ids in `src/shared/VehicleCa
 with `/give`, e.g. `/give me abrams`.
 
 Vehicles climb ledges up to 1.6 studs (roads, landmark plazas and courtyards, Sakura Hall's
-steps). Walls, the lobby gates, and taller ledges stop them.
+steps). Walls, the lobby gates, and taller ledges stop them. Walkers also climb walls up to 14
+studs (see OG).
 
 ### Crashes
 
@@ -243,10 +244,11 @@ size sets how much. Size is bulk: footprint × the height of its solid parts, ov
 - A crash worth less than 1 health is nothing: no sound, no sparks.
 - Each crash clangs and throws sparks. At half health the vehicle smokes; at a quarter it burns.
   Nothing repairs it.
-- **Wrecked** at no health: it brakes to a stop, explodes where it crashed (the flying pod or
-  the vehicle's body; 35 damage, wider for bigger vehicles), throws everyone aboard out (anyone
-  standing in a walker's cab lands at its exit), chars black, and disappears 10 seconds later. A parked vehicle comes back at its spot with full health on the next
-  10-second respawn check; a `/give` vehicle is gone.
+- **Wrecked** at no health: it brakes to a stop (a climbing walker lets go of the wall),
+  explodes where it crashed (the flying pod or the vehicle's body; 35 damage, wider for bigger
+  vehicles), throws everyone aboard out (anyone standing in a walker's cab lands at its exit),
+  chars black, and disappears 10 seconds later. A parked vehicle comes back at its spot with full
+  health on the next 10-second respawn check; a `/give` vehicle is gone.
 - **Health bar**: whoever sits in a vehicle (any seat, Aurora's legs saddle too) sees its name and
   health in a bar at the bottom of the screen. It flashes white on each hit.
 - Crashes into walls and the ground count only for vehicles the server simulates: driven ones
@@ -273,9 +275,18 @@ and works with `/give <who> mech`.
 - **In the cab**: press **E** (or tap **Drive**) to sit back down, or **Q** (**Climb out**) to
   climb out onto the ground behind the mech.
 - With nobody in it, the mech's brake holds it in place when bumped.
+- **Climb**: drive into a wall up to 14 studs tall with room on top, such as a Jaguar Pyramid
+  tier, and the mech lifts itself up at 8 studs/s with its legs stepping, then steps onto the top.
+  It climbs the back face of the pyramid tier by tier to the summit; the east and west faces stop
+  one tier short, where the temple leaves too little room. Of the walkers only Heron is narrow
+  enough to walk up the front staircase between its serpent heads and balustrades. Let go of the
+  throttle to hang on the wall; push forward to keep climbing; reverse to let go and drop. It does
+  not turn while climbing. Taller walls, the lobby, other vehicles and players are not climbed. Every
+  walker climbs.
 
 The legs and arms are decoration and do not collide; the cab walls, floor and roof, the hips and
-the back pods do. The cab's furniture does not. Gates, walls and building doors stop it.
+the back pods do. The cab's furniture does not. Gates, walls taller than 14 studs and building
+doors stop it.
 
 ### Aurora's flying pod
 
@@ -302,6 +313,13 @@ Passengers look out in first person like the pilot.
   home, the rider is put on the ground behind the legs before it docks.
 - Nobody else can get into the pod while it flies. Anyone standing in the cab at launch is put
   outside.
+
+Check the walkers' walk cycle and climb assist without Studio (needs `lune`):
+
+```sh
+lune run tools/tests/mech_gait.luau
+lune run tools/tests/mech_climb.luau
+```
 
 Preview a vehicle model without Studio (needs `lune` from `rokit install` and Python with Pillow):
 

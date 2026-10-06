@@ -111,6 +111,7 @@ export type Foot = {
 
 export type Input = {
 	forward: number, -- skid velocity along its flat forward, studs/s
+	climb: number?, -- studs/s the walker is being lifted (climb assist); legs step at this pace
 	yawRate: number, -- rad/s, + = turning left
 	occupied: boolean,
 	topSpeed: number,
@@ -236,6 +237,10 @@ function MechGait.step(state: State, input: Input, dt: number): { Footfall }
 	local slip = SLIP * scale
 
 	local v = input.forward
+	local climb = input.climb or 0
+	if climb > math.abs(v) then
+		v = climb
+	end
 	local omega = input.yawRate
 	state.time = input.time
 	state.topSpeed = math.max(input.topSpeed, 1)

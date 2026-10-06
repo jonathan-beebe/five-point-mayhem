@@ -109,6 +109,9 @@ export type Model = {
 	parkingBrake: boolean?, -- with no driver, the drive constraints hold it still
 	uprightTorque: number?, -- multiplier on the upright MaxTorque; default 1
 	stepsOver: boolean?, -- passes through scenery and other vehicles; buildings and ground stop it
+	-- Walker climb assist (MechClimb): climbs walls up to MechClimb.MAX_RISE. Default true for
+	-- walkers (gait set); false turns it off.
+	climbs: boolean?,
 	ram: number?, -- how hard it shoves vehicles, fells trees, flings creatures; default 1
 }
 

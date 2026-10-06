@@ -1,6 +1,7 @@
 -- The spawn lobby: a marble floor ringed by glass under a glass dome, with one force-field
 -- gate toward each landmark. Gates block players until they deploy.
 
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
@@ -25,6 +26,7 @@ end
 
 function Lobby.build(parent: Instance, displayModel: (weaponId: string) -> Model?)
 	local model = Build.model("Lobby", parent)
+	CollectionService:AddTag(model, "NoClimb") -- walkers climb no part of it (Vehicles)
 	local R = Config.LOBBY_RADIUS
 	local H = Config.LOBBY_WALL_HEIGHT
 	local floorTop = 1
