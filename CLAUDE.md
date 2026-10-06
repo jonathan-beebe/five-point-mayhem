@@ -23,7 +23,8 @@ src/shared/   ReplicatedStorage.Shared. Every file --!strict. Loads under Lune.
   *Catalog    data only: WeaponCatalog, VehicleCatalog, CreatureCatalog, SoundCatalog
   pure logic  DayNight, VehicleDamage, MechGait, MechClimb, VehicleDefaults, MathUtil, and the
               vehicle math Vehicles applies: VehicleDrive, VehicleSizing, VehicleRam,
-              VehicleLayout; the pod flight math PodFlight applies: PodPilot (tested in tools/tests)
+              VehicleLayout; the pod flight math PodFlight applies: PodPilot; the weapon math
+              Weapons applies: WeaponMath (tested in tools/tests)
   Config      world layout, REGIONS, teams, admin ids;  Remotes: every RemoteEvent, typed record
   contracts   Names (attributes, tags, collision groups, instance names), PodState, RemoteActions
 src/server/   ServerScriptService.Server. init.server.luau boots in this order:
@@ -32,7 +33,9 @@ src/server/   ServerScriptService.Server. init.server.luau boots in this order:
   2. buildWorld(): Lobby, Roads, one building per Config.REGIONS entry (in order), Landscape
   3. Session, Creatures, Vehicles (PodFlight.start, then layOut), Admin, MacAccess .start()
   (Requiring Systems.Vehicles, first from Admin, creates the workspace Vehicles folder and
-  connects its Heartbeats, DriveInput and the Tree tag listener: see Hazards.)
+  connects its Heartbeats, DriveInput and the Tree tag listener; requiring Systems.Weapons, first
+  from Session, creates the WeaponEffects folder and connects its Heartbeat, PlayerRemoving and
+  FireWeapon: see Hazards.)
   4. CharacterAutoLoads back on: nobody spawns before the lobby exists
   world/      Build helpers, Lobby, Roads, Landscape, Regions (per-landmark data), buildings/
   systems/    Combat, Weapons, Session, Creatures, Vehicles, PodFlight, Admin, MacAccess, DayNight,
@@ -42,6 +45,12 @@ src/server/   ServerScriptService.Server. init.server.luau boots in this order:
               (vehicle space, welds, onTerrain), Climb, Drive, Health (crashes, wrecks), Trees,
               Contact (rams, contact damage), Boarding (prompts, cab), Builder, Parking (spots,
               respawn loop). init.luau's header lists the require graph.
+    Weapons/  init.luau is the facade (createTool, displayModel, give) and wires the system.
+              Modules: FallbackModels (models by catalog shape, loads under Lune), Effects
+              (WeaponEffects folder, the shared Random, beam/flash/lightning), Aim (Shot, spread,
+              raycast), Tools (model files, tools, display models), Projectiles (flight, IMPACTS),
+              Firing (FireWeapon remote, cooldowns), kinds/ (one module per kind; kinds/init.luau
+              is the FIRE table). init.luau's header lists the require graph.
     util/     Instance helpers the systems share: Characters, Seats, Prompts, Parts, Ownership
               (tested in tools/tests/server_helpers.luau)
   vehicleModels/ weaponModels/ creatureModels/   one model file per catalog id
@@ -76,7 +85,11 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   `Sandbox.require(Sandbox.game:GetService("ReplicatedStorage").Shared.X)`). It swaps in a correct
   `CFrame`: Lune 0.10.5's `CFrame.lookAt` faces +Z. It also stubs `Random` (deterministic, not
   Roblox's sequence) and resolves `script`/`require`. Modules that build Instances at require
-  time (Weapons, Combat, Landscape) do not load under Lune; `data_integrity` reads them as text.
+  time (Weapons, Combat, Landscape) do not load under Lune. `data_integrity` reads the weapon
+  tables (kinds FIRE, Projectiles.IMPACTS, kinds/strike STYLES) through `Sandbox.loadIsolated`,
+  which runs a module with `require`, `game`, `workspace` and `Instance` stubbed: keep those
+  tables free of top-level work on required values (arithmetic, comparisons, iteration). Combat's
+  effects and Landscape's tree builders are still read as text.
 - Cross-module names come from `src/shared/Names.luau` (attributes, tags, collision groups,
   instance names set in one module and read in another), `PodState.luau` (pod states) and
   `RemoteActions.luau` (remote action strings). Module-private names stay local literals. Add a
@@ -91,6 +104,11 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   clearance, parking spots from an injected `Random`, guard ring, respawn rule), `PodState`
   (`canSit`, `driveSeat`). `tools/tests/vehicle_logic.luau` compares each with the inline code it
   replaced; a deliberate tuning change updates that reference too.
+- Weapon math is in `src/shared/WeaponMath.luau` and `systems/Weapons` applies it:
+  `spreadDirection` (from an injected `Random`, two draws, pitch first), `coolingDown` (with
+  `COOLDOWN_SLACK` 0.85), `inMeleeReach`, `inPushCone`, `projectileStep`, `projectileSize`,
+  `centerUpright` (display stands). `tools/tests/weapon_math.luau` compares each with the inline
+  code it replaced.
 - Pod flight math is in `src/shared/PodPilot.luau` and `PodFlight` applies it: `fly` (turn, speed,
   `rise` with ground clearance, launch rise and ceiling, bank and pitch), `home` (the autopilot's
   climb, cross, settle phases from the dock frame and root position; `onDock` ends a settle),
@@ -149,13 +167,19 @@ every module reads goes in `Registry`. A new public function goes through `init.
 (`Vehicles.x = Module.x`); callers keep `require(Systems.Vehicles)`.
 
 **Weapon.** 1) Entry in `src/shared/WeaponCatalog.luau`: `category` from `CATEGORIES`, `kind` a key
-of `FIRE` in `systems/Weapons.luau`, `shape`, optional `effect` (handled in
-`Combat.applyEffect`); kind-specific fields only on their kind (header comment lists them).
-2) `src/server/weaponModels/<id>.luau` per `WeaponModel.Model`. 3) `SoundCatalog.WEAPONS[id]`
-(`pool` only for `auto` weapons). 4) Add the id to README's weapon ids table. A new `kind`,
-`effect`, `impact` or `style` needs its server branch and a line in WeaponCatalog's header.
-Enforced: field types, known enums, kind-only fields, model file ↔ id, `define()`/`ModelChecks`,
-sound entry, header ↔ server value sets.
+of `FIRE` in `systems/Weapons/kinds/init.luau`, `shape` a key of `FallbackModels.SHAPES`, optional
+`effect` (handled in `Combat.applyEffect`); kind-specific fields only on their kind (header
+comment lists them). 2) `src/server/weaponModels/<id>.luau` per `WeaponModel.Model`.
+3) `SoundCatalog.WEAPONS[id]` (`pool` only for `auto` weapons). 4) Add the id to README's weapon
+ids table.
+*New kind:* one file `systems/Weapons/kinds/<kind>.luau` returning `{ fire = function(shot) }`
+(the `Aim.Shot` record), its line in `kinds/init.luau`'s `FIRE`, and a line in WeaponCatalog's
+header (plus its fields in `KIND_ONLY` in `data_integrity` if only it reads them). Math goes in
+`WeaponMath` with a test. *New impact / style:* a function and its entry in `Projectiles.IMPACTS`
+/ `kinds/strike.luau` `STYLES`, and the header line. A new `effect` is a branch in
+`Combat.applyEffect` and the header line.
+Enforced: field types, known enums, kind-only fields, every `kinds/` module in `FIRE`, model
+file ↔ id, `define()`/`ModelChecks`, sound entry, header ↔ server value sets.
 
 **Creature.** 1) Kind in `CreatureCatalog.KINDS`. 2) `src/server/creatureModels/<id>.luau`,
 require-free, per `CreatureModel.Model` (one piece named `Head`). 3) Make it spawn: roaming count in
@@ -210,6 +234,13 @@ Move these word for word; do not "simplify" them.
   - Requires inside the folder stay acyclic: a module requires only modules above it in the
     table in init.luau's header. Two modules that need each other share a lower module or an
     injected callback.
+- `systems/Weapons/init.luau` wires the system at require time, in this order: the WeaponEffects
+  folder, Heartbeat `Projectiles.heartbeat`, PlayerRemoving `Firing.forget`, FireWeapon
+  `Firing.onFire`. The folder is the one piece of require-time work outside init.luau: `Effects`
+  creates it when first required, which init.luau's requires do before any connect. Put any other
+  require-time work in init.luau, in that order. Requires inside the folder stay acyclic, as for
+  `Vehicles/` (table in init.luau's header). Every weapon module draws from the one
+  `Effects.random`.
 - `systems/PodFlight.luau`: a pilot who leaves the seat in flight is re-seated in a `task.defer`,
   with `task.wait(0.5)` before the pod gives up and flies home.
 - Render steps, offset from `RenderPriority.Camera`: MechCamera undo shake + turn −1, shake +1;
@@ -222,6 +253,6 @@ Move these word for word; do not "simplify" them.
   (`src/shared/Names.luau`, `PodState.luau`, `RemoteActions.luau`) are a contract between server
   and client: never change a value. `tools/tests/names.luau` pins each one.
 - Numbers in `VehicleDamage`, `VehicleDrive`, `VehicleSizing`, `VehicleRam`, `VehicleLayout`,
-  `PodPilot`, `MechClimb`, `MechGait` and `DayNight` are tuning pinned by tests; changing one is a
-  gameplay change. `VehicleLayout.randomSpot` draws four numbers per call, in a fixed order, from
-  the `Random` it is given.
+  `PodPilot`, `WeaponMath`, `MechClimb`, `MechGait` and `DayNight` are tuning pinned by tests;
+  changing one is a gameplay change. `VehicleLayout.randomSpot` draws four numbers per call, in a
+  fixed order, from the `Random` it is given; `WeaponMath.spreadDirection` two (none at no spread).

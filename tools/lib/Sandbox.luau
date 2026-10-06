@@ -16,6 +16,9 @@
 -- `load(path, extra)`: `extra` adds or overrides globals for that file only; modules it requires
 -- get the plain sandbox.
 --
+-- `Sandbox.loadIsolated(target)` runs a module with its requires and services stubbed, to read the
+-- tables it defines (see the function).
+--
 -- `Sandbox.game` and `Sandbox.require` are the same `game` and `require` outside a loaded file, so
 -- a tool can require a module by the instance path the game uses:
 --   Sandbox.require(Sandbox.game:GetService("ReplicatedStorage").Shared.CreatureCatalog)
@@ -149,26 +152,73 @@ local function proxy(path: string): any
 	})
 end
 
--- Loads the module a proxy (or an instance path such as "src/server/systems/WeaponModel") names.
-function Sandbox.require(target: any): any
+-- The file a proxy (or an instance path such as "src/server/systems/WeaponModel") names:
+-- <path>.luau, else <path>/init.luau.
+local function fileOf(target: any): string
 	local meta = type(target) == "table" and getmetatable(target)
 	local path = if type(target) == "string" then target elseif meta then meta.path else nil
 	assert(
 		type(path) == "string",
-		"Sandbox.require: expected a script proxy or an instance path, got " .. typeof(target)
+		"Sandbox: expected a script proxy or an instance path, got " .. typeof(target)
 	)
 	local file = path .. ".luau"
 	if not fs.isFile(resolve(file)) then
 		file = path .. "/init.luau"
 		if not fs.isFile(resolve(file)) then
-			error(("Sandbox.require: no %s.luau or %s/init.luau"):format(path, path), 2)
+			error(("Sandbox: no %s.luau or %s/init.luau"):format(path, path), 3)
 		end
 	end
+	return file
+end
+
+-- Loads the module a proxy (or an instance path) names, once.
+function Sandbox.require(target: any): any
+	local file = fileOf(target)
 	local key = resolve(file)
 	if cache[key] == nil then
 		cache[key] = load(file)
 	end
 	return cache[key]
+end
+
+-- Everything an isolated module requires or asks the game for: any field, call or method answers
+-- with the stub.
+local stub = setmetatable({}, {
+	__index = function(self)
+		return self
+	end,
+	__call = function(self)
+		return self
+	end,
+})
+local ISOLATED = {
+	game = stub,
+	workspace = stub,
+	Instance = stub,
+	require = function()
+		return stub
+	end,
+}
+
+-- Runs the module a proxy (or an instance path) names alone, uncached: every `require`, `game`,
+-- `workspace` and `Instance` in it is a stub. For reading the tables a server module defines when
+-- its requires build Instances and cannot load under Lune (Combat, Effects). Keys and values the
+-- module writes itself are real; values that came from a require are stubs. The module must keep
+-- those tables free of top-level work on required values (arithmetic, comparisons, iteration):
+-- a stub answers only field reads and calls. Errors name the module and that constraint.
+function Sandbox.loadIsolated(target: any): any
+	local file = fileOf(target)
+	local ok, result = pcall(load, file, ISOLATED)
+	if not ok then
+		error(
+			(
+				"Sandbox.loadIsolated: %s fails with require, game, workspace and Instance stubbed "
+				.. "(keep its tables free of top-level work on required values): %s"
+			):format(file, tostring(result)),
+			2
+		)
+	end
+	return result
 end
 
 local game = {

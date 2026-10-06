@@ -76,7 +76,8 @@ end
 print("[audition] loading " .. #preload .. " sounds…")
 ContentProvider:PreloadAsync(preload)
 
--- The events the game sends through Combat.explode (see Weapons.luau impact/blackHole/fireStrike).
+-- The events the game sends through Combat.explode (see systems/Weapons: Projectiles impact and
+-- blackHole, kinds/strike).
 local function explodes(weapon: WeaponCatalog.Weapon, event: string): boolean
 	return (event == "impact" and weapon.blast ~= nil and not weapon.splash and not weapon.impact)
 		or event == "finish"

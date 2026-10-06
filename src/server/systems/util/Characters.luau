@@ -2,7 +2,7 @@
 -- lookup is the expression server systems repeated inline: the Humanoid by class, the root by
 -- name, nothing waited for.
 --
--- Health checks stay with callers that test `Health <= 0` (Session, Weapons' FireWeapon):
+-- Health checks stay with callers that test `Health <= 0` (Session, Weapons/Firing):
 -- `living` tests `Health > 0`, and the two differ for a NaN health.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

@@ -11,11 +11,14 @@
 --     names an unknown id, pooled weapons are automatic, every walker's cues are complete
 --   - regions: every Config.REGIONS id has a building, ground, trees, a themed monster and a lair
 --
--- The catalogs, Config, CreatureCatalog, the world's Regions data and the model files load
--- through Sandbox, the data modules by the instance paths the game requires them by. Weapons,
--- Combat and Landscape build Instances when required, so the values they handle are read from
--- their source with narrow matches (`tableKeys`, `compared`) that fail when the code no longer has
--- the shape they expect.
+-- The catalogs, Config, CreatureCatalog, the world's Regions data, Weapons/FallbackModels and the
+-- model files load through Sandbox, the data modules by the instance paths the game requires them
+-- by. The weapon kinds (kinds/init FIRE), impacts (Projectiles.IMPACTS) and strike styles
+-- (kinds/strike STYLES) come from those modules run alone (Sandbox.loadIsolated): their requires
+-- build Instances. Combat's effects and Landscape's tree builders
+-- are read from their source with narrow matches (`tableKeys`, `compared`) that fail when the code
+-- no longer has the shape they expect: Combat.applyEffect is an if chain, and Landscape builds the
+-- world when required.
 
 local fs = require("@lune/fs")
 
@@ -43,8 +46,10 @@ local function read(path: string): string
 end
 
 -- Requires a module (a Sandbox instance path); a failure ends the test with its error.
-local function requireOrStop(target: any): any
-	local ok, result = pcall(Sandbox.require, target)
+-- `isolated` loads it with Sandbox.loadIsolated instead: for a server module whose requires build
+-- Instances (Combat, Effects), to read the tables it defines.
+local function requireOrStop(target: any, isolated: boolean?): any
+	local ok, result = pcall(if isolated then Sandbox.loadIsolated else Sandbox.require, target)
 	if not ok then
 		check(false, tostring(target) .. " fails to load: " .. tostring(result))
 		Check.finish()
@@ -98,48 +103,57 @@ local Config = requireOrStop(Shared.Config)
 local CreatureCatalog = requireOrStop(Shared.CreatureCatalog)
 local Regions = requireOrStop(Server.world.Regions)
 
--- Value sets the server handles, from the code that consumes each field.
-local WEAPONS_FILE = "src/server/systems/Weapons.luau"
+-- Value sets the server handles, from the tables the code dispatches through.
+local WEAPONS = "src/server/systems/Weapons/"
 local FUNCTION_END = "%(.-\nend\n"
--- Weapons.luau dispatches each shot through FIRE[weapon.kind]: `melee = fireMelee,` lines.
-local KINDS = tableKeys(WEAPONS_FILE, "FIRE", "fire%w+,%f[\n]")
--- Weapons.luau `pieces`: the fallback model per shape (`if shape == "blade" then`).
-local SHAPES =
-	compared(WEAPONS_FILE, "\nlocal function pieces" .. FUNCTION_END, '[^%.%w_]shape == "([%w_]+)"')
+local function keys(table_: { [string]: any }): { [string]: boolean }
+	local set = {}
+	for key in table_ do
+		set[key] = true
+	end
+	return set
+end
+-- kinds/init.luau: FIRE, one module per kind.
+local FIRE = requireOrStop(Server.systems.Weapons.kinds, true)
+local KINDS = keys(FIRE)
+-- FallbackModels.SHAPES: the fallback model per shape (loads without stubs).
+local SHAPES = keys(requireOrStop(Server.systems.Weapons.FallbackModels).SHAPES)
 -- Combat.applyEffect's chain (`if effect == "burn" then`).
 local EFFECTS = compared(
 	"src/server/systems/Combat.luau",
 	"\nfunction Combat%.applyEffect" .. FUNCTION_END,
 	'[^%.%w_]effect == "([%w_]+)"'
 )
--- Weapons.luau `impact`: what a projectile does where it lands.
-local IMPACTS = compared(
-	WEAPONS_FILE,
-	"\nlocal function impact" .. FUNCTION_END,
-	'weapon%.impact == "([%w_]+)"'
-)
--- Weapons.luau fireStrike: "meteor", and lightning for anything else.
-local STYLES = compared(
-	WEAPONS_FILE,
-	"\nlocal function fireStrike" .. FUNCTION_END,
-	'weapon%.style == "([%w_]+)"'
-)
-STYLES.lightning = true
+-- Projectiles.IMPACTS: what a projectile does where it lands.
+local IMPACTS = keys(requireOrStop(Server.systems.Weapons.Projectiles, true).IMPACTS)
+-- kinds/strike.luau STYLES: what a strike calls down.
+local STYLES = keys(requireOrStop(Server.systems.Weapons.kinds.strike, true).STYLES)
 
--- Fields only some kinds read, with the Weapons.luau function that reads each; on any other kind
--- they do nothing.
+-- Every module in kinds/ is a kind in FIRE.
+do
+	Check.section("weapon kinds")
+	for _, file in fs.readDir(Sandbox.ROOT .. "/" .. WEAPONS .. "kinds") do
+		local kind = string.match(file, "^(.+)%.luau$")
+		if kind and kind ~= "init" then
+			check(KINDS[kind] ~= nil, WEAPONS .. "kinds/" .. file .. " is not in FIRE (kinds/init)")
+		end
+	end
+end
+
+-- Fields only some kinds read, with the function in systems/Weapons/ that reads each; on any other
+-- kind they do nothing.
 local KIND_ONLY: { [string]: { [string]: string } } = {
-	arc = { melee = "fireMelee" },
-	pellets = { hitscan = "fireHitscan" },
-	chain = { hitscan = "fireHitscan" },
-	speed = { projectile = "launch" },
-	gravity = { projectile = "launch" },
-	blast = { projectile = "impact" },
-	count = { projectile = "fireProjectile" },
-	impact = { projectile = "impact" },
-	splash = { projectile = "impact" },
-	style = { strike = "fireStrike" },
-	radius = { strike = "fireStrike", projectile = "blackHole" },
+	arc = { melee = "kinds/melee" },
+	pellets = { hitscan = "kinds/hitscan" },
+	chain = { hitscan = "kinds/hitscan" },
+	speed = { projectile = "Projectiles.launch" },
+	gravity = { projectile = "Projectiles.launch" },
+	blast = { projectile = "Projectiles.impact" },
+	count = { projectile = "kinds/projectile" },
+	impact = { projectile = "Projectiles.impact" },
+	splash = { projectile = "Projectiles.impact" },
+	style = { strike = "kinds/strike" },
+	radius = { strike = "kinds/strike", projectile = "Projectiles.blackHole" },
 }
 -- Every weapon's fields without a default (WeaponCatalog's Weapon type), by type.
 local WEAPON_FIELDS = {
@@ -247,7 +261,7 @@ for id, weapon in weapons do
 			check(
 				readers[weapon.kind] ~= nil,
 				string.format(
-					"%s: %s does nothing on a %s weapon; Weapons.luau reads it only for %s "
+					"%s: %s does nothing on a %s weapon; the server reads it only for %s "
 						.. "(KIND_ONLY in tools/tests/data_integrity.luau)",
 					where,
 					field,

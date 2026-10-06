@@ -29,18 +29,20 @@ runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is
 | `src/shared/PodState.luau` | A flying pod's states and the rules read from them (server and client) |
 | `src/shared/RemoteActions.luau` | The action strings remotes carry: pod and MAC commands, announcement styles |
 | `src/shared/MathUtil.luau` | Small math helpers shared by server and client (move toward, angle wrap, yaw, inside a box, clamp to range, follow rates) |
+| `src/shared/WeaponMath.luau` | Weapon math the server applies (spread, cooldown, melee reach, push cone, projectile step and size, display centering) |
 | `src/server/vehicleModels` | One part-built model per vehicle (format: `src/server/systems/VehicleModel.luau`) |
 | `src/server/weaponModels` | One part-built model per weapon (format: `src/server/systems/WeaponModel.luau`) |
 | `src/server/creatureModels` | One part-built model per monster (format: `src/server/systems/CreatureModel.luau`) |
 | `tools/check.luau` | Runs every check: format, line length, lint, types, tests (`lune run tools/check [--fast]`) |
 | `tools/test.luau` | Runs every test (`lune run tools/test [filter]`) |
-| `tools/tests` | Tests for shared game logic, models and data (`data_integrity`: catalogs, model files, sounds, regions; `names`: the shared names' values; `math_util`; `collision_groups`: the collision matrix), run under Lune |
+| `tools/tests` | Tests for shared game logic, models and data (`data_integrity`: catalogs, model files, sounds, regions; `names`: the shared names' values; `math_util`; `weapon_math`; `collision_groups`: the collision matrix), run under Lune |
 | `tools/lib` | Lune harness: `Sandbox` loads game files outside Roblox, `Check` tallies assertions, `ModelChecks` validates model files |
 | `tools/preview` | Renders a vehicle, weapon or creature model file to a PNG of orthographic views |
 | `tools/audition.luau` | Plays every weapon and vehicle sound; paste into the Studio Command Bar during Play |
 | `src/server/world` | Lobby, roads, terrain/scenery, the five landmarks (`Regions.luau`: each landmark's building module, ground and tree styles) |
 | `src/server/systems` | Combat, weapons, players/teams, creatures, vehicles, admin powers, collision groups (`CollisionGroups.luau`: every group and pair) |
 | `src/server/systems/Vehicles` | Vehicles, one module per job behind `init.luau`: `Registry` (live cars), `Specs` (model files), `Placement`, `Climb`, `Drive`, `Health` (crashes, wrecks), `Trees`, `Contact` (rams), `Boarding` (prompts, cab), `Builder`, `Parking` (spots, respawn) |
+| `src/server/systems/Weapons` | Weapons, one module per job behind `init.luau`: `Tools` (tools, display stands), `FallbackModels` (models by catalog shape), `Effects` (beams, flashes, lightning), `Aim` (the shot record, spread, raycast), `Projectiles`, `Firing` (the FireWeapon remote, cooldowns), `kinds/` (one module per weapon kind) |
 | `src/client` | Armory UI, weapon input, car input, vehicle health bar, mech animation and camera, admin panel, announcer |
 
 ## UI conventions
