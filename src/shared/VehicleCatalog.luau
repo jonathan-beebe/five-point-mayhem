@@ -1,3 +1,4 @@
+--!strict
 -- Every drivable vehicle (data only). The server builds each one from its model file in
 -- `src/server/vehicleModels/<id>.luau`; the admin panel lists them as gifts.
 
@@ -57,6 +58,7 @@ local VEHICLES: { Vehicle } = {
 
 local byId: { [string]: Vehicle } = {}
 for _, vehicle in VEHICLES do
+	assert(byId[vehicle.id] == nil, "Duplicate vehicle id " .. vehicle.id)
 	byId[vehicle.id] = vehicle
 end
 

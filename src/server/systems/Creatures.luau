@@ -9,112 +9,33 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local CreatureBrain = require(ReplicatedStorage.Shared.CreatureBrain)
+local CreatureCatalog = require(ReplicatedStorage.Shared.CreatureCatalog)
+local Names = require(ReplicatedStorage.Shared.Names)
+local RemoteActions = require(ReplicatedStorage.Shared.RemoteActions)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Combat = require(script.Parent.Combat)
 local CreatureModel = require(script.Parent.CreatureModel)
+local Characters = require(script.Parent.util.Characters)
+local Parts = require(script.Parent.util.Parts)
 
 local creatureModels = script.Parent.Parent.creatureModels
 
 local Creatures = {}
 
 local rgb = Color3.fromRGB
-local M = Enum.Material
 local random = Random.new()
 
--- `scale` sets knockback strength; the look and size come from the kind's file in
--- src/server/creatureModels (format: src/server/systems/CreatureModel.luau).
-type Kind = {
-	name: string,
-	health: number,
-	speed: number,
-	damage: number,
-	scale: number,
-	aggro: number,
-	hops: boolean?, -- jumps while chasing
-}
+-- Kinds, their themed regions, lairs, counts and timings: src/shared/CreatureCatalog.luau. The
+-- spawn, wander and lair rules: src/shared/CreatureBrain.luau.
+type Kind = CreatureCatalog.Kind
 
-local KINDS: { [string]: Kind } = {
-	goblin = {
-		name = "Goblin",
-		health = 45,
-		speed = 18,
-		damage = 8,
-		scale = 0.8,
-		aggro = 80,
-	},
-	slime = {
-		name = "Slime",
-		health = 35,
-		speed = 14,
-		damage = 6,
-		scale = 1,
-		aggro = 60,
-		hops = true,
-	},
-	skeleton = {
-		name = "Skeleton Knight",
-		health = 90,
-		speed = 15,
-		damage = 14,
-		scale = 1,
-		aggro = 90,
-	},
-	oni = {
-		name = "Oni",
-		health = 220,
-		speed = 12,
-		damage = 26,
-		scale = 2,
-		aggro = 100,
-	},
-	robot = {
-		name = "Robo-Guard",
-		health = 140,
-		speed = 16,
-		damage = 18,
-		scale = 1.4,
-		aggro = 120,
-	},
-	trex = {
-		name = "T-Rex",
-		health = 400,
-		speed = 17,
-		damage = 40,
-		scale = 2.6,
-		aggro = 130,
-	},
-	zombie = {
-		name = "Zombie",
-		health = 60,
-		speed = 13,
-		damage = 10,
-		scale = 1,
-		aggro = 160,
-	},
-	brute = {
-		name = "Zombie Brute",
-		health = 260,
-		speed = 11,
-		damage = 25,
-		scale = 1.8,
-		aggro = 160,
-	},
-	yeti = {
-		name = "Yeti",
-		health = 260,
-		speed = 13,
-		damage = 28,
-		scale = 2.2,
-		aggro = 100,
-	},
-}
-
+local KINDS = CreatureCatalog.KINDS
 -- Themed monster near each landmark, by region id.
-local REGION_KIND =
-	{ castle = "skeleton", pagoda = "oni", tower = "robot", pyramid = "trex", palace = "yeti" }
+local REGION_KIND = CreatureCatalog.REGION_KIND
 
 local folder = Instance.new("Folder")
-folder.Name = "Creatures"
+folder.Name = Names.Instances.Creatures
 folder.Parent = workspace
 
 type Creature = {
@@ -159,29 +80,11 @@ local function build(kindId: string, position: Vector3): Creature
 	-- Pieces are authored in creature space (origin on the ground); weld them relative to the root.
 	local fromRoot = CreatureModel.rootCenter(spec):Inverse()
 	for _, piece in spec.pieces do
-		local part = Instance.new(piece.class or "Part") :: BasePart
-		if piece.shape then
-			(part :: Part).Shape = piece.shape
-		end
-		part.Name = piece.name or "Part"
-		part.Size = piece.size
-		part.Color = piece.color
-		part.Material = piece.material or M.SmoothPlastic
-		part.Transparency = piece.transparency or 0
-		part.Reflectance = piece.reflectance or 0
-		part.CanCollide = false
-		part.CanTouch = false
+		local part = Parts.fromPiece(piece, "Part")
 		part.Massless = true
 		part.TopSurface = Enum.SurfaceType.Smooth
 		part.BottomSurface = Enum.SurfaceType.Smooth
-		local offset = fromRoot * piece.offset
-		part.CFrame = root.CFrame * offset
-		local weld = Instance.new("Weld")
-		weld.Part0 = root
-		weld.Part1 = part
-		weld.C0 = offset
-		weld.Parent = part
-		part.Parent = model
+		Parts.weldTo(root, part, fromRoot * piece.offset, model)
 	end
 
 	local humanoid = Instance.new("Humanoid")
@@ -190,7 +93,7 @@ local function build(kindId: string, position: Vector3): Creature
 	humanoid.MaxHealth = kind.health
 	humanoid.Health = kind.health
 	humanoid.WalkSpeed = kind.speed
-	humanoid:SetAttribute("BaseWalkSpeed", kind.speed)
+	humanoid:SetAttribute(Names.Attributes.BaseWalkSpeed, kind.speed)
 	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
 	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOn
 	humanoid.Parent = model
@@ -200,6 +103,7 @@ local function build(kindId: string, position: Vector3): Creature
 			* CFrame.Angles(0, random:NextNumber(0, 6), 0)
 	)
 	model.Parent = folder
+	-- Unprotected on purpose (not Ownership.set): a failure here should raise.
 	root:SetNetworkOwner(nil)
 	return {
 		model = model,
@@ -217,20 +121,6 @@ end
 
 -- Spawning -----------------------------------------------------------------------------------
 
-local function randomGroundPoint(center: Vector3, minRadius: number, maxRadius: number): Vector3
-	for _ = 1, 20 do
-		local angle = random:NextNumber(0, math.pi * 2)
-		local radius = random:NextNumber(minRadius, maxRadius)
-		local point = center + Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
-		local fromOrigin = Vector2.new(point.X, point.Z).Magnitude
-		local _, regionDistance = Config.nearestRegion(point)
-		if fromOrigin > 130 and fromOrigin < Config.WORLD_RADIUS - 40 and regionDistance > 100 then
-			return point
-		end
-	end
-	return Config.pointAt(random:NextNumber(0, math.pi * 2), 300)
-end
-
 local spawnOne: (kindId: string, near: Vector3?) -> ()
 
 local function untrack(creature: Creature)
@@ -246,7 +136,7 @@ local function track(creature: Creature, kindId: string, respawn: boolean)
 		untrack(creature)
 		Debris:AddItem(creature.model, 3)
 		if respawn then
-			task.delay(25, spawnOne, kindId)
+			task.delay(CreatureCatalog.RESPAWN_SECONDS, spawnOne, kindId)
 		end
 	end)
 end
@@ -263,27 +153,15 @@ spawnOne = function(kindId: string, near: Vector3?)
 			end
 		end
 		position = if regionKind
-			then randomGroundPoint(Config.regionCenter(regionKind), 110, 220)
-			else randomGroundPoint(Vector3.zero, 150, Config.WORLD_RADIUS - 50)
+			then CreatureBrain.groundPoint(random, Config.regionCenter(regionKind), 110, 220)
+			else CreatureBrain.groundPoint(random, Vector3.zero, 150, Config.WORLD_RADIUS - 50)
 	end
 	track(build(kindId, position), kindId, near == nil)
 end
 
 -- Summons a temporary horde around a point (admin command). These do not respawn.
 function Creatures.horde(center: Vector3, count: number)
-	local ids = {
-		"zombie",
-		"zombie",
-		"zombie",
-		"goblin",
-		"slime",
-		"skeleton",
-		"oni",
-		"yeti",
-		"trex",
-		"robot",
-		"brute",
-	}
+	local ids = CreatureCatalog.HORDE_KINDS
 	for _ = 1, count do
 		local kindId = ids[random:NextInteger(1, #ids)]
 		local angle = random:NextNumber(0, math.pi * 2)
@@ -304,21 +182,19 @@ end
 -- players in vehicles.
 local function inVehicle(humanoid: Humanoid): boolean
 	local seat = humanoid.SeatPart
-	local vehicles = workspace:FindFirstChild("Vehicles")
+	local vehicles = workspace:FindFirstChild(Names.Instances.Vehicles)
 	return seat ~= nil and vehicles ~= nil and seat:IsDescendantOf(vehicles)
 end
 
 local function nearestPlayer(creature: Creature): (Model?, BasePart?, number)
 	local best, bestRoot, bestDistance = nil, nil, creature.kind.aggro
 	for _, player in Players:GetPlayers() do
-		local character = player.Character
-		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local character, humanoid, root = Characters.living(player)
 		if
-			root
+			character
 			and humanoid
-			and humanoid.Health > 0
-			and player:GetAttribute("Deployed")
+			and root
+			and player:GetAttribute(Names.Attributes.Deployed)
 			and not Config.isInLobby(root.Position)
 			and not inVehicle(humanoid)
 		then
@@ -352,7 +228,10 @@ local function think(creature: Creature, now: number)
 		if creature.kind.hops then
 			creature.humanoid.Jump = true
 		end
-		if distance <= creature.reach and now - creature.lastAttack > 1.1 then
+		if
+			distance <= creature.reach
+			and now - creature.lastAttack > CreatureCatalog.ATTACK_INTERVAL
+		then
 			creature.lastAttack = now
 			local victim = target:FindFirstChildOfClass("Humanoid")
 			if victim and Combat.damage(nil, target, victim, creature.kind.damage) then
@@ -366,20 +245,14 @@ local function think(creature: Creature, now: number)
 				)
 			end
 		end
-	elseif creature.lair and now - creature.lastSeen > 45 then
+	elseif creature.lair and now - creature.lastSeen > CreatureCatalog.LAIR_DESPAWN then
 		untrack(creature)
 		creature.model:Destroy()
 	elseif now > creature.wanderAt then
-		creature.wanderAt = now + random:NextNumber(4, 9)
-		local fromHome = (creature.root.Position - creature.home).Magnitude
-		local goal = if fromHome > 150
-			then creature.home
-			else creature.root.Position + Vector3.new(
-				random:NextNumber(-40, 40),
-				0,
-				random:NextNumber(-40, 40)
-			)
-		if Vector2.new(goal.X, goal.Z).Magnitude > Config.LOBBY_RADIUS + 20 then
+		local wanderAt, goal =
+			CreatureBrain.wander(random, now, creature.root.Position, creature.home)
+		creature.wanderAt = wanderAt
+		if goal then
 			creature.humanoid:MoveTo(goal)
 		end
 	end
@@ -387,17 +260,8 @@ end
 
 -- Lairs --------------------------------------------------------------------------------------
 
--- Where each landmark's horde appears and walks out to, in the landmark's local frame (local -Z
--- faces the lobby). `y` is the floor height inside; `xs` are the doors used.
-local LAIRS = {
-	castle = { inside = 10, outside = -105, y = 1.6, xs = { 0 } }, -- out of the keep, through the gate
-	pagoda = { inside = -27, outside = -80, y = 5, xs = { 0 } },
-	tower = { inside = -24, outside = -55, y = 1.8, xs = { 0 } },
-	pyramid = { inside = -72, outside = -105, y = 0.6, xs = { -40, 40 } },
-	palace = { inside = -27, outside = -60, y = 1.6, xs = { 0 } },
-}
-local LAIR_TRIGGER_RADIUS = 175
-local LAIR_COOLDOWN = 50
+-- Where each landmark's horde appears (CreatureCatalog).
+local LAIRS = CreatureCatalog.LAIRS
 
 local lairCooldown: { [string]: number } = {}
 
@@ -414,10 +278,8 @@ end
 local function playersNear(center: Vector3, radius: number): number
 	local count = 0
 	for _, player in Players:GetPlayers() do
-		local character = player.Character
-		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		if root and humanoid and humanoid.Health > 0 and player:GetAttribute("Deployed") then
+		local character, humanoid, root = Characters.living(player)
+		if character and humanoid and root and player:GetAttribute(Names.Attributes.Deployed) then
 			local offset = root.Position - center
 			if Vector2.new(offset.X, offset.Z).Magnitude < radius then
 				count += 1
@@ -436,7 +298,7 @@ local function releaseHorde(index: number, size: number)
 		"🧟 THE DEAD POUR OUT OF " .. string.upper(region.name) .. "! 🧟",
 		rgb(150, 255, 120),
 		4,
-		"alarm"
+		RemoteActions.AnnounceStyle.ALARM
 	)
 	for count = 1, size do
 		if #active >= MAX_ACTIVE then
@@ -450,7 +312,7 @@ local function releaseHorde(index: number, size: number)
 				lair.inside + random:NextNumber(-2, 2)
 			)
 		local outside = frame * Vector3.new(x + random:NextNumber(-12, 12), 0, lair.outside)
-		local kindId = if count % 8 == 0 then "brute" else "zombie"
+		local kindId = CreatureBrain.lairKind(count)
 		local creature = build(kindId, inside)
 		creature.lair = region.id
 		creature.exit = outside
@@ -465,14 +327,18 @@ local function watchLairs()
 		task.wait(1)
 		local now = os.clock()
 		for index, region in Config.REGIONS do
-			local nearby = playersNear(Config.regionCenter(index), LAIR_TRIGGER_RADIUS)
+			local nearby =
+				playersNear(Config.regionCenter(index), CreatureCatalog.LAIR_TRIGGER_RADIUS)
 			if
-				nearby > 0
-				and now >= (lairCooldown[region.id] or 0)
-				and liveFromLair(region.id) < 30
+				CreatureBrain.lairOpens(
+					nearby,
+					now,
+					lairCooldown[region.id],
+					liveFromLair(region.id)
+				)
 			then
-				lairCooldown[region.id] = now + LAIR_COOLDOWN
-				task.spawn(releaseHorde, index, 14 + 6 * (nearby - 1))
+				lairCooldown[region.id] = now + CreatureCatalog.LAIR_COOLDOWN
+				task.spawn(releaseHorde, index, CreatureBrain.hordeSize(nearby))
 			end
 		end
 	end
@@ -480,9 +346,9 @@ end
 
 function Creatures.start()
 	task.spawn(watchLairs)
-	local mix = { goblin = 12, slime = 6, zombie = 30 }
+	local mix = table.clone(CreatureCatalog.ROAMING)
 	for _, region in Config.REGIONS do
-		mix[REGION_KIND[region.id]] = 3
+		mix[REGION_KIND[region.id]] = CreatureCatalog.THEMED_COUNT
 	end
 	for kindId, count in mix do
 		for _ = 1, count do
@@ -491,7 +357,7 @@ function Creatures.start()
 	end
 	task.spawn(function()
 		while true do
-			task.wait(0.3)
+			task.wait(CreatureCatalog.THINK_INTERVAL)
 			local now = os.clock()
 			for _, creature in table.clone(active) do
 				if creature.humanoid.Health > 0 and creature.model.Parent then

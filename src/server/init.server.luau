@@ -2,6 +2,7 @@
 -- Characters stay unloaded until the lobby exists so nobody spawns into the void.
 
 local Lighting = game:GetService("Lighting")
+local PhysicsService = game:GetService("PhysicsService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -15,9 +16,11 @@ local Systems = script.systems
 local Build = require(World.Build)
 local Landscape = require(World.Landscape)
 local Lobby = require(World.Lobby)
+local Regions = require(World.Regions)
 local Roads = require(World.Roads)
 
 local Admin = require(Systems.Admin)
+local CollisionGroups = require(Systems.CollisionGroups)
 local Combat = require(Systems.Combat)
 local Creatures = require(Systems.Creatures)
 local DayNight = require(Systems.DayNight)
@@ -27,13 +30,12 @@ local Vehicles = require(Systems.Vehicles)
 local Weapons = require(Systems.Weapons)
 local WalkerProbe = require(Systems.WalkerProbe) -- TEMPORARY
 
-local BUILDINGS = {
-	castle = require(World.buildings.Castle),
-	pagoda = require(World.buildings.Pagoda),
-	tower = require(World.buildings.Skyscraper),
-	pyramid = require(World.buildings.Pyramid),
-	palace = require(World.buildings.Palace),
-}
+-- Each landmark's building module (Regions.BUILDINGS), by region id, required in region order.
+local BUILDINGS = {}
+for _, region in Config.REGIONS do
+	local name = assert(Regions.BUILDINGS[region.id], "Regions.BUILDINGS has no " .. region.id)
+	BUILDINGS[region.id] = require(World.buildings[name] :: ModuleScript)
+end
 
 local function clearTemplate()
 	for _, name in { "Baseplate", "SpawnLocation" } do
@@ -86,8 +88,7 @@ local function buildWorld()
 end
 
 clearTemplate()
-Session.registerCollisionGroups()
-Vehicles.registerCollisionGroups()
+CollisionGroups.register(PhysicsService)
 Combat.setBarrelFactory(Landscape.explosiveBarrel)
 atmosphere()
 DayNight.start()

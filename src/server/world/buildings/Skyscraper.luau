@@ -270,7 +270,13 @@ function Skyscraper.build(parent: Instance, base: CFrame): Model
 	taxi(model, base * CFrame.new(45, 0.8, -50) * CFrame.Angles(0, math.rad(15), 0))
 	taxi(model, base * CFrame.new(58, 0.8, -40) * CFrame.Angles(0, math.rad(-10), 0))
 	taxi(model, base * CFrame.new(-50, 0.8, 50) * CFrame.Angles(0, math.rad(80), 0))
-	for _, position in { Vector3.new(30, 0, -70), Vector3.new(-30, 0, -70), Vector3.new(70, 0, 20) } do
+	for _, position in
+		{
+			Vector3.new(30, 0, -70),
+			Vector3.new(-30, 0, -70),
+			Vector3.new(70, 0, 20),
+		}
+	do
 		local hydrant = base * CFrame.new(position + Vector3.new(0, 0.8, 0))
 		Build.column(model, hydrant * CFrame.new(0, 1.5, 0), 3, 1.6, rgb(220, 30, 30), M.Metal)
 		Build.ball(

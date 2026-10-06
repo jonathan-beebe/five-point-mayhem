@@ -4,6 +4,9 @@
 -- Delete this file and its line in init.server.luau once the cause is known.
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Names = require(ReplicatedStorage.Shared.Names)
 
 local WalkerProbe = {}
 
@@ -27,11 +30,11 @@ local function groundUnder(position: Vector3, ignore: { Instance }): string
 end
 
 local function watch(model: Model)
-	local skid = model:WaitForChild("Skid", 5) :: BasePart?
+	local skid = model:WaitForChild(Names.Instances.Skid, 5) :: BasePart?
 	if not skid then
 		return
 	end
-	local ignore: { Instance } = { workspace:FindFirstChild("Vehicles") or model }
+	local ignore: { Instance } = { workspace:FindFirstChild(Names.Instances.Vehicles) or model }
 	for _, player in Players:GetPlayers() do
 		if player.Character then
 			table.insert(ignore, player.Character)
@@ -68,15 +71,15 @@ local function watch(model: Model)
 end
 
 function WalkerProbe.start()
-	local folder = workspace:WaitForChild("Vehicles")
+	local folder = workspace:WaitForChild(Names.Instances.Vehicles)
 	for _, model in folder:GetChildren() do
-		if model:IsA("Model") and model:GetAttribute("Gait") then
+		if model:IsA("Model") and model:GetAttribute(Names.Attributes.Gait) then
 			task.spawn(watch, model)
 		end
 	end
 	folder.ChildAdded:Connect(function(model)
 		task.defer(function()
-			if model:IsA("Model") and model:GetAttribute("Gait") then
+			if model:IsA("Model") and model:GetAttribute(Names.Attributes.Gait) then
 				watch(model)
 			end
 		end)

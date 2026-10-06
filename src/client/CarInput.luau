@@ -9,6 +9,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
+local DriveAxes = require(ReplicatedStorage.Shared.DriveAxes)
+local Names = require(ReplicatedStorage.Shared.Names)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local PodControls = require(script.Parent.PodControls)
 
@@ -16,8 +18,6 @@ local CarInput = {}
 
 local player = Players.LocalPlayer
 local K = Enum.KeyCode
-
-local RESEND_INTERVAL = 0.25
 
 local controls: any = nil
 local controlsWarned = false
@@ -65,56 +65,54 @@ local function readLift(): number
 	if UserInputService:GetFocusedTextBox() then
 		return 0
 	end
-	return math.clamp(keyAxis({ K.E }, { K.Q }) + PodControls.lift(), -1, 1)
+	return DriveAxes.lift(keyAxis({ K.E }, { K.Q }), PodControls.lift())
 end
 
 local function readInput(seat: VehicleSeat): (number, number)
 	if UserInputService:GetFocusedTextBox() then
 		return 0, 0 -- typing in chat
 	end
-	local throttle = keyAxis({ K.W, K.Up }, { K.S, K.Down })
-	local steer = keyAxis({ K.D, K.Right }, { K.A, K.Left })
-	if throttle == 0 and steer == 0 then
-		throttle, steer = seat.ThrottleFloat, seat.SteerFloat
-	end
+	local throttle, steer = DriveAxes.keysOrSeat(
+		keyAxis({ K.W, K.Up }, { K.S, K.Down }),
+		keyAxis({ K.D, K.Right }, { K.A, K.Left }),
+		seat.ThrottleFloat,
+		seat.SteerFloat
+	)
 	local current = if throttle == 0 and steer == 0 then getControls() else nil
 	if current then
 		local ok, move = pcall(current.GetMoveVector, current)
 		if ok and typeof(move) == "Vector3" then
-			throttle, steer = -move.Z, move.X
+			throttle, steer = DriveAxes.fromMoveVector(move)
 		end
 	end
-	return math.clamp(throttle, -1, 1), math.clamp(steer, -1, 1)
+	return DriveAxes.clamp(throttle, steer)
 end
 
 local function driverSeat(): VehicleSeat?
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	local seat = humanoid and humanoid.SeatPart
-	if seat and seat:IsA("VehicleSeat") and seat:GetAttribute("MayhemCar") == true then
+	if
+		seat
+		and seat:IsA("VehicleSeat")
+		and seat:GetAttribute(Names.Attributes.MayhemCar) == true
+	then
 		return seat
 	end
 	return nil
 end
 
 function CarInput.start()
-	local lastThrottle, lastSteer, lastLift, lastSent = 0, 0, 0, 0
-	local driving = false
+	local sent = DriveAxes.newSent()
 	RunService.Heartbeat:Connect(function()
 		local seat = driverSeat()
 		if not seat then
-			driving = false
+			sent.driving = false
 			return
 		end
 		local throttle, steer = readInput(seat)
 		local lift = readLift()
-		local now = os.clock()
-		local changed = math.abs(throttle - lastThrottle) > 0.05
-			or math.abs(steer - lastSteer) > 0.05
-			or lift ~= lastLift
-		if not driving or changed or now - lastSent > RESEND_INTERVAL then
-			driving = true
-			lastThrottle, lastSteer, lastLift, lastSent = throttle, steer, lift, now
+		if DriveAxes.send(sent, throttle, steer, lift, os.clock()) then
 			Remotes.DriveInput:FireServer(throttle, steer, lift)
 		end
 	end)

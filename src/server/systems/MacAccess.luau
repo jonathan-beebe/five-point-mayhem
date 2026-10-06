@@ -7,7 +7,9 @@
 
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Names = require(ReplicatedStorage.Shared.Names)
 local Session = require(script.Parent.Session)
 
 local MacAccess = {}
@@ -26,12 +28,12 @@ local function key(player: Player): string
 end
 
 function MacAccess.has(player: Player): boolean
-	return player:GetAttribute("HasMac") == true
+	return player:GetAttribute(Names.Attributes.HasMac) == true
 end
 
 -- Grants the MAC. A permanent grant also saves it. Returns false only when the save fails.
 function MacAccess.grant(player: Player, permanent: boolean): boolean
-	player:SetAttribute("HasMac", true)
+	player:SetAttribute(Names.Attributes.HasMac, true)
 	if not permanent then
 		return true
 	end
@@ -47,10 +49,10 @@ end
 
 local function onPlayer(player: Player)
 	if Session.isAdmin(player) then
-		player:SetAttribute("HasMac", true)
+		player:SetAttribute(Names.Attributes.HasMac, true)
 		return
 	end
-	player:SetAttribute("HasMac", false)
+	player:SetAttribute(Names.Attributes.HasMac, false)
 	if not store then
 		return
 	end
@@ -58,7 +60,7 @@ local function onPlayer(player: Player)
 	if not ok then
 		warn("[Mayhem] failed to load MAC for " .. player.Name .. ": " .. tostring(saved))
 	elseif saved == true and player.Parent then
-		player:SetAttribute("HasMac", true)
+		player:SetAttribute(Names.Attributes.HasMac, true)
 	end
 end
 

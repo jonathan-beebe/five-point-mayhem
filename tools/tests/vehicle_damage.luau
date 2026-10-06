@@ -12,50 +12,28 @@
 --   - the tracker: crashes, landings and shoves count once; driving, braking, ramps, pods turning
 --     round and cleared jumps do not
 
-local fs = require("@lune/fs")
-local luau = require("@lune/luau")
-local process = require("@lune/process")
 local roblox = require("@lune/roblox")
 
-local VehicleDamage =
-	luau.load(fs.readFile("src/shared/VehicleDamage.luau"), { debugName = "VehicleDamage" })()
+local Check = require("../lib/Check")
+local Sandbox = require("../lib/Sandbox")
+
+local VehicleDamage = Sandbox.load("src/shared/VehicleDamage.luau")
 local Vector3 = roblox.Vector3
 
 local DT = 1 / 60
 local GRAVITY = 196.2
-local failures = 0
-local checks = 0
-
-local function check(ok: boolean, message: string)
-	checks += 1
-	if not ok then
-		failures += 1
-		print("FAIL " .. message)
-	end
-end
-
-local function near(value: number, want: number, slack: number): boolean
-	return math.abs(value - want) <= slack
-end
+local check, near = Check.check, Check.isNear
 
 -- Landing speed after a fall of `height` studs.
 local function dropSpeed(height: number): number
 	return math.sqrt(2 * GRAVITY * height)
 end
 
--- Every vehicle's model file, loaded the way export.luau loads it, with its bulk as Vehicles
--- computes it: footprint x height of its solid parts (collision boxes, default 4, and ladders).
+-- Every vehicle's model file, with its bulk as Vehicles computes it: footprint x height of its
+-- solid parts (collision boxes, default 4, and ladders).
 local vehicles = {}
-for _, file in fs.readDir("src/server/vehicleModels") do
-	local path = "src/server/vehicleModels/" .. file
-	local environment = {
-		CFrame = roblox.CFrame,
-		Vector3 = roblox.Vector3,
-		Vector2 = roblox.Vector2,
-		Color3 = roblox.Color3,
-		Enum = roblox.Enum,
-	}
-	local spec = luau.load(fs.readFile(path), { debugName = path, environment = environment })()
+for _, model in Sandbox.loadVehicleModels() do
+	local spec = model.spec
 	local top = if spec.collision then 0 else 4
 	for _, box in spec.collision or {} do
 		top = math.max(top, box.offset.Position.Y + box.size.Y / 2)
@@ -91,7 +69,7 @@ for _, file in fs.readDir("src/server/vehicleModels") do
 		local size = high - low
 		pod = VehicleDamage.bulk(size.X, size.Z, size.Y)
 	end
-	vehicles[file:gsub("%.luau$", "")] = {
+	vehicles[model.id] = {
 		name = spec.name,
 		bulk = VehicleDamage.bulk(spec.footprint.X, spec.footprint.Y, top),
 		walker = spec.gait ~= nil,
@@ -345,7 +323,4 @@ do
 	check(results[1] and results[1][1] <= limit, "sustained 20/frame: ends by 0.2 s + 1 frame")
 end
 
-print(string.format("%d checks, %d failures", checks, failures))
-if failures > 0 then
-	process.exit(1)
-end
+Check.finish()

@@ -1,3 +1,4 @@
+--!strict
 -- Decision logic for the walker climb assist; Vehicles senses, this decides. Pure math, no
 -- services, so Lune can load it for tests (tools/tests/mech_climb.luau).
 --

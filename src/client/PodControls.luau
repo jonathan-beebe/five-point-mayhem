@@ -1,18 +1,26 @@
 -- Screen controls for flying pods (server PodFlight). While the local player sits in the driver
 -- seat of a walker with a pod (model attribute PodBone), a wide button above MechCamera's STAND
 -- reads LAUNCH (pod docked), RETURN HOME (flying) or RETURNING (the autopilot has it). On touch,
--- while flying, ▲ and ▼ beside the column climb and descend; keyboards use E and Q (CarInput
--- reads both). Passengers get only the jump lock. Near the ground (server attribute PodCanLand) a LAND button (or L) appears left of
--- it: the pod settles to hover and the pilot gets out. While the pod flies the seat is locked
--- here too: jumping is disabled. The console button's prompt (PodFlight) is drawn at the side of
--- the screen with every other prompt (PromptPanel).
+-- while flying, ▲ and ▼ beside the column climb and descend; keyboards use E and Q (CarInput reads
+-- both). Passengers get only the jump lock. Near the ground (server attribute PodCanLand) a LAND
+-- button (or L) appears left of it: the pod settles to hover and the pilot gets out. While the pod
+-- flies the seat is locked here too: jumping is disabled. The console button's prompt (PodFlight)
+-- is drawn at the side of the screen with every other prompt (PromptPanel).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
+local HudLayout = require(ReplicatedStorage.Shared.HudLayout)
+local Names = require(ReplicatedStorage.Shared.Names)
+local PodButtons = require(ReplicatedStorage.Shared.PodButtons)
+local PodState = require(ReplicatedStorage.Shared.PodState)
+local RemoteActions = require(ReplicatedStorage.Shared.RemoteActions)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local MechCamera = require(script.Parent.MechCamera)
+local Hud = require(script.Parent.ui.Hud)
+local Theme = require(script.Parent.ui.Theme)
+local TouchButton = require(script.Parent.ui.TouchButton)
 
 local PodControls = {}
 
@@ -20,43 +28,30 @@ local player = Players.LocalPlayer
 local rgb = Color3.fromRGB
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "PodButtons"
+gui.Name = Names.Instances.PodButtons
 gui.ResetOnSpawn = false
-gui.DisplayOrder = 6
+gui.DisplayOrder = Theme.DisplayOrder.touch
 gui.Enabled = false
+Hud.addBottomControls(gui)
 
 local function makeButton(name: string, text: string, color: Color3): TextButton
-	local button = Instance.new("TextButton")
-	button.Name = name
-	button.AnchorPoint = Vector2.new(1, 1)
-	button.BackgroundColor3 = color
-	button.BackgroundTransparency = 0.15
-	button.TextColor3 = rgb(255, 255, 255)
-	button.Font = Enum.Font.GothamBold
-	button.TextScaled = true
-	button.Text = text
-	button.AutoButtonColor = true
-	button.Parent = gui
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.5, 0)
-	corner.Parent = button
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = rgb(120, 245, 255)
-	stroke.Thickness = 2
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	stroke.Parent = button
-	local padding = Instance.new("UIPadding")
-	padding.PaddingLeft = UDim.new(0.08, 0)
-	padding.PaddingRight = UDim.new(0.08, 0)
-	padding.PaddingTop = UDim.new(0.28, 0)
-	padding.PaddingBottom = UDim.new(0.28, 0)
-	padding.Parent = button
-	return button
+	return TouchButton.new({
+		name = name,
+		text = text,
+		parent = gui,
+		anchor = Vector2.new(1, 1),
+		color = color,
+		transparency = 0.15,
+		strokeColor = Theme.Colors.cyan,
+		paddingX = 0.08,
+		paddingY = 0.28,
+		autoButtonColor = true,
+	})
 end
 
-local podButton = makeButton("Pod", "LAUNCH", rgb(0, 120, 170))
-local upButton = makeButton("Up", "▲", rgb(20, 20, 28))
-local downButton = makeButton("Down", "▼", rgb(20, 20, 28))
+local podButton = makeButton("Pod", "LAUNCH", PodButtons.REST_COLOR)
+local upButton = makeButton("Up", "▲", Theme.Colors.hud)
+local downButton = makeButton("Down", "▼", Theme.Colors.hud)
 local landButton = makeButton("Land", "LAND", rgb(20, 130, 70))
 
 local model: Model? = nil -- the pod walker the local player drives
@@ -65,8 +60,10 @@ local touchLift = { up = false, down = false }
 local jumpLocked = false
 local passenger = false -- seated in a passenger seat (no buttons, only the jump lock)
 
-local function state(): string
-	return if model then (model:GetAttribute("PodState") or "docked") :: string else "docked"
+local function state(): PodState.State
+	return if model
+		then PodState.of(model:GetAttribute(Names.Attributes.PodState))
+		else PodState.DOCKED
 end
 
 -- The column MechCamera measured: the pod button spans two slots above STAND (its right edge on
@@ -77,15 +74,15 @@ local function layout()
 		return
 	end
 	gui.IgnoreGuiInset = measured.ignoreInset
-	local step = measured.size + measured.gap
-	podButton.Size = UDim2.fromOffset(measured.size * 2 + measured.gap, measured.size)
-	podButton.Position = measured.corner - UDim2.fromOffset(0, step * 2)
-	landButton.Size = podButton.Size
-	landButton.Position = measured.corner - UDim2.fromOffset(step * 2, step * 2)
-	upButton.Size = UDim2.fromOffset(measured.size, measured.size)
-	upButton.Position = measured.corner - UDim2.fromOffset(step, step)
-	downButton.Size = UDim2.fromOffset(measured.size, measured.size)
-	downButton.Position = measured.corner - UDim2.fromOffset(step, 0)
+	local placed = HudLayout.podButtons(measured)
+	podButton.Size = placed.pod.size
+	podButton.Position = placed.pod.position
+	landButton.Size = placed.land.size
+	landButton.Position = placed.land.position
+	upButton.Size = placed.up.size
+	upButton.Position = placed.up.position
+	downButton.Size = placed.down.size
+	downButton.Position = placed.down.position
 end
 
 local function lockJump(locked: boolean)
@@ -99,26 +96,24 @@ local function lockJump(locked: boolean)
 end
 
 local function refresh()
-	local current = state()
+	local view = PodButtons.view(
+		state(),
+		model ~= nil,
+		model ~= nil and model:GetAttribute(Names.Attributes.PodCanLand) == true,
+		UserInputService.TouchEnabled
+	)
 	gui.Enabled = model ~= nil and not passenger
-	podButton.Text = if current == "docked" or current == "landed"
-		then "LAUNCH"
-		elseif current == "flying" then "RETURN HOME"
-		else "RETURNING"
-	podButton.Active = current ~= "returning"
-	podButton.AutoButtonColor = current ~= "returning"
-	podButton.BackgroundColor3 = if current == "docked" or current == "landed"
-		then rgb(0, 120, 170)
-		elseif current == "flying" then rgb(150, 90, 0)
-		else rgb(60, 60, 70)
-	local flying = model ~= nil and current == "flying"
-	landButton.Visible = flying and (model :: Model):GetAttribute("PodCanLand") == true
-	upButton.Visible = flying and UserInputService.TouchEnabled
-	downButton.Visible = flying and UserInputService.TouchEnabled
-	if not flying then
+	podButton.Text = view.text
+	podButton.Active = view.active
+	podButton.AutoButtonColor = view.active
+	podButton.BackgroundColor3 = view.color
+	landButton.Visible = view.landVisible
+	upButton.Visible = view.liftVisible
+	downButton.Visible = view.liftVisible
+	if not view.flying then
 		touchLift.up, touchLift.down = false, false
 	end
-	lockJump(model ~= nil and (current == "flying" or current == "returning"))
+	lockJump(view.lockJump)
 	layout()
 end
 
@@ -134,7 +129,7 @@ local function setModel(new: Model?)
 	model = new
 	if new then
 		watching = new.AttributeChanged:Connect(function(name)
-			if name == "PodState" or name == "PodCanLand" then
+			if name == Names.Attributes.PodState or name == Names.Attributes.PodCanLand then
 				refresh()
 			end
 		end)
@@ -150,9 +145,9 @@ local function onSeat()
 	local aboard = seat ~= nil
 		and parent ~= nil
 		and parent:IsA("Model")
-		and parent:GetAttribute("PodBone") ~= nil
-		and (seat.Name == "DriverSeat" or seat:IsA("Seat"))
-	passenger = aboard and (seat :: BasePart).Name ~= "DriverSeat"
+		and parent:GetAttribute(Names.Attributes.PodBone) ~= nil
+		and (seat.Name == Names.Instances.DriverSeat or seat:IsA("Seat"))
+	passenger = aboard and (seat :: BasePart).Name ~= Names.Instances.DriverSeat
 	setModel(if aboard then parent :: Model else nil)
 end
 
@@ -191,15 +186,13 @@ end
 function PodControls.start()
 	gui.Parent = player:WaitForChild("PlayerGui")
 	podButton.Activated:Connect(function()
-		local current = state()
-		if current == "docked" or current == "landed" then
-			Remotes.PodCommand:FireServer("launch")
-		elseif current == "flying" then
-			Remotes.PodCommand:FireServer("home")
+		local command = PodButtons.command(state())
+		if command then
+			Remotes.PodCommand:FireServer(command)
 		end
 	end)
 	landButton.Activated:Connect(function()
-		Remotes.PodCommand:FireServer("land")
+		Remotes.PodCommand:FireServer(RemoteActions.PodCommand.LAND)
 	end)
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if
@@ -208,7 +201,7 @@ function PodControls.start()
 			and landButton.Visible
 			and gui.Enabled
 		then
-			Remotes.PodCommand:FireServer("land")
+			Remotes.PodCommand:FireServer(RemoteActions.PodCommand.LAND)
 		end
 	end)
 	hold(upButton, "up")

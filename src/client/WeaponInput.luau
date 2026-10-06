@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
+local Names = require(ReplicatedStorage.Shared.Names)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 local SniperScope = require(script.Parent.SniperScope)
@@ -32,7 +33,7 @@ local function aimPoint(): Vector3
 	if player.Character then
 		table.insert(filter, player.Character)
 	end
-	local effects = Workspace:FindFirstChild("WeaponEffects")
+	local effects = Workspace:FindFirstChild(Names.Instances.WeaponEffects)
 	if effects then
 		table.insert(filter, effects)
 	end
@@ -52,7 +53,7 @@ local function tryFire(weapon: WeaponCatalog.Weapon): boolean
 end
 
 local function bind(tool: Tool)
-	local weapon = WeaponCatalog.get(tool:GetAttribute("WeaponId") :: string)
+	local weapon = WeaponCatalog.get(tool:GetAttribute(Names.Attributes.WeaponId) :: string)
 	if not weapon or tool:GetAttribute("InputBound") then
 		return
 	end

@@ -4,10 +4,11 @@
 -- draws one card per shown prompt: the key (or TAP on touch), the object text and the action text,
 -- and a progress bar for hold prompts. Tapping or clicking a card holds the prompt.
 --
--- Placement is measured from the right-hand column of toggles (MacPanel): the cards stack down
--- from just below the MAC button, right edges aligned with it. While a panel is open in that column
--- (the MAC's, GOD MODE's) they sit left of it. They stop above the bottom-right touch controls
--- (the jump button, MechCamera's and PodControls' columns, SCOPE), shrinking if they have to.
+-- Placement is measured from the right-hand column of toggles (ui/RightColumn): the cards stack
+-- down from just below the MAC button, right edges aligned with it. While a panel is open in that
+-- column (the MAC's, GOD MODE's) they sit left of it. They stop above the bottom-right touch
+-- controls (ui/Hud.bottomControls: the jump button, MechCamera's and PodControls' columns, SCOPE),
+-- shrinking if they have to. The arithmetic is HudLayout.cardStack.
 --
 -- Prompts that do nothing for the local player while seated in a vehicle are switched off on this
 -- client (MaxActivationDistance 0; the server never changes it after creation):
@@ -16,17 +17,24 @@
 --   - on the player's own vehicle, Ride, Board and Climb out
 --   - Drive, unless the player sits in a passenger seat (Drive moves them to the free driver seat)
 --   - the pod console's prompt, unless the player sits in the driver seat (only the pilot launches)
--- Out of a seat (standing in a walker's cab too), every prompt works as the server set it.
+-- Out of a seat (standing in a walker's cab too), every prompt works as the server set it. The
+-- rule is PromptRules.useful; the key text and card order are PromptRules too.
 
 local Players = game:GetService("Players")
-local GuiService = game:GetService("GuiService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
-local MacPanel = require(script.Parent.MacPanel)
+local HudLayout = require(ReplicatedStorage.Shared.HudLayout)
+local Names = require(ReplicatedStorage.Shared.Names)
+local PromptRules = require(ReplicatedStorage.Shared.PromptRules)
+local Create = require(script.Parent.ui.Create)
+local Hud = require(script.Parent.ui.Hud)
+local RightColumn = require(script.Parent.ui.RightColumn)
+local Theme = require(script.Parent.ui.Theme)
 
 local PromptPanel = {}
 
@@ -36,16 +44,13 @@ local rgb = Color3.fromRGB
 local CARD_WIDTH = 220
 local CARD_HEIGHT = 48
 local MIN_CARD_HEIGHT = 28 -- the shortest a card shrinks to above the touch controls
-local GAP = MacPanel.GAP
-
--- ScreenGuis of the bottom-right controls the cards stay above (besides the touch jump button).
-local BOTTOM_CONTROLS = { "MechButtons", "PodButtons", "SniperScopeButton" }
+local GAP = RightColumn.GAP
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "Prompts"
 gui.ResetOnSpawn = false
-gui.DisplayOrder = 14 -- under the MAC and GOD MODE panels (15)
-gui.IgnoreGuiInset = false -- the same space as MacPanel's column
+gui.DisplayOrder = Theme.DisplayOrder.prompts -- under the MAC and GOD MODE panels
+gui.IgnoreGuiInset = false -- the same space as the right column
 
 -- Suppression -------------------------------------------------------------------------------------
 
@@ -71,19 +76,11 @@ end
 -- Whether `prompt` does anything for a player sitting in `sitting` aboard `own`.
 local function useful(prompt: ProximityPrompt, sitting: BasePart, own: Model): boolean
 	local vehicle = vehicleOf(prompt)
-	if not vehicle then
-		return true
-	end
-	if vehicle ~= own then
-		return false
-	end
-	if prompt.Name == "PodPrompt" then
-		return sitting.Name == "DriverSeat"
-	end
-	if prompt.Name == "DrivePrompt" then
-		return sitting:IsA("Seat") -- a passenger seat; driver seats are VehicleSeats
-	end
-	return false
+	local where: PromptRules.Where = if not vehicle
+		then "none"
+		elseif vehicle == own then "own"
+		else "other"
+	return PromptRules.useful(where, prompt.Name, sitting.Name, sitting:IsA("Seat"))
 end
 
 local function apply(prompt: ProximityPrompt)
@@ -138,12 +135,6 @@ type Card = {
 
 local cards: { [ProximityPrompt]: Card } = {}
 
-local function corner(radius: UDim, parent: Instance)
-	local each = Instance.new("UICorner")
-	each.CornerRadius = radius
-	each.Parent = parent
-end
-
 local function text(name: string, font: Enum.Font, color: Color3, parent: Instance): TextLabel
 	local label = Instance.new("TextLabel")
 	label.Name = name
@@ -158,16 +149,7 @@ local function text(name: string, font: Enum.Font, color: Color3, parent: Instan
 end
 
 local function keyText(prompt: ProximityPrompt, inputType: Enum.ProximityPromptInputType): string
-	if inputType == Enum.ProximityPromptInputType.Touch then
-		return "TAP"
-	end
-	local code = if inputType == Enum.ProximityPromptInputType.Gamepad
-		then prompt.GamepadKeyCode
-		else prompt.KeyboardKeyCode
-	if code.Value == 0 then -- no key (KeyCode Unknown)
-		return ""
-	end
-	return (string.gsub(code.Name, "^Button", ""))
+	return PromptRules.keyText(inputType, prompt.GamepadKeyCode, prompt.KeyboardKeyCode)
 end
 
 local function release(card: Card)
@@ -193,25 +175,21 @@ local function makeCard(prompt: ProximityPrompt, inputType: Enum.ProximityPrompt
 	frame.AnchorPoint = Vector2.new(1, 0)
 	frame.Text = ""
 	frame.AutoButtonColor = false
-	frame.BackgroundColor3 = rgb(20, 20, 28)
-	frame.BackgroundTransparency = 0.25
+	frame.BackgroundColor3 = Theme.Colors.hud
+	frame.BackgroundTransparency = Theme.HUD_TRANSPARENCY
 	frame.ClipsDescendants = true
 	frame.Parent = gui
-	corner(UDim.new(0, 8), frame)
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = rgb(255, 255, 255)
-	stroke.Thickness = 2
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	stroke.Parent = frame
+	Create.corner(Theme.Radius.panel).Parent = frame
+	Create.stroke(Theme.Colors.white, 2, Enum.ApplyStrokeMode.Border).Parent = frame
 
 	-- The key badge: a square at the left (sized by layout).
 	local badge = Instance.new("Frame")
 	badge.Name = "Badge"
 	badge.AnchorPoint = Vector2.new(0, 0.5)
-	badge.BackgroundColor3 = rgb(255, 255, 255)
+	badge.BackgroundColor3 = Theme.Colors.white
 	badge.Parent = frame
-	corner(UDim.new(0.2, 0), badge)
-	local key = text("Key", Enum.Font.GothamBold, rgb(20, 20, 28), badge)
+	Create.corner(UDim.new(0.2, 0)).Parent = badge
+	local key = text("Key", Theme.Fonts.bold, Theme.Colors.hud, badge)
 	key.TextXAlignment = Enum.TextXAlignment.Center
 	key.Size = UDim2.fromScale(0.8, 0.8)
 	key.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -223,9 +201,9 @@ local function makeCard(prompt: ProximityPrompt, inputType: Enum.ProximityPrompt
 	texts.Name = "Texts"
 	texts.BackgroundTransparency = 1
 	texts.Parent = frame
-	local object = text("Object", Enum.Font.Gotham, rgb(200, 200, 215), texts)
+	local object = text("Object", Theme.Fonts.regular, rgb(200, 200, 215), texts)
 	object.Size = UDim2.fromScale(1, 0.4)
-	local action = text("Action", Enum.Font.GothamBold, rgb(255, 255, 255), texts)
+	local action = text("Action", Theme.Fonts.bold, Theme.Colors.white, texts)
 	action.Position = UDim2.fromScale(0, 0.4)
 	action.Size = UDim2.fromScale(1, 0.6)
 
@@ -235,7 +213,7 @@ local function makeCard(prompt: ProximityPrompt, inputType: Enum.ProximityPrompt
 	progress.Position = UDim2.fromScale(0, 1)
 	progress.Size = UDim2.fromOffset(0, 3)
 	progress.BorderSizePixel = 0
-	progress.BackgroundColor3 = rgb(120, 245, 255)
+	progress.BackgroundColor3 = Theme.Colors.cyan
 	progress.Parent = frame
 
 	local card: Card = {
@@ -312,24 +290,9 @@ function removeCard(prompt: ProximityPrompt)
 	card.frame:Destroy()
 end
 
--- The prompt input type matching a last input type, or nil for one that says nothing (focus,
--- text input).
-local function promptInputType(inputType: Enum.UserInputType): Enum.ProximityPromptInputType?
-	if inputType == Enum.UserInputType.Touch then
-		return Enum.ProximityPromptInputType.Touch
-	end
-	if string.match(inputType.Name, "^Gamepad") then
-		return Enum.ProximityPromptInputType.Gamepad
-	end
-	if inputType == Enum.UserInputType.Keyboard or string.match(inputType.Name, "^Mouse") then
-		return Enum.ProximityPromptInputType.Keyboard
-	end
-	return nil
-end
-
 -- Redraws every shown card's key for a new input type (TAP on touch, the gamepad or keyboard key).
 local function refreshKeys(inputType: Enum.UserInputType)
-	local promptType = promptInputType(inputType)
+	local promptType = PromptRules.inputType(inputType)
 	if not promptType then
 		return
 	end
@@ -339,48 +302,6 @@ local function refreshKeys(inputType: Enum.UserInputType)
 end
 
 -- Layout ------------------------------------------------------------------------------------------
-
--- `object`'s top or bottom edge in this gui's space (other guis may ignore the top-bar inset).
-local function edgeY(object: GuiObject, bottom: boolean): number
-	local y = object.AbsolutePosition.Y + (if bottom then object.AbsoluteSize.Y else 0)
-	local owner = object:FindFirstAncestorOfClass("ScreenGui")
-	if owner and owner.IgnoreGuiInset ~= gui.IgnoreGuiInset then
-		local inset = GuiService:GetGuiInset().Y
-		y += if owner.IgnoreGuiInset then -inset else inset
-	end
-	return y
-end
-
-local function shownIn(object: GuiObject): boolean
-	local owner = object:FindFirstAncestorOfClass("ScreenGui")
-	return object.Visible and owner ~= nil and owner.Enabled
-end
-
--- The visible bottom-right controls the cards must stay above.
-local function bottomControls(): { GuiObject }
-	local found = {}
-	local playerGui = player:FindFirstChildOfClass("PlayerGui")
-	if not playerGui then
-		return found
-	end
-	local touchGui = playerGui:FindFirstChild("TouchGui")
-	local touchFrame = touchGui and touchGui:FindFirstChild("TouchControlFrame")
-	local jump = touchFrame and touchFrame:FindFirstChild("JumpButton")
-	if jump and jump:IsA("GuiObject") and shownIn(jump) then
-		table.insert(found, jump)
-	end
-	for _, name in BOTTOM_CONTROLS do
-		local each = playerGui:FindFirstChild(name)
-		if each and each:IsA("ScreenGui") and each.Enabled then
-			for _, child in each:GetChildren() do
-				if child:IsA("GuiObject") and child.Visible then
-					table.insert(found, child)
-				end
-			end
-		end
-	end
-	return found
-end
 
 local function layout()
 	local ordered: { Card } = {}
@@ -392,52 +313,57 @@ local function layout()
 	end
 	-- Keyboard key order: Drive (E) above Ride and the console (F) above Climb out (Q).
 	table.sort(ordered, function(a, b)
-		local ka, kb = a.prompt.KeyboardKeyCode.Value, b.prompt.KeyboardKeyCode.Value
-		return if ka ~= kb then ka < kb else a.prompt:GetFullName() < b.prompt:GetFullName()
+		return PromptRules.before(a.prompt, b.prompt)
 	end)
 
-	local screen = gui.AbsoluteSize
-	local right, top = screen.X, 0
-	local toggle = MacPanel.toggle
-	if toggle then
-		right = toggle.AbsolutePosition.X + toggle.AbsoluteSize.X
-		top = edgeY(toggle, true) + GAP
-	end
-	for _, panel in MacPanel.panels do
-		if shownIn(panel) then
-			right = math.min(right, panel.AbsolutePosition.X - GAP)
+	local toggle = RightColumn.toggle
+	local panelLefts = {}
+	for _, panel in RightColumn.panels do
+		if Hud.shownIn(panel) then
+			table.insert(panelLefts, panel.AbsolutePosition.X)
 		end
 	end
-	local left = right - CARD_WIDTH
-	local bottom = screen.Y
-	for _, control in bottomControls() do
+	local controls = {}
+	for _, control in Hud.bottomControls() do
 		local x0 = control.AbsolutePosition.X
-		if x0 < right and x0 + control.AbsoluteSize.X > left then
-			bottom = math.min(bottom, edgeY(control, false) - GAP)
-		end
+		table.insert(controls, {
+			left = x0,
+			right = x0 + control.AbsoluteSize.X,
+			top = Hud.edgeY(control, false, gui),
+		})
 	end
+	local column = HudLayout.cardStack({
+		screen = gui.AbsoluteSize,
+		toggle = if toggle
+			then {
+				right = toggle.AbsolutePosition.X + toggle.AbsoluteSize.X,
+				bottom = Hud.edgeY(toggle, true, gui),
+			}
+			else nil,
+		panelLefts = panelLefts,
+		controls = controls,
+		count = #ordered,
+		width = CARD_WIDTH,
+		height = CARD_HEIGHT,
+		minHeight = MIN_CARD_HEIGHT,
+		gap = GAP,
+	})
 
-	local count = #ordered
-	local fit = math.floor((bottom - top - (count - 1) * GAP) / count)
-	local height = math.clamp(fit, MIN_CARD_HEIGHT, CARD_HEIGHT)
+	local height = column.height
+	local insides = HudLayout.cardInsides(height, CARD_WIDTH)
 	for index, card in ordered do
 		card.frame.Size = UDim2.fromOffset(CARD_WIDTH, height)
-		card.frame.Position = UDim2.fromOffset(right, top + (index - 1) * (height + GAP))
-		-- The badge: a square as tall as the card less a margin top and bottom, at the left margin.
-		-- The texts run from a margin right of it to the card's right margin.
-		local margin = math.floor(height * 0.15)
-		local side = height - margin * 2
+		card.frame.Position = UDim2.fromOffset(column.right, HudLayout.cardTop(column, GAP, index))
 		local badge = card.key.Parent :: Frame
-		badge.Size = UDim2.fromOffset(side, side)
-		badge.Position = UDim2.new(0, margin, 0.5, 0)
+		badge.Size = UDim2.fromOffset(insides.side, insides.side)
+		badge.Position = UDim2.new(0, insides.margin, 0.5, 0)
 		local texts = card.action.Parent :: Frame
-		local textLeft = margin * 2 + side
-		texts.Position = UDim2.fromOffset(textLeft, margin)
-		texts.Size = UDim2.fromOffset(CARD_WIDTH - textLeft - margin, height - margin * 2)
+		texts.Position = UDim2.fromOffset(insides.textLeft, insides.margin)
+		texts.Size = UDim2.fromOffset(insides.textWidth, insides.textHeight)
 	end
 end
 
--- Start ---------------------------------------------------------------------------------------------
+-- Start -------------------------------------------------------------------------------------------
 
 local function onCharacter(character: Model)
 	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
@@ -447,7 +373,7 @@ end
 
 function PromptPanel.start()
 	gui.Parent = player:WaitForChild("PlayerGui")
-	vehicles = Workspace:WaitForChild("Vehicles")
+	vehicles = Workspace:WaitForChild(Names.Instances.Vehicles)
 
 	ProximityPromptService.PromptShown:Connect(function(prompt, inputType)
 		if prompt.Style ~= Enum.ProximityPromptStyle.Custom then

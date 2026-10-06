@@ -12,6 +12,9 @@
 --   /night                     jump to nightfall (cycle keeps running)
 --
 -- <who> is "all", "me", or the start of a player's name.
+--
+-- The command ids, chat list, panel buttons, gifts and power tuning are in
+-- src/shared/AdminCommands.luau; each id's handler is in HANDLERS below.
 
 local Debris = game:GetService("Debris")
 local Lighting = game:GetService("Lighting")
@@ -20,7 +23,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TextChatService = game:GetService("TextChatService")
 local TweenService = game:GetService("TweenService")
 
+local AdminCommands = require(ReplicatedStorage.Shared.AdminCommands)
 local Config = require(ReplicatedStorage.Shared.Config)
+local Names = require(ReplicatedStorage.Shared.Names)
+local RemoteActions = require(ReplicatedStorage.Shared.RemoteActions)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
@@ -31,43 +37,25 @@ local MacAccess = require(script.Parent.MacAccess)
 local Session = require(script.Parent.Session)
 local Vehicles = require(script.Parent.Vehicles)
 local Weapons = require(script.Parent.Weapons)
+local Characters = require(script.Parent.util.Characters)
 
 local Admin = {}
 
 local rgb = Color3.fromRGB
 local random = Random.new()
 
-Admin.GIFTS = { "speed", "jump", "giant", "heal", "shield", "car", "arsenal" }
+local TUNING = AdminCommands.TUNING
 
 local function announce(text: string, color: Color3, seconds: number, style: string?)
 	Remotes.Announce:FireAllClients(text, color, seconds, style)
 end
 
-local function resolveTargets(caller: Player, who: string?): { Player }
-	local query = string.lower(who or "me")
-	if query == "all" or query == "everyone" then
-		return Players:GetPlayers()
-	elseif query == "me" then
-		return { caller }
-	end
-	for _, player in Players:GetPlayers() do
-		local name = string.lower(player.Name)
-		local display = string.lower(player.DisplayName)
-		if string.sub(name, 1, #query) == query or string.sub(display, 1, #query) == query then
-			return { player }
-		end
-	end
-	return {}
+local function playerNames(player: Player): (string, string)
+	return player.Name, player.DisplayName
 end
 
-local function characterParts(player: Player): (Model?, Humanoid?, BasePart?)
-	local character = player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if character and humanoid and root and humanoid.Health > 0 then
-		return character, humanoid, root
-	end
-	return nil, nil, nil
+local function resolveTargets(caller: Player, who: string?): { Player }
+	return AdminCommands.resolveTargets(Players:GetPlayers(), caller, who, playerNames)
 end
 
 -- 1. MAYHEM (and the MAC's NUKE) -------------------------------------------------------------
@@ -110,12 +98,17 @@ local function mayhem()
 	doomRunning = true
 	local sky = redSky()
 	for count = 3, 1, -1 do
-		announce("☢ TOTAL MAYHEM IN " .. count .. " ☢", rgb(255, 50, 50), 1, "alarm")
+		announce(
+			"☢ TOTAL MAYHEM IN " .. count .. " ☢",
+			rgb(255, 50, 50),
+			1,
+			RemoteActions.AnnounceStyle.ALARM
+		)
 		task.wait(1)
 	end
-	announce("☢ MAYHEM ☢", rgb(255, 50, 50), 3, "mayhem")
+	announce("☢ MAYHEM ☢", rgb(255, 50, 50), 3, RemoteActions.AnnounceStyle.MAYHEM)
 	for _, player in Players:GetPlayers() do
-		local character, humanoid, root = characterParts(player)
+		local character, humanoid, root = Characters.living(player)
 		if character and humanoid and root and not Config.isInLobby(root.Position) then
 			obliterate(character, humanoid, root)
 		end
@@ -135,23 +128,33 @@ local function nuke(caller: Player)
 	local sky = redSky()
 	local ground = Config.NUKE_GROUND
 	Remotes.Nuke:FireAllClients(ground)
-	announce("☢ NUKE INCOMING ☢", rgb(255, 50, 50), Config.NUKE_FALL_SECONDS - 3, "alarm")
+	announce(
+		"☢ NUKE INCOMING ☢",
+		rgb(255, 50, 50),
+		Config.NUKE_FALL_SECONDS - 3,
+		RemoteActions.AnnounceStyle.ALARM
+	)
 	task.wait(Config.NUKE_FALL_SECONDS - 3)
 	for count = 3, 1, -1 do
-		announce("☢ NUKE INCOMING " .. count .. " ☢", rgb(255, 50, 50), 1, "alarm")
+		announce(
+			"☢ NUKE INCOMING " .. count .. " ☢",
+			rgb(255, 50, 50),
+			1,
+			RemoteActions.AnnounceStyle.ALARM
+		)
 		task.wait(1)
 	end
 	announce(
 		"☢ NUKED BY " .. string.upper(caller.DisplayName) .. " ☢",
 		rgb(255, 50, 50),
 		3,
-		"mayhem"
+		RemoteActions.AnnounceStyle.MAYHEM
 	)
 	-- Each player is struck once, so nobody who respawns in the lobby dies again.
 	local struck: { [Player]: boolean } = { [caller] = true }
 	local function sweep(radius: number)
 		for _, player in Players:GetPlayers() do
-			local character, humanoid, root = characterParts(player)
+			local character, humanoid, root = Characters.living(player)
 			if character and humanoid and root and not struck[player] then
 				local offset = root.Position - ground
 				if Vector2.new(offset.X, offset.Z).Magnitude <= radius then
@@ -174,8 +177,38 @@ end
 
 -- 2. GIVE ------------------------------------------------------------------------------------
 
+-- The power-ups `gift` gives a living character, by AdminCommands.POWER_UPS id; `arsenal` and
+-- `car` are branches of their own in `gift`.
+type PowerUp = (player: Player, character: Model, humanoid: Humanoid, root: BasePart) -> ()
+local POWER_UP: { [string]: PowerUp } = {
+	speed = function(_, _, humanoid)
+		humanoid:SetAttribute(Names.Attributes.BaseWalkSpeed, TUNING.SPEED)
+		humanoid.WalkSpeed = TUNING.SPEED
+	end,
+	jump = function(_, _, humanoid)
+		humanoid.UseJumpPower = true
+		humanoid.JumpPower = TUNING.JUMP_POWER
+	end,
+	giant = function(_, _, humanoid)
+		for _, scale in { "BodyHeightScale", "BodyWidthScale", "BodyDepthScale", "HeadScale" } do
+			local value = humanoid:FindFirstChild(scale) :: NumberValue?
+			if value then
+				value.Value = TUNING.GIANT_SCALE
+			end
+		end
+	end,
+	heal = function(_, _, humanoid)
+		humanoid.Health = humanoid.MaxHealth
+	end,
+	shield = function(_, character)
+		local shield = Instance.new("ForceField")
+		shield.Parent = character
+		Debris:AddItem(shield, TUNING.SHIELD_SECONDS)
+	end,
+}
+
 local function gift(player: Player, item: string): boolean
-	local character, humanoid, root = characterParts(player)
+	local character, humanoid, root = Characters.living(player)
 	local backpack = player:FindFirstChildOfClass("Backpack")
 	local weapon = WeaponCatalog.find(item)
 	local vehicle = VehicleCatalog.get(item)
@@ -186,25 +219,9 @@ local function gift(player: Player, item: string): boolean
 		return true
 	elseif not character or not humanoid or not root then
 		return weapon ~= nil and backpack ~= nil and Weapons.give(player, weapon.id)
-	elseif item == "speed" then
-		humanoid:SetAttribute("BaseWalkSpeed", 40)
-		humanoid.WalkSpeed = 40
-	elseif item == "jump" then
-		humanoid.UseJumpPower = true
-		humanoid.JumpPower = 120
-	elseif item == "giant" then
-		for _, scale in { "BodyHeightScale", "BodyWidthScale", "BodyDepthScale", "HeadScale" } do
-			local value = humanoid:FindFirstChild(scale) :: NumberValue?
-			if value then
-				value.Value = 2.5
-			end
-		end
-	elseif item == "heal" then
-		humanoid.Health = humanoid.MaxHealth
-	elseif item == "shield" then
-		local shield = Instance.new("ForceField")
-		shield.Parent = character
-		Debris:AddItem(shield, 30)
+	elseif POWER_UP[item] then
+		-- Before the vehicle and weapon matches: WeaponCatalog.find matches by prefix.
+		POWER_UP[item](player, character, humanoid, root)
 	elseif item == "car" or vehicle then
 		local look = root.CFrame.LookVector
 		Vehicles.spawnNear(root.Position + look * 8, look, if vehicle then vehicle.id else nil)
@@ -249,11 +266,7 @@ local function give(caller: Player, who: string?, item: string?, extra: string?)
 	end
 	local weapon = WeaponCatalog.find(query)
 	local vehicle = VehicleCatalog.get(query)
-	local label = if table.find(Admin.GIFTS, query)
-		then string.upper(query)
-		elseif vehicle then vehicle.name
-		elseif weapon then weapon.name
-		else nil
+	local label = AdminCommands.giftLabel(query, vehicle, weapon)
 	if not label then
 		return
 	end
@@ -271,7 +284,7 @@ end
 -- 3. METEORS ---------------------------------------------------------------------------------
 
 local function meteors(seconds: number)
-	announce("☄ METEOR STORM ☄", rgb(255, 140, 40), 3, "alarm")
+	announce("☄ METEOR STORM ☄", rgb(255, 140, 40), 3, RemoteActions.AnnounceStyle.ALARM)
 	local stop = os.clock() + seconds
 	task.spawn(function()
 		while os.clock() < stop do
@@ -301,7 +314,7 @@ local function meteors(seconds: number)
 				):Play()
 				task.delay(1.2, function()
 					rock:Destroy()
-					Combat.explode(nil, target, 16, 45, "burn")
+					Combat.explode(nil, target, TUNING.METEOR_RADIUS, TUNING.METEOR_DAMAGE, "burn")
 				end)
 			end
 			task.wait(0.35)
@@ -322,14 +335,14 @@ end
 local function freeze(caller: Player, who: string?)
 	local names = {}
 	for _, player in resolveTargets(caller, who or "all") do
-		local character, _, root = characterParts(player)
+		local character, _, root = Characters.living(player)
 		if
 			character
 			and root
 			and not Config.isInLobby(root.Position)
 			and (player ~= caller or who == "me")
 		then
-			Combat.freeze(character, 10)
+			Combat.freeze(character, TUNING.FREEZE_SECONDS)
 			table.insert(names, player.DisplayName)
 		end
 	end
@@ -343,17 +356,25 @@ end
 local function horde(caller: Player, who: string?)
 	if who then
 		for _, player in resolveTargets(caller, who) do
-			local _, _, root = characterParts(player)
+			local _, _, root = Characters.living(player)
 			if root then
-				Creatures.horde(root.Position, 12)
+				Creatures.horde(root.Position, TUNING.HORDE_AROUND_PLAYER)
 			end
 		end
 	else
 		for index = 1, #Config.REGIONS do
-			Creatures.horde(Config.pointAt(Config.regionAngle(index) + math.rad(36), 300), 6)
+			Creatures.horde(
+				Config.pointAt(Config.regionAngle(index) + math.rad(36), 300),
+				TUNING.HORDE_PER_REGION
+			)
 		end
 	end
-	announce("👹 THE HORDE APPROACHES 👹", rgb(140, 255, 100), 3, "alarm")
+	announce(
+		"👹 THE HORDE APPROACHES 👹",
+		rgb(140, 255, 100),
+		3,
+		RemoteActions.AnnounceStyle.ALARM
+	)
 end
 
 local function setTime(night: boolean)
@@ -363,27 +384,48 @@ end
 
 -- Dispatch -----------------------------------------------------------------------------------
 
+-- One handler per AdminCommands id (tools/tests/admin_commands checks both ways). The test reads
+-- this table with Sandbox.loadIsolated: keep it free of top-level work on required values.
+type Handler = (caller: Player, first: string?, second: string?, third: string?) -> ()
+local HANDLERS: { [string]: Handler } = {
+	mayhem = function()
+		task.spawn(mayhem)
+	end,
+	give = function(caller, first, second, third)
+		give(caller, first, second, third)
+	end,
+	meteors = function(_, first)
+		meteors(AdminCommands.meteorSeconds(first))
+	end,
+	gravity = function()
+		gravity()
+	end,
+	freeze = function(caller, first)
+		freeze(caller, first)
+	end,
+	horde = function(caller, first)
+		horde(caller, first)
+	end,
+	day = function()
+		setTime(false)
+	end,
+	night = function()
+		setTime(true)
+	end,
+}
+-- Exposed for tools/tests/admin_commands only; nothing in the game calls them.
+Admin.HANDLERS = HANDLERS
+Admin.POWER_UP = POWER_UP
+Admin.gift = gift
+
 function Admin.run(caller: Player, command: string, first: string?, second: string?, third: string?)
 	if not Session.isAdmin(caller) then
 		return
 	end
 	command = string.lower(command)
-	if command == "mayhem" then
-		task.spawn(mayhem)
-	elseif command == "give" then
-		give(caller, first, second, third)
-	elseif command == "meteors" then
-		meteors(math.clamp(tonumber(first) or 30, 5, 120))
-	elseif command == "gravity" then
-		gravity()
-	elseif command == "freeze" then
-		freeze(caller, first)
-	elseif command == "horde" then
-		horde(caller, first)
-	elseif command == "day" then
-		setTime(false)
-	elseif command == "night" then
-		setTime(true)
+	local handler = HANDLERS[command]
+	if handler then
+		handler(caller, first, second, third)
 	end
 end
 
@@ -392,15 +434,17 @@ local function macCommand(caller: Player, action: any)
 	if not MacAccess.has(caller) then
 		return
 	end
-	if action == "sniper" then
+	if action == RemoteActions.MacCommand.SNIPER then
 		Weapons.give(caller, "sniper")
-	elseif action == "nuke" then
+	elseif action == RemoteActions.MacCommand.NUKE then
 		task.spawn(nuke, caller)
 	end
 end
 
 function Admin.start()
 	Remotes.MacCommand.OnServerEvent:Connect(macCommand)
+	-- The panel sends at most a target and an item, so the remote forwards two arguments: a third
+	-- (`/give <who> mac permanent`) works from chat only. Known gap, kept as is.
 	Remotes.AdminCommand.OnServerEvent:Connect(function(player, command, first, second)
 		if typeof(command) ~= "string" then
 			return
@@ -416,7 +460,7 @@ function Admin.start()
 	local commands = Instance.new("Folder")
 	commands.Name = "MayhemCommands"
 	commands.Parent = TextChatService
-	for _, name in { "mayhem", "give", "meteors", "gravity", "freeze", "horde", "day", "night" } do
+	for _, name in AdminCommands.CHAT do
 		local command = Instance.new("TextChatCommand")
 		command.Name = "Mayhem_" .. name
 		command.PrimaryAlias = "/" .. name
@@ -426,8 +470,7 @@ function Admin.start()
 			if not player then
 				return
 			end
-			local words = string.split(text, " ")
-			Admin.run(player, name, words[2], words[3], words[4])
+			Admin.run(player, name, AdminCommands.chatArguments(text))
 		end)
 	end
 end

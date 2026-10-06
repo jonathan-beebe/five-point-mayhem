@@ -1,3 +1,4 @@
+--!strict
 -- Walk cycle for every walker's bones: pure math, no services, so Lune can load it for tests and
 -- the preview renderer. The legs are decoration driven by the skid's measured velocity; nothing
 -- here touches physics. Stride lengths and heights are OG's (legs 19 studs long),
@@ -13,6 +14,8 @@
 --   +X  a hanging segment swings forward; a forward toe tips up; the torso top tips back
 --   +Y  the front turns left
 --   +Z  a hanging segment swings toward +X; the +X side rises
+
+local MathUtil = require(script.Parent.MathUtil)
 
 local MechGait = {}
 
@@ -169,8 +172,8 @@ end
 
 -- Builds the rig from rest pivots in vehicle space, keyed by bone name.
 function MechGait.rig(pivots: { [string]: Vector3 }): Rig
-	local legs = {}
-	for _, side in { "L", "R" } :: { Side } do
+	local legs: { Leg } = {}
+	for _, side: Side in { "L", "R" } :: { Side } do
 		local hip = assert(pivots["thigh_" .. side], "rig needs thigh_" .. side)
 		local knee = assert(pivots["shin_" .. side], "rig needs shin_" .. side)
 		local ankle = assert(pivots["foot_" .. side], "rig needs foot_" .. side)
@@ -245,7 +248,7 @@ function MechGait.step(state: State, input: Input, dt: number): { Footfall }
 	state.time = input.time
 	state.topSpeed = math.max(input.topSpeed, 1)
 	state.turnRate = math.max(input.turnRate, 0.01)
-	state.accel += ((v - state.forward) / dt - state.accel) * (1 - math.exp(-dt / ACCEL_TAU))
+	state.accel += ((v - state.forward) / dt - state.accel) * MathUtil.timeAlpha(ACCEL_TAU, dt)
 	state.forward = v
 	state.yawRate = omega
 
@@ -315,7 +318,7 @@ function MechGait.step(state: State, input: Input, dt: number): { Footfall }
 		end
 	end
 
-	state.weight += (math.clamp(g / FULL_GAIT, 0, 1) - state.weight) * (1 - math.exp(-dt / W_TAU))
+	state.weight += (math.clamp(g / FULL_GAIT, 0, 1) - state.weight) * MathUtil.timeAlpha(W_TAU, dt)
 
 	local idleTarget = if input.occupied then 1 else 0
 	state.idle = math.clamp(state.idle + math.sign(idleTarget - state.idle) * dt / IDLE_RAMP, 0, 1)
@@ -344,7 +347,7 @@ function MechGait.step(state: State, input: Input, dt: number): { Footfall }
 
 	if state.weight > 0.3 then
 		local strength = state.weight * (0.5 + 0.5 * math.min(g / state.topSpeed, 1))
-		for _, side in { "L", "R" } :: { Side } do
+		for _, side: Side in { "L", "R" } :: { Side } do
 			if strikes[side] then
 				table.insert(footfalls, { foot = side, strength = strength })
 			end

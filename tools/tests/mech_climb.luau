@@ -8,42 +8,19 @@
 --     what it should, refuses the rest, never sinks into the world, and does not stall in a loop
 --   - the walk cycle steps while the walker is lifted in place, and parks after
 
-local fs = require("@lune/fs")
-local luau = require("@lune/luau")
-local process = require("@lune/process")
-local roblox = require("@lune/roblox")
+local Check = require("../lib/Check")
+local Sandbox = require("../lib/Sandbox")
 
-local function load(file: string): any
-	local environment = { CFrame = roblox.CFrame, Vector3 = roblox.Vector3 }
-	return luau.load(fs.readFile(file), { debugName = file, environment = environment })()
-end
+local MechClimb = Sandbox.load("src/shared/MechClimb.luau")
+local MechGait = Sandbox.load("src/shared/MechGait.luau")
+local DEFAULTS = Sandbox.load("src/shared/VehicleDefaults.luau")
 
-local MechClimb = load("src/shared/MechClimb.luau")
-local MechGait = load("src/shared/MechGait.luau")
+local check = Check.check
 
-local failures = 0
-local checks = 0
-
-local function check(ok: boolean, message: string)
-	checks += 1
-	if not ok then
-		failures += 1
-		print("FAIL " .. message)
-	end
-end
-
--- Every walker's model file, loaded the way mech_gait.luau loads it.
+-- Every walker's model file.
 local walkers = {}
-for _, file in fs.readDir("src/server/vehicleModels") do
-	local path = "src/server/vehicleModels/" .. file
-	local environment = {
-		CFrame = roblox.CFrame,
-		Vector3 = roblox.Vector3,
-		Vector2 = roblox.Vector2,
-		Color3 = roblox.Color3,
-		Enum = roblox.Enum,
-	}
-	local spec = luau.load(fs.readFile(path), { debugName = path, environment = environment })()
+for _, model in Sandbox.loadVehicleModels() do
+	local spec = model.spec
 	if spec.gait == "mech" then
 		local pivots = {}
 		for _, bone in spec.bones do
@@ -54,9 +31,9 @@ for _, file in fs.readDir("src/server/vehicleModels") do
 			W = spec.footprint.X,
 			L = spec.footprint.Y,
 			speed = spec.speed,
-			acceleration = spec.acceleration or 55,
-			coasting = spec.coasting or 30,
-			turnRate = spec.turnRate or 0.7,
+			acceleration = spec.acceleration or DEFAULTS.acceleration,
+			coasting = spec.coasting or DEFAULTS.coasting,
+			turnRate = spec.turnRate or DEFAULTS.turnRate,
 			pivots = pivots,
 		})
 	end
@@ -526,7 +503,7 @@ local function staircase(): { Box }
 end
 
 for _, walker in walkers do
-	print(walker.name)
+	Check.section(walker.name)
 	-- (a) Back face: 7 studs free in front of the temple.
 	local back = simulate(walker, pyramid(BASE / 2 - 15), -10, 60, "back face")
 	check(back.top >= SUMMIT - 0.05, walker.name .. ": back face should reach the summit")
@@ -628,7 +605,4 @@ for _, walker in walkers do
 	check(parked ~= nil and parked <= 5, walker.name .. ": legs should park within 3 s of the lift")
 end
 
-print(string.format("%d checks, %d failures", checks, failures))
-if failures > 0 then
-	process.exit(1)
-end
+Check.finish()

@@ -1,3 +1,4 @@
+--!strict
 -- Every weapon in the lobby armory. The server builds tools from these entries and resolves
 -- each shot from the `kind` field; the client reads them to draw the selection screen.
 --

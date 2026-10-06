@@ -193,7 +193,8 @@ function Pyramid.build(parent: Instance, base: CFrame): Model
 	local footZ = -topSize / 2 - top
 	for step = 1, top do
 		local z = footZ + step - 0.5
-		-- Inside the base footprint the chamber ceiling carries the stairs, keeping the chamber open.
+		-- Inside the base footprint the chamber ceiling carries the stairs, keeping the chamber
+		-- open.
 		local bottom = if z > -half then TIER_HEIGHT else 0
 		Build.part(
 			model,

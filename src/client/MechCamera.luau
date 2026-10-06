@@ -1,13 +1,13 @@
 -- Camera for walkers: while the local player drives a vehicle whose driver seat has attribute
--- CockpitCamera (or one of its passenger seats), the view starts first person from the pilot's head, looking out the chest
--- window. V, gamepad Y, or the on-screen VIEW button (touch) switches to an outside view orbiting
--- the model's CameraFocus part and back. The STAND button (or jumping) gets out of the seat; the
--- driver then stands in the cab (a part tagged MechCab) and the view stays first person until
--- they leave it (the cab's Climb out prompt). Heel strikes shake the view a little (MechMotion
--- footfalls). The view turns with the vehicle. Leaving the vehicle or dying restores the camera.
--- In the first-person views, pieces marked HideInCockpit (a tinted canopy) are hidden, so the pilot
--- sees straight through them. While a flying pod (server PodFlight) is away, STAND is hidden and
--- the view turns with the pod.
+-- CockpitCamera (or one of its passenger seats), the view starts first person from the pilot's
+-- head, looking out the chest window. V, gamepad Y, or the on-screen VIEW button (touch) switches
+-- to an outside view orbiting the model's CameraFocus part and back. The STAND button (or jumping)
+-- gets out of the seat; the driver then stands in the cab (a part tagged MechCab) and the view
+-- stays first person until they leave it (the cab's Climb out prompt). Heel strikes shake the view
+-- a little (MechMotion footfalls). The view turns with the vehicle. Leaving the vehicle or dying
+-- restores the camera. In the first-person views, pieces marked HideInCockpit (a tinted canopy) are
+-- hidden, so the pilot sees straight through them. While a flying pod (server PodFlight) is away,
+-- STAND is hidden and the view turns with the pod.
 --
 -- The default camera builds each frame's CFrame from the previous frame's look direction, so
 -- anything written to the camera after it runs carries into the next frame. Before it runs, this
@@ -16,16 +16,24 @@
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
+local FootfallShake = require(ReplicatedStorage.Shared.FootfallShake)
+local HudLayout = require(ReplicatedStorage.Shared.HudLayout)
+local MathUtil = require(ReplicatedStorage.Shared.MathUtil)
+local Names = require(ReplicatedStorage.Shared.Names)
+local PodState = require(ReplicatedStorage.Shared.PodState)
 local MechMotion = require(script.Parent.MechMotion)
+local Hud = require(script.Parent.ui.Hud)
+local Theme = require(script.Parent.ui.Theme)
+local TouchButton = require(script.Parent.ui.TouchButton)
 
 local MechCamera = {}
 
 local player = Players.LocalPlayer
-local rgb = Color3.fromRGB
 
 local COCKPIT_ZOOM = 0.5 -- under the default camera's first-person threshold
 local OUTSIDE_MIN_ZOOM = 45
@@ -34,12 +42,7 @@ local OUTSIDE_START_ZOOM = 70
 local RENDER_STEP = "MechCameraShake"
 local TURN_STEP = "MechCameraTurn"
 
--- Heel-strike shake: a damped vertical sine.
-local SHAKE_LIFT = 0.12 -- studs at strength 1
-local SHAKE_PITCH = math.rad(0.35)
-local SHAKE_DECAY = 0.12 -- seconds
-local SHAKE_FREQUENCY = 9 -- Hz
-local SHAKE_LENGTH = 0.4 -- seconds
+-- Heel-strike shake: a damped vertical sine (FootfallShake.sum).
 local OUTSIDE_SHAKE = 0.5 -- amplitude scale in the outside view
 
 type Session = {
@@ -61,123 +64,82 @@ export type Layout = { size: number, gap: number, corner: UDim2, ignoreInset: bo
 MechCamera.layout = nil :: Layout?
 local layoutEvent = Instance.new("BindableEvent")
 MechCamera.layoutChanged = layoutEvent.Event
-local shakes: { { start: number, strength: number } } = {}
+local shakes: { FootfallShake.Shake } = {}
 local applied = CFrame.identity -- the shake added to the camera last frame
 
 -- Buttons ---------------------------------------------------------------------------------------
 
 local buttonGui = Instance.new("ScreenGui")
-buttonGui.Name = "MechButtons"
+buttonGui.Name = Names.Instances.MechButtons
 buttonGui.ResetOnSpawn = false
-buttonGui.DisplayOrder = 6
+buttonGui.DisplayOrder = Theme.DisplayOrder.touch
 buttonGui.Enabled = false
+Hud.addBottomControls(buttonGui)
 
 local function makeButton(name: string, text: string): TextButton
-	local button = Instance.new("TextButton")
-	button.Name = name
-	button.AnchorPoint = Vector2.new(1, 1)
-	button.BackgroundColor3 = rgb(20, 20, 28)
-	button.BackgroundTransparency = 0.25
-	button.TextColor3 = rgb(255, 255, 255)
-	button.Font = Enum.Font.GothamBold
-	button.TextScaled = true
-	button.Text = text
-	button.Parent = buttonGui
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.5, 0)
-	corner.Parent = button
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = rgb(255, 255, 255)
-	stroke.Thickness = 2
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	stroke.Parent = button
-	local padding = Instance.new("UIPadding")
-	padding.PaddingLeft = UDim.new(0.12, 0)
-	padding.PaddingRight = UDim.new(0.12, 0)
-	padding.PaddingTop = UDim.new(0.3, 0)
-	padding.PaddingBottom = UDim.new(0.3, 0)
-	padding.Parent = button
-	return button
+	return TouchButton.new({
+		name = name,
+		text = text,
+		parent = buttonGui,
+		anchor = Vector2.new(1, 1),
+		color = Theme.Colors.hud,
+		transparency = Theme.HUD_TRANSPARENCY,
+		strokeColor = Theme.Colors.white,
+		paddingX = 0.12,
+		paddingY = 0.3,
+	})
 end
 
 local viewButton = makeButton("View", "VIEW") -- touch only; V and gamepad Y everywhere
 local standButton = makeButton("Stand", "STAND") -- every platform; jumping does the same
 
-local function jumpButton(): GuiObject?
-	local playerGui = player:FindFirstChildOfClass("PlayerGui")
-	local touchGui = playerGui and playerGui:FindFirstChild("TouchGui")
-	local frame = touchGui and touchGui:FindFirstChild("TouchControlFrame")
-	local jump = frame and frame:FindFirstChild("JumpButton")
-	return if jump and jump:IsA("GuiObject") then jump else nil
-end
-
 -- VIEW sits directly left of the default jump button, bottoms aligned; STAND sits directly above
 -- VIEW. Measured at runtime in the jump button's coordinate space (the ScreenGui copies TouchGui's
 -- inset setting).
 local function layoutButton()
-	local jump = jumpButton()
-	local size, gap, corner
+	local jump = Hud.jumpButton()
+	local column
 	if jump then
-		local touchGui = jump:FindFirstAncestorOfClass("ScreenGui")
-		if touchGui then
-			buttonGui.IgnoreGuiInset = touchGui.IgnoreGuiInset
-		end
-		size = math.floor(math.min(jump.AbsoluteSize.X, jump.AbsoluteSize.Y) * 0.8)
-		gap = math.floor(jump.AbsoluteSize.X * 0.15)
-		corner = UDim2.fromOffset(
-			jump.AbsolutePosition.X - gap,
-			jump.AbsolutePosition.Y + jump.AbsoluteSize.Y
-		)
+		Hud.matchInset(buttonGui, jump)
+		column = HudLayout.mechColumn(jump.AbsolutePosition, jump.AbsoluteSize)
 	else
-		local viewport = Workspace.CurrentCamera.ViewportSize
-		size = math.floor(math.min(viewport.X, viewport.Y) * 0.14)
-		gap = math.floor(size * 0.2)
-		corner = UDim2.fromScale(0.8, 0.95)
+		column = HudLayout.mechColumnFallback(Workspace.CurrentCamera.ViewportSize)
 	end
+	local size, gap, corner = column.size, column.gap, column.corner
 	viewButton.Size = UDim2.fromOffset(size, size)
 	viewButton.Position = corner
 	standButton.Size = UDim2.fromOffset(size, size)
-	standButton.Position = corner - UDim2.fromOffset(0, size + gap)
+	standButton.Position = HudLayout.standPosition(column)
 	MechCamera.layout =
 		{ size = size, gap = gap, corner = corner, ignoreInset = buttonGui.IgnoreGuiInset }
 	layoutEvent:Fire()
 end
 
-local watchedJump: GuiObject? = nil
-local function watchJumpButton()
-	local jump = jumpButton()
-	if jump and jump ~= watchedJump then
-		watchedJump = jump
-		jump:GetPropertyChangedSignal("AbsolutePosition"):Connect(layoutButton)
-		jump:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutButton)
-	end
-	layoutButton()
-end
+local watchJumpButton = Hud.jumpWatcher(layoutButton)
 
 -- Views ----------------------------------------------------------------------------------------
 
 -- Whether the model's flying pod is away from its legs.
 local function airborne(model: Model): boolean
-	return (model:GetAttribute("PodState") or "docked") ~= "docked"
+	return PodState.of(model:GetAttribute(Names.Attributes.PodState)) ~= PodState.DOCKED
 end
 
 -- Whether the model's flying pod locks its seats (in the air; a landed pod lets riders out).
 local function seatsLocked(model: Model): boolean
-	local state = model:GetAttribute("PodState")
-	return state == "flying" or state == "returning"
+	return PodState.inFlight(PodState.of(model:GetAttribute(Names.Attributes.PodState)))
 end
 
 -- Pieces the pilot looks through from inside (Vehicles sets HideInCockpit); local to this client.
 local function hideCockpitPieces(model: Model, hidden: boolean)
 	for _, part in model:GetDescendants() do
-		if part:IsA("BasePart") and part:GetAttribute("HideInCockpit") then
+		if part:IsA("BasePart") and part:GetAttribute(Names.Attributes.HideInCockpit) then
 			part.LocalTransparencyModifier = if hidden then 1 else 0
 		end
 	end
 end
 
 local function focusPart(current: Session): BasePart?
-	local focus = current.model:FindFirstChild("CameraFocus")
+	local focus = current.model:FindFirstChild(Names.Instances.CameraFocus)
 	return if focus and focus:IsA("BasePart") then focus else nil
 end
 
@@ -220,15 +182,16 @@ end
 local function heading(current: Session): number?
 	local root = current.model.PrimaryPart
 	if airborne(current.model) then
-		local pod =
-			current.model:FindFirstChild("Bone_" .. tostring(current.model:GetAttribute("PodBone")))
+		local pod = current.model:FindFirstChild(
+			Names.Instances.BonePrefix
+				.. tostring(current.model:GetAttribute(Names.Attributes.PodBone))
+		)
 		root = if pod and pod:IsA("BasePart") then pod else root
 	end
 	if not root then
 		return nil
 	end
-	local look = root.CFrame.LookVector
-	return math.atan2(-look.X, -look.Z)
+	return MathUtil.yawOf(root.CFrame.LookVector)
 end
 
 -- Before the default camera: undo last frame's shake, then turn the view with the vehicle.
@@ -242,7 +205,7 @@ local function turn()
 	applied = CFrame.identity
 	local yaw = heading(current)
 	if yaw and current.yaw then
-		local delta = (yaw - current.yaw + math.pi) % (2 * math.pi) - math.pi
+		local delta = MathUtil.wrapAngle(yaw - current.yaw)
 		camera.CFrame = CFrame.new(camera.CFrame.Position)
 			* CFrame.Angles(0, delta, 0)
 			* camera.CFrame.Rotation
@@ -255,21 +218,7 @@ local function shake()
 	if not current or #shakes == 0 then
 		return
 	end
-	local now = os.clock()
-	local lift, pitch = 0, 0
-	for index = #shakes, 1, -1 do
-		local each = shakes[index]
-		local t = now - each.start
-		if t > SHAKE_LENGTH then
-			table.remove(shakes, index)
-		else
-			local wave = each.strength
-				* math.exp(-t / SHAKE_DECAY)
-				* math.sin(2 * math.pi * SHAKE_FREQUENCY * t)
-			lift += SHAKE_LIFT * wave
-			pitch += SHAKE_PITCH * wave
-		end
-	end
+	local lift, pitch = FootfallShake.sum(shakes, os.clock())
 	local scale = if current.outside then OUTSIDE_SHAKE else 1
 	applied = CFrame.new(0, -lift * scale, 0) * CFrame.Angles(-pitch * scale, 0, 0)
 	Workspace.CurrentCamera.CFrame *= applied
@@ -339,7 +288,7 @@ local function enter(humanoid: Humanoid, model: Model, seat: BasePart?)
 	)
 	table.insert(
 		current.connections,
-		model:GetAttributeChangedSignal("PodState"):Connect(function()
+		model:GetAttributeChangedSignal(Names.Attributes.PodState):Connect(function()
 			if session == current then
 				current.yaw = nil -- the heading source changes
 				showButtons(current)
@@ -354,15 +303,9 @@ end
 
 -- The walker whose cab holds this point, if any.
 local function cabAt(position: Vector3): Model?
-	for _, cab in CollectionService:GetTagged("MechCab") do
+	for _, cab in CollectionService:GetTagged(Names.Tags.MechCab) do
 		if cab:IsA("BasePart") and cab.Parent and cab.Parent:IsA("Model") then
-			local offset = cab.CFrame:PointToObjectSpace(position)
-			local half = cab.Size / 2
-			if
-				math.abs(offset.X) <= half.X
-				and math.abs(offset.Y) <= half.Y
-				and math.abs(offset.Z) <= half.Z
-			then
+			if MathUtil.insideBox(cab.CFrame, cab.Size, position) then
 				return cab.Parent
 			end
 		end
@@ -374,11 +317,11 @@ end
 -- seat in one (not a pod walker's legs seat, which rides outside).
 local function inCockpit(seat: BasePart): boolean
 	local model = seat.Parent
-	local driver = model and model:FindFirstChild("DriverSeat")
+	local driver = model and model:FindFirstChild(Names.Instances.DriverSeat)
 	return driver ~= nil
-		and driver:GetAttribute("CockpitCamera") == true
+		and driver:GetAttribute(Names.Attributes.CockpitCamera) == true
 		and (seat:IsA("Seat") or seat == driver)
-		and not seat:GetAttribute("LegsSeat")
+		and not seat:GetAttribute(Names.Attributes.LegsSeat)
 end
 
 -- Called on every seat change and every frame: seated in a cockpit, or standing in a cab, keeps
@@ -430,7 +373,7 @@ end
 local function watchCab()
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if humanoid and (session or #CollectionService:GetTagged("MechCab") > 0) then
+	if humanoid and (session or #CollectionService:GetTagged(Names.Tags.MechCab) > 0) then
 		update(humanoid)
 	end
 end

@@ -1,36 +1,29 @@
+--!nolint DeprecatedApi
+-- TODO: GetRankInGroup is deprecated; moving to GetRankInGroupAsync changes behaviour, so it waits.
 -- Player lifecycle: teams, leaderstats, admin flag, collision groups, and deploying from the
 -- lobby with a loadout of up to three weapons. Every respawn returns the player to the lobby.
 
 local Players = game:GetService("Players")
-local PhysicsService = game:GetService("PhysicsService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Teams = game:GetService("Teams")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Names = require(ReplicatedStorage.Shared.Names)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 local Weapons = require(script.Parent.Weapons)
+local Characters = require(script.Parent.util.Characters)
 
 local Session = {}
 
--- Collision groups: lobby gates stop undeployed players (and creatures) but let deployed ones out.
--- Once a deployed non-admin has left the lobby they are LockedOut: the gates stop them again, so
--- only admins can walk back in.
-function Session.registerCollisionGroups()
-	for _, group in { "LobbyPlayers", "DeployedPlayers", "LockedOutPlayers", "LobbyGate" } do
-		if not PhysicsService:IsCollisionGroupRegistered(group) then
-			PhysicsService:RegisterCollisionGroup(group)
-		end
-	end
-	PhysicsService:CollisionGroupSetCollidable("LobbyGate", "DeployedPlayers", false)
-end
-
 local function groupFor(player: Player): string
-	if not player:GetAttribute("Deployed") then
-		return "LobbyPlayers"
+	if not player:GetAttribute(Names.Attributes.Deployed) then
+		return Names.CollisionGroups.LobbyPlayers
 	end
-	return if player:GetAttribute("LockedOut") then "LockedOutPlayers" else "DeployedPlayers"
+	return if player:GetAttribute("LockedOut")
+		then Names.CollisionGroups.LockedOutPlayers
+		else Names.CollisionGroups.DeployedPlayers
 end
 
 local function setCollisionGroup(character: Model, group: string)
@@ -69,7 +62,7 @@ end
 
 local function leaderstats(player: Player)
 	local stats = Instance.new("Folder")
-	stats.Name = "leaderstats"
+	stats.Name = Names.Instances.Leaderstats
 	for _, name in { "KOs", "Monsters" } do
 		local value = Instance.new("IntValue")
 		value.Name = name
@@ -79,25 +72,25 @@ local function leaderstats(player: Player)
 end
 
 local function onCharacter(player: Player, character: Model)
-	player:SetAttribute("Deployed", false)
+	player:SetAttribute(Names.Attributes.Deployed, false)
 	player:SetAttribute("LockedOut", false)
-	setCollisionGroup(character, "LobbyPlayers")
+	setCollisionGroup(character, Names.CollisionGroups.LobbyPlayers)
 	character.DescendantAdded:Connect(function(descendant)
 		if descendant:IsA("BasePart") then
 			descendant.CollisionGroup = groupFor(player)
 		end
 	end)
 	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
-	humanoid:SetAttribute("BaseWalkSpeed", humanoid.WalkSpeed)
+	humanoid:SetAttribute(Names.Attributes.BaseWalkSpeed, humanoid.WalkSpeed)
 	humanoid.Died:Connect(function()
-		player:SetAttribute("Deployed", false)
+		player:SetAttribute(Names.Attributes.Deployed, false)
 	end)
 end
 
 local function onPlayer(player: Player)
 	player.Neutral = false
 	player.Team = Teams:FindFirstChild(Config.FFA_TEAM) :: Team
-	player:SetAttribute("IsAdmin", Session.isAdmin(player))
+	player:SetAttribute(Names.Attributes.IsAdmin, Session.isAdmin(player))
 	leaderstats(player)
 	player.CharacterAdded:Connect(function(character)
 		onCharacter(player, character)
@@ -109,10 +102,10 @@ end
 
 -- The loadout is an array of 0 to LOADOUT_SIZE distinct weapon ids. Anything else is refused.
 local function deploy(player: Player, ids: any)
-	if typeof(ids) ~= "table" or player:GetAttribute("Deployed") then
+	if typeof(ids) ~= "table" or player:GetAttribute(Names.Attributes.Deployed) then
 		return
 	end
-	local isAdmin = player:GetAttribute("IsAdmin") == true
+	local isAdmin = player:GetAttribute(Names.Attributes.IsAdmin) == true
 	local seen = {}
 	local count = 0
 	for key, id in ids do
@@ -129,9 +122,7 @@ local function deploy(player: Player, ids: any)
 		end
 		seen[id] = true
 	end
-	local character = player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local character, humanoid, root = Characters.parts(player)
 	if
 		not character
 		or not humanoid
@@ -149,13 +140,13 @@ local function deploy(player: Player, ids: any)
 	for _, id in ids do
 		Weapons.give(player, id)
 	end
-	player:SetAttribute("Deployed", true)
+	player:SetAttribute(Names.Attributes.Deployed, true)
 	player:SetAttribute("Loadout", table.concat(ids, ","))
-	setCollisionGroup(character, "DeployedPlayers")
+	setCollisionGroup(character, Names.CollisionGroups.DeployedPlayers)
 end
 
 local function chooseTeam(player: Player, teamName: any)
-	if typeof(teamName) ~= "string" or player:GetAttribute("Deployed") then
+	if typeof(teamName) ~= "string" or player:GetAttribute(Names.Attributes.Deployed) then
 		return
 	end
 	for _, spec in Config.TEAMS do
@@ -172,16 +163,14 @@ local LOCKOUT_CHECK_INTERVAL = 0.25
 
 local function enforceLockout()
 	for _, player in Players:GetPlayers() do
-		local character = player.Character
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		local character, humanoid, root = Characters.parts(player)
 		if
 			not character
 			or not humanoid
 			or not root
 			or humanoid.Health <= 0
-			or not player:GetAttribute("Deployed")
-			or player:GetAttribute("IsAdmin")
+			or not player:GetAttribute(Names.Attributes.Deployed)
+			or player:GetAttribute(Names.Attributes.IsAdmin)
 		then
 			continue
 		end
@@ -190,7 +179,7 @@ local function enforceLockout()
 		if not player:GetAttribute("LockedOut") then
 			if flat.Magnitude > Config.LOBBY_RADIUS + 4 then
 				player:SetAttribute("LockedOut", true)
-				setCollisionGroup(character, "LockedOutPlayers")
+				setCollisionGroup(character, Names.CollisionGroups.LockedOutPlayers)
 			end
 		elseif Config.isInLobby(position) then
 			if humanoid.SeatPart then

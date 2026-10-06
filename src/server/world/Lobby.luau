@@ -6,6 +6,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local MathUtil = require(ReplicatedStorage.Shared.MathUtil)
+local Names = require(ReplicatedStorage.Shared.Names)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 local Build = require(script.Parent.Build)
 
@@ -21,12 +23,12 @@ local GATE_WIDTH = 16
 local PANELS = 72
 
 local function angleGap(a: number, b: number): number
-	return math.abs((a - b + math.pi) % (2 * math.pi) - math.pi)
+	return math.abs(MathUtil.wrapAngle(a - b))
 end
 
 function Lobby.build(parent: Instance, displayModel: (weaponId: string) -> Model?)
 	local model = Build.model("Lobby", parent)
-	CollectionService:AddTag(model, "NoClimb") -- walkers climb no part of it (Vehicles)
+	CollectionService:AddTag(model, Names.Tags.NoClimb) -- walkers climb no part of it (Vehicles)
 	local R = Config.LOBBY_RADIUS
 	local H = Config.LOBBY_WALL_HEIGHT
 	local floorTop = 1
@@ -111,7 +113,7 @@ function Lobby.build(parent: Instance, displayModel: (weaponId: string) -> Model
 				name = "Gate",
 			}
 		)
-		gate.CollisionGroup = "LobbyGate"
+		gate.CollisionGroup = Names.CollisionGroups.LobbyGate
 		for _, side in { -1, 1 } do
 			Build.part(
 				model,

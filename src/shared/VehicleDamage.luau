@@ -1,6 +1,8 @@
+--!strict
 -- Crash damage for vehicles (pure: no requires, so `tools/tests/vehicle_damage.luau` loads it
--- under lune). Vehicles samples each driven vehicle's velocity every frame into a tracker; a sharp
--- loss of speed (`step`) is a crash, and `damage` turns its size into health lost.
+-- under lune; the crash feedback helpers are pinned in `tools/tests/vehicle_logic.luau`).
+-- Vehicles samples each driven vehicle's velocity every frame into a tracker; a sharp loss of speed
+-- (`step`) is a crash, and `damage` turns its size into health lost.
 --
 -- Size is `bulk`: the vehicle's solid volume over BASE_VOLUME (a jeep is about 1). Bigger vehicles
 -- have more health, and a lower threshold: they cannot shed a crash as a light car does, and a
@@ -55,6 +57,12 @@ local WRECK_RADIUS_BASE = 6
 local WRECK_RADIUS_PER_ROOT_BULK = 4
 local WRECK_RADIUS_MIN = 10
 local WRECK_RADIUS_MAX = 34
+-- Feedback (Vehicles): a crash costing HEAVY_CRASH of MaxHealth or more sounds heavy; at
+-- SMOKE_SHARE of MaxHealth or less the vehicle smokes, at FIRE_SHARE it burns.
+local HEAVY_CRASH = 0.25
+local SMOKE_SHARE = 0.5
+local FIRE_SHARE = 0.25
+local CRASH_HEADING_MIN = 0.1 -- studs/s; slower than this before the crash, the crash is under it
 
 -- Bulk of a W x L x H vehicle; `override` (VehicleCatalog `bulk`) wins.
 function VehicleDamage.bulk(w: number, l: number, h: number, override: number?): number
@@ -133,6 +141,39 @@ function VehicleDamage.wreckRadius(bulk: number): number
 		WRECK_RADIUS_MIN,
 		WRECK_RADIUS_MAX
 	)
+end
+
+-- Whether a crash costing `amount` sounds heavy.
+function VehicleDamage.isHeavy(amount: number, maxHealth: number): boolean
+	return amount >= HEAVY_CRASH * maxHealth
+end
+
+-- Whether a vehicle at `share` of its MaxHealth smokes, and whether it burns.
+function VehicleDamage.smokes(share: number): boolean
+	return share <= SMOKE_SHARE
+end
+
+function VehicleDamage.burns(share: number): boolean
+	return share <= FIRE_SHARE
+end
+
+-- Where a crash's sparks fly from the part at `position`: head-on (more horizontal loss than
+-- vertical), at the front of a vehicle `length` long, the way it was going before the crash
+-- (`startX`, `startZ`: the tracker's); a landing, under it.
+function VehicleDamage.crashPoint(
+	position: Vector3,
+	startX: number,
+	startZ: number,
+	lossH: number,
+	lossV: number,
+	length: number
+): Vector3
+	local at = position
+	local before = Vector3.new(startX, 0, startZ)
+	if lossH >= lossV and before.Magnitude > CRASH_HEADING_MIN then
+		at += before.Unit * length / 2
+	end
+	return at
 end
 
 -- Crash detection ------------------------------------------------------------------------------

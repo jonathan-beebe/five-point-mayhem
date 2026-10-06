@@ -4,91 +4,28 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local AdminCommands = require(ReplicatedStorage.Shared.AdminCommands)
+local Names = require(ReplicatedStorage.Shared.Names)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 local MacPanel = require(script.Parent.MacPanel)
+local Create = require(script.Parent.ui.Create)
+local RightColumn = require(script.Parent.ui.RightColumn)
+local Theme = require(script.Parent.ui.Theme)
 
 local AdminPanel = {}
 
 local player = Players.LocalPlayer
 local rgb = Color3.fromRGB
+local create = Create.create
 
-local GIFTS = {
-	{ id = "arsenal", label = "🧰 EVERY WEAPON" },
-	{ id = "sniper", label = "🎯 Sniper Rifle" },
-	{ id = "heal", label = "❤ Full heal" },
-	{ id = "shield", label = "🛡 Shield (30s)" },
-	{ id = "speed", label = "👟 Super speed" },
-	{ id = "jump", label = "🦘 Mega jump" },
-	{ id = "giant", label = "🗿 Giant" },
-	{ id = "car", label = "🚙 Random vehicle" },
-}
-
-local POWERS = {
-	{
-		command = "mayhem",
-		label = "☢ MAYHEM",
-		color = rgb(200, 20, 30),
-		hint = "Destroy everyone outside the lobby",
-	},
-	{
-		command = "meteors",
-		label = "☄ METEORS",
-		color = rgb(220, 110, 30),
-		hint = "30 second meteor storm",
-	},
-	{
-		command = "gravity",
-		label = "🌙 GRAVITY",
-		color = rgb(70, 90, 180),
-		hint = "Toggle moon gravity",
-	},
-	{
-		command = "freeze",
-		label = "❄ FREEZE",
-		color = rgb(60, 160, 210),
-		hint = "Freeze the target",
-		targeted = true,
-	},
-	{
-		command = "day",
-		label = "☀ DAY",
-		color = rgb(220, 170, 40),
-		hint = "Jump to morning",
-	},
-	{
-		command = "night",
-		label = "🌑 NIGHT",
-		color = rgb(50, 40, 90),
-		hint = "Jump to nightfall",
-	},
-	{
-		command = "horde",
-		label = "👹 HORDE",
-		color = rgb(60, 140, 50),
-		hint = "Summon monsters",
-		targeted = true,
-	},
-}
-
-local function create(
-	className: string,
-	properties: { [string]: any },
-	children: { Instance }?
-): any
-	local instance = Instance.new(className)
-	for key, value in properties do
-		(instance :: any)[key] = value
-	end
-	for _, child in children or {} do
-		child.Parent = instance
-	end
-	return instance
-end
+-- The gift menu and the power buttons: src/shared/AdminCommands.luau.
+local GIFTS = AdminCommands.GIFTS
+local POWERS = AdminCommands.POWERS
 
 local function corner(): UICorner
-	return create("UICorner", { CornerRadius = UDim.new(0, 8) })
+	return Create.corner(Theme.Radius.panel)
 end
 
 local built = false
@@ -103,40 +40,27 @@ local function build()
 	local gui = create("ScreenGui", {
 		Name = "MayhemAdmin",
 		ResetOnSpawn = false,
-		DisplayOrder = 15,
+		DisplayOrder = Theme.DisplayOrder.panels,
 		Parent = player:WaitForChild("PlayerGui"),
 	})
-	local toggle = create("TextButton", {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -12, 0, MacPanel.TOGGLE_TOP),
-		Size = UDim2.fromOffset(130, MacPanel.TOGGLE_HEIGHT),
+	local toggle = RightColumn.makeToggle(gui, 0, {
 		BackgroundColor3 = rgb(255, 200, 40),
 		Text = "👑 GOD MODE",
 		TextColor3 = rgb(40, 20, 0),
-		TextSize = 16,
-		Font = Enum.Font.LuckiestGuy,
-		Parent = gui,
-	}, { corner() })
+	})
 
 	-- The whole panel scrolls as one, and is never taller than the space below the toggles, so on
 	-- a short (phone) screen every part of it stays reachable.
-	local panel = create("ScrollingFrame", {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -12, 0, MacPanel.PANEL_TOP),
-		Size = UDim2.new(0, 300, 1, -(MacPanel.PANEL_TOP + 12)),
+	local width = RightColumn.PANEL_WIDTH
+	local panel = RightColumn.makePanel("ScrollingFrame", gui, rgb(255, 200, 40), {
+		Size = UDim2.new(0, width, 1, -(RightColumn.PANEL_TOP + RightColumn.MARGIN)),
 		BackgroundColor3 = rgb(20, 16, 10),
-		BackgroundTransparency = 0.1,
 		BorderSizePixel = 0,
 		ScrollBarThickness = 6,
 		CanvasSize = UDim2.new(),
-		Visible = false,
-		Parent = gui,
 	}, {
-		corner(),
-		create("UIStroke", { Color = rgb(255, 200, 40), Thickness = 2 }),
-		create("UISizeConstraint", { MaxSize = Vector2.new(300, 470) }),
+		create("UISizeConstraint", { MaxSize = Vector2.new(width, 470) }),
 	})
-	table.insert(MacPanel.panels, panel)
 
 	local targetButton = create("TextButton", {
 		Position = UDim2.fromOffset(10, 10),
@@ -144,7 +68,7 @@ local function build()
 		BackgroundColor3 = rgb(60, 50, 30),
 		TextColor3 = rgb(255, 230, 150),
 		TextSize = 15,
-		Font = Enum.Font.GothamBold,
+		Font = Theme.Fonts.bold,
 		Parent = panel,
 	}, { corner() })
 
@@ -181,7 +105,7 @@ local function build()
 			Text = power.label,
 			TextColor3 = rgb(255, 255, 255),
 			TextSize = 16,
-			Font = Enum.Font.LuckiestGuy,
+			Font = Theme.Fonts.title,
 			Parent = panel,
 		}, { corner() })
 		button.Activated:Connect(function()
@@ -199,7 +123,7 @@ local function build()
 		BackgroundTransparency = 1,
 		TextColor3 = rgb(255, 210, 60),
 		TextSize = 16,
-		Font = Enum.Font.LuckiestGuy,
+		Font = Theme.Fonts.title,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = panel,
 	})
@@ -249,7 +173,7 @@ local function build()
 			Text = label,
 			TextColor3 = rgb(255, 255, 255),
 			TextSize = 14,
-			Font = Enum.Font.GothamBold,
+			Font = Theme.Fonts.bold,
 			Parent = menu,
 		}, { corner() })
 	end
@@ -319,17 +243,17 @@ local function build()
 			MacPanel.close()
 		end
 	end)
-	MacPanel.opened:Connect(function()
+	RightColumn.opened:Connect(function()
 		panel.Visible = false
 	end)
 end
 
 function AdminPanel.start()
-	if player:GetAttribute("IsAdmin") then
+	if player:GetAttribute(Names.Attributes.IsAdmin) then
 		build()
 	end
-	player:GetAttributeChangedSignal("IsAdmin"):Connect(function()
-		if player:GetAttribute("IsAdmin") then
+	player:GetAttributeChangedSignal(Names.Attributes.IsAdmin):Connect(function()
+		if player:GetAttribute(Names.Attributes.IsAdmin) then
 			build()
 		end
 	end)
