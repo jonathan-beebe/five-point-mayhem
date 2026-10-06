@@ -6,6 +6,7 @@ export type Vehicle = {
 	name: string,
 	icon: string,
 	mech: boolean?, -- a walker (its model has a gait); the admin panel lists these under MECHS
+	bulk: number?, -- crash toughness (VehicleDamage); default from the model's size
 }
 
 local VEHICLES: { Vehicle } = {

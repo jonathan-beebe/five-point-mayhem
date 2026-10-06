@@ -989,6 +989,12 @@ local MECHS: { [string]: MechSounds } = {
 -- Combat.explode without a weapon cue (barrels, admin meteors): EXPL_MED, louder for bigger blasts.
 local EXPLOSION = { key = "EXPL_MED", base = 0.35, perRadius = 0.01, max = 0.6, jitter = J.boom }
 
+-- A vehicle crash (server Vehicles): `heavy` when it takes a quarter of the vehicle's health.
+local CRASH = {
+	light = HEAVY({ key = "HIT_CLANG", volume = 0.45 }),
+	heavy = HEAVY({ key = "ROCK_SLAM", volume = 0.7 }),
+}
+
 -- Multiplies every sound Combat.explode plays. Roblox's Explosion instance plays its own boom,
 -- which no property turns off, so ours sits on top of it at half volume. Set to 1 if the
 -- built-in boom turns out to be silent.
@@ -1067,6 +1073,8 @@ for id, entry in VEHICLES do
 		check(entry.start, id .. ".start")
 	end
 end
+check(CRASH.light, "crash.light")
+check(CRASH.heavy, "crash.heavy")
 for _, event in { "whistle", "rush", "blast" } do
 	check((NUKE :: any)[event], "nuke." .. event)
 end
@@ -1097,4 +1105,5 @@ return {
 	EXPLOSION = EXPLOSION,
 	EXPLOSION_GAIN = EXPLOSION_GAIN,
 	NUKE = NUKE,
+	CRASH = CRASH,
 }

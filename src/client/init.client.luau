@@ -11,6 +11,7 @@ local MechMotion = require(script.MechMotion)
 local MechCamera = require(script.MechCamera)
 local PodControls = require(script.PodControls)
 local VehicleSounds = require(script.VehicleSounds)
+local VehicleHealth = require(script.VehicleHealth)
 local NukeStrike = require(script.NukeStrike)
 local SoundProbe = require(script.SoundProbe) -- TEMPORARY
 
@@ -28,6 +29,7 @@ for _, feature in
 		MechCamera,
 		PodControls,
 		VehicleSounds,
+		VehicleHealth,
 		NukeStrike,
 	}
 do

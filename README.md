@@ -23,7 +23,7 @@ lune run tools/tests/day_night.luau   # day/night clock math, no Studio needed
 | `tools/audition.luau` | Plays every weapon and vehicle sound; paste into the Studio Command Bar during Play |
 | `src/server/world` | Lobby, roads, terrain/scenery, the five landmarks |
 | `src/server/systems` | Combat, weapons, players/teams, creatures, vehicles, admin powers |
-| `src/client` | Armory UI, weapon input, car input, mech animation and camera, admin panel, announcer |
+| `src/client` | Armory UI, weapon input, car input, vehicle health bar, mech animation and camera, admin panel, announcer |
 
 ## God mode
 
@@ -158,8 +158,8 @@ Both `<who>` and `<item>` are required. Examples: `/give all rocket`, `/give me 
 | `speed` | Walk speed 40 (normal is 16) | Until death |
 | `jump` | Jump power 120 (normal is 50) | Until death |
 | `giant` | 2.5× size | Until death |
-| `car` | A random vehicle appears in front of the player | Until it is wrecked or abandoned |
-| any vehicle id | That vehicle appears in front of the player | Until it is wrecked or abandoned |
+| `car` | A random vehicle appears in front of the player | Until it is wrecked |
+| any vehicle id | That vehicle appears in front of the player | Until it is wrecked |
 | any weapon | That weapon into the backpack | Until death |
 
 - A weapon matches by its id or by the start of its name: `rocket` gives the Rocket Launcher.
@@ -216,6 +216,46 @@ with `/give`, e.g. `/give me abrams`.
 
 Vehicles climb ledges up to 1.6 studs (roads, landmark plazas and courtyards, Sakura Hall's
 steps). Walls, the lobby gates, and taller ledges stop them.
+
+### Crashes
+
+A vehicle that stops hard takes damage: driving into a wall, landing a jump, being rammed. Its
+size sets how much. Size is bulk: footprint × the height of its solid parts, over 560 cubic studs
+(the Jeep is 1; `bulk` in `src/shared/VehicleCatalog.luau` overrides it).
+
+- **Health**: 100 × bulk^0.25. Go-Kart 68, Jeep 100, School Bus 174, OG 225, Rustbucket 263.
+- **Free bumps**: a crash costs nothing until the speed lost passes 40 × bulk^-0.3 studs/s (Jeep
+  40, School Bus 21, OG 15). A landing is free up to 1.25 times that, at least 30 studs/s, so
+  every vehicle drops 2 studs unhurt.
+- **Walkers land on their legs**: a walker's landing is free up to 80 studs/s. A one-tier drop
+  (12 studs, ~69 studs/s, or the deepest ledge a climbing walker steps off, 14.4 studs, ~75
+  studs/s) costs nothing; a 24-stud drop (~97 studs/s) hurts.
+- **Damage**: 0.3 × bulk^0.5 × (speed lost past the free amount)^1.3. A Jeep into a wall at 90
+  takes 49 of 100; a Bugatti head-on at 145 is wrecked; a School Bus at 70 takes 145 of 174; an
+  OG walking into a wall at 18 takes 6. Aurora's flying pod counts as bulk 6.9 but shares
+  Aurora's 215 health: into a tower at full speed (100) it takes 226 and wrecks her.
+- **Rams**: a rammed vehicle takes damage as a crash at the rammer's closing speed (its speed
+  toward the struck vehicle, less the struck one's) × 1.1 × their mass ratio (0.15 to 3) × the
+  rammer's ram, up to 140. A Jeep into a parked Taxi at 30 does nothing, at 60 takes 14 of 122,
+  at 90 takes 48; head-on, both speeds add. A walker's legs come down 1.5 times as hard: OG
+  walking into a Jeep at 18 takes 47 of its 100, Aurora at full stride (30) wrecks it. A walker
+  creeping under 2 studs/s or turning in place does no damage.
+- A crash worth less than 1 health is nothing: no sound, no sparks.
+- Each crash clangs and throws sparks. At half health the vehicle smokes; at a quarter it burns.
+  Nothing repairs it.
+- **Wrecked** at no health: it brakes to a stop, explodes where it crashed (the flying pod or
+  the vehicle's body; 35 damage, wider for bigger vehicles), throws everyone aboard out (anyone
+  standing in a walker's cab lands at its exit), chars black, and disappears 10 seconds later. A parked vehicle comes back at its spot with full health on the next
+  10-second respawn check; a `/give` vehicle is gone.
+- **Health bar**: whoever sits in a vehicle (any seat, Aurora's legs saddle too) sees its name and
+  health in a bar at the bottom of the screen. It flashes white on each hit.
+- Crashes into walls and the ground count only for vehicles the server simulates: driven ones
+  (the server keeps them after the driver gets out), shoved ones, and flying pods. One a
+  player's client simulates (carrying only passengers, or never driven and near a player) takes
+  no crash damage of its own, but rams damage every vehicle.
+- Tuning lives at the top of `src/shared/VehicleDamage.luau` (formulas, crash detection) and in the
+  crash damage section of `src/server/systems/Vehicles.luau` (wreck, smoke and fire);
+  `lune run tools/tests/vehicle_damage.luau` checks it.
 
 ### OG
 

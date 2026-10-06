@@ -18,8 +18,9 @@
 -- whoever walks up, the pilot's seat first. It stays landed until the pilot presses LAUNCH, so
 -- the others can board too.
 --
--- The model's PodState attribute ("docked", "flying", "returning", "landed") tells clients what is
--- going on, PodCanLand whether the pod is low enough to land; PodBone names the bone that flies.
+-- The model's PodState attribute ("docked", "flying", "returning", "landed", "wrecked") tells
+-- clients what is going on, PodCanLand whether the pod is low enough to land; PodBone names the
+-- bone that flies. A wrecked pod (Vehicles) is dead: no controls, no autopilot, no seat locks.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -55,7 +56,7 @@ local DOCK_DISTANCE = 0.3 -- studs from the dock that count as docked
 local DOCK_ANGLE = math.rad(2)
 local HOME_TIMEOUT = 60 -- seconds; past this the pod snaps onto the dock
 
-export type State = "docked" | "flying" | "returning" | "landed"
+export type State = "docked" | "flying" | "returning" | "landed" | "wrecked"
 
 export type Pod = {
 	model: Model,
@@ -141,7 +142,7 @@ local function setState(pod: Pod, state: State)
 	pod.prompt.ActionText = if state == "docked" or state == "landed"
 		then "Launch"
 		else "Return home"
-	pod.prompt.Enabled = state ~= "returning"
+	pod.prompt.Enabled = state ~= "returning" and state ~= "wrecked"
 	pod.board.Enabled = state == "landed" and freeSeat(pod) ~= nil
 	for _, jet in pod.jets do
 		jet.Enabled = state == "flying" or state == "returning"
@@ -399,6 +400,9 @@ local function onRider(pod: Pod, seat: Seat)
 end
 
 local function onOccupant(pod: Pod)
+	if pod.state == "wrecked" then
+		return
+	end
 	local occupant = pod.seat.Occupant
 	pod.board.Enabled = pod.state == "landed" and freeSeat(pod) ~= nil
 	if occupant then
@@ -588,6 +592,16 @@ end
 
 function PodFlight.input(pod: Pod, throttle: number, steer: number, lift: number)
 	pod.throttle, pod.steer, pod.lift = throttle, steer, lift
+end
+
+-- Kills the pod (its vehicle is wrecked): it lets go of its pilot and riders, so nobody is put
+-- back in a seat, and stops flying wherever it is.
+function PodFlight.wreck(pod: Pod)
+	pod.pilot = nil
+	table.clear(pod.riders)
+	setState(pod, "wrecked")
+	pod.mover.Enabled = false
+	pod.aligner.Enabled = false
 end
 
 -- Whether the walker's pod sits on its legs (a walker without a pod always does).
