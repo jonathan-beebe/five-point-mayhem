@@ -13,6 +13,7 @@ local Names = require(ReplicatedStorage.Shared.Names)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 local Weapons = require(script.Parent.Weapons)
+local Characters = require(script.Parent.util.Characters)
 
 local Session = {}
 
@@ -121,9 +122,7 @@ local function deploy(player: Player, ids: any)
 		end
 		seen[id] = true
 	end
-	local character = player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local character, humanoid, root = Characters.parts(player)
 	if
 		not character
 		or not humanoid
@@ -164,9 +163,7 @@ local LOCKOUT_CHECK_INTERVAL = 0.25
 
 local function enforceLockout()
 	for _, player in Players:GetPlayers() do
-		local character = player.Character
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		local character, humanoid, root = Characters.parts(player)
 		if
 			not character
 			or not humanoid

@@ -33,6 +33,7 @@ local MacAccess = require(script.Parent.MacAccess)
 local Session = require(script.Parent.Session)
 local Vehicles = require(script.Parent.Vehicles)
 local Weapons = require(script.Parent.Weapons)
+local Characters = require(script.Parent.util.Characters)
 
 local Admin = {}
 
@@ -60,16 +61,6 @@ local function resolveTargets(caller: Player, who: string?): { Player }
 		end
 	end
 	return {}
-end
-
-local function characterParts(player: Player): (Model?, Humanoid?, BasePart?)
-	local character = player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if character and humanoid and root and humanoid.Health > 0 then
-		return character, humanoid, root
-	end
-	return nil, nil, nil
 end
 
 -- 1. MAYHEM (and the MAC's NUKE) -------------------------------------------------------------
@@ -122,7 +113,7 @@ local function mayhem()
 	end
 	announce("☢ MAYHEM ☢", rgb(255, 50, 50), 3, RemoteActions.AnnounceStyle.MAYHEM)
 	for _, player in Players:GetPlayers() do
-		local character, humanoid, root = characterParts(player)
+		local character, humanoid, root = Characters.living(player)
 		if character and humanoid and root and not Config.isInLobby(root.Position) then
 			obliterate(character, humanoid, root)
 		end
@@ -168,7 +159,7 @@ local function nuke(caller: Player)
 	local struck: { [Player]: boolean } = { [caller] = true }
 	local function sweep(radius: number)
 		for _, player in Players:GetPlayers() do
-			local character, humanoid, root = characterParts(player)
+			local character, humanoid, root = Characters.living(player)
 			if character and humanoid and root and not struck[player] then
 				local offset = root.Position - ground
 				if Vector2.new(offset.X, offset.Z).Magnitude <= radius then
@@ -192,7 +183,7 @@ end
 -- 2. GIVE ------------------------------------------------------------------------------------
 
 local function gift(player: Player, item: string): boolean
-	local character, humanoid, root = characterParts(player)
+	local character, humanoid, root = Characters.living(player)
 	local backpack = player:FindFirstChildOfClass("Backpack")
 	local weapon = WeaponCatalog.find(item)
 	local vehicle = VehicleCatalog.get(item)
@@ -339,7 +330,7 @@ end
 local function freeze(caller: Player, who: string?)
 	local names = {}
 	for _, player in resolveTargets(caller, who or "all") do
-		local character, _, root = characterParts(player)
+		local character, _, root = Characters.living(player)
 		if
 			character
 			and root
@@ -360,7 +351,7 @@ end
 local function horde(caller: Player, who: string?)
 	if who then
 		for _, player in resolveTargets(caller, who) do
-			local _, _, root = characterParts(player)
+			local _, _, root = Characters.living(player)
 			if root then
 				Creatures.horde(root.Position, 12)
 			end

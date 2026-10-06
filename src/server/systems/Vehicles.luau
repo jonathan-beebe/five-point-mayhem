@@ -30,6 +30,11 @@ local VehicleDamage = require(ReplicatedStorage.Shared.VehicleDamage)
 local Combat = require(script.Parent.Combat)
 local PodFlight = require(script.Parent.PodFlight)
 local VehicleModel = require(script.Parent.VehicleModel)
+local Characters = require(script.Parent.util.Characters)
+local Ownership = require(script.Parent.util.Ownership)
+local Parts = require(script.Parent.util.Parts)
+local Prompts = require(script.Parent.util.Prompts)
+local Seats = require(script.Parent.util.Seats)
 
 local Vehicles = {}
 
@@ -360,8 +365,7 @@ Remotes.DriveInput.OnServerEvent:Connect(function(player, throttle, steer, lift)
 	if typeof(lift) ~= "number" then
 		lift = 0
 	end
-	local character = player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local humanoid = Characters.humanoidOf(player)
 	local seat = humanoid and humanoid.SeatPart
 	local model = seat and seat.Parent
 	local car = model and cars[model :: Model]
@@ -386,16 +390,9 @@ local RAMP_LENGTH = 2.5
 
 -- Welds a part to the skid at an offset given in vehicle space (origin on the ground).
 local function attach(model: Model, skid: BasePart, part: BasePart, offset: CFrame)
-	local relative = SKID_TO_GROUND * offset
 	part.Anchored = false
 	part.Massless = true
-	part.CFrame = skid.CFrame * relative
-	local weld = Instance.new("Weld")
-	weld.Part0 = skid
-	weld.Part1 = part
-	weld.C0 = relative
-	weld.Parent = part
-	part.Parent = model
+	Parts.weldTo(skid, part, SKID_TO_GROUND * offset, model)
 end
 
 type Bone = { part: BasePart, pivot: Vector3 }
@@ -407,16 +404,9 @@ local function attachTo(model: Model, skid: BasePart, bone: Bone?, part: BasePar
 		attach(model, skid, part, offset)
 		return
 	end
-	local relative = CFrame.new(bone.pivot):Inverse() * offset
 	part.Anchored = false
 	part.Massless = true
-	part.CFrame = bone.part.CFrame * relative
-	local weld = Instance.new("Weld")
-	weld.Part0 = bone.part
-	weld.Part1 = part
-	weld.C0 = relative
-	weld.Parent = part
-	part.Parent = model
+	Parts.weldTo(bone.part, part, CFrame.new(bone.pivot):Inverse() * offset, model)
 end
 
 -- The rig: an invisible "Bone_<name>" part per bone, joined to its parent bone (or the skid) by a
@@ -617,12 +607,7 @@ local function sampleCrash(
 	length: number,
 	dt: number
 )
-	local simulated = false
-	if not part.Anchored then
-		local ok, owner = pcall(part.GetNetworkOwner, part)
-		simulated = ok and owner == nil
-	end
-	if not simulated then
+	if not Ownership.isServerSimulated(part) then
 		VehicleDamage.clear(tracker)
 		return
 	end
@@ -692,11 +677,7 @@ local function throwOut(seat: (Seat | VehicleSeat)?)
 	if not seat or not humanoid then
 		return
 	end
-	local weld = seat:FindFirstChild("SeatWeld")
-	if weld then
-		weld:Destroy()
-	end
-	humanoid.Sit = false
+	Seats.unseat(seat, humanoid)
 	local character = humanoid.Parent
 	if character and character:IsA("Model") then
 		local sideways = Vector3.new(
@@ -757,9 +738,7 @@ local function wreck(model: Model, car: Car)
 		-- anyone seated.
 		task.defer(function()
 			for _, player in Players:GetPlayers() do
-				local character = player.Character
-				local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-				if root and MathUtil.insideBox(cab.CFrame, cab.Size, root.Position) then
+				if Characters.isInside(player, cab) then
 					climbOut(player)
 				end
 			end
@@ -776,8 +755,7 @@ local function wreck(model: Model, car: Car)
 			part.Material = M.CorrodedMetal
 		end
 	end
-	local ok, owner = pcall(car.skid.GetNetworkOwner, car.skid)
-	if ok and owner == nil and not car.skid.Anchored then
+	if Ownership.isServerSimulated(car.skid) then
 		car.skid.AssemblyLinearVelocity += Vector3.new(0, WRECK_HOP, 0)
 	end
 	task.delay(WRECK_TIME, function()
@@ -963,7 +941,7 @@ local function fell(tree: Model, direction: Vector3, pace: number, weight: numbe
 			mass += part:GetMass()
 		end
 	end
-	pcall(trunk.SetNetworkOwner, trunk, nil)
+	Ownership.set(trunk, nil)
 	-- Pushed high, the tree pivots on its base and falls the way the vehicle was going.
 	local crown = box.Position + Vector3.new(0, extent.Y / 4, 0)
 	local push = math.min(pace * weight * TREE_PUSH, MAX_TREE_PUSH)
@@ -1010,7 +988,7 @@ local function shove(
 		aboard = aboard or seat.Occupant ~= nil
 	end
 	if not aboard then
-		pcall(skid.SetNetworkOwner, skid, nil)
+		Ownership.set(skid, nil)
 	end
 	local velocity = skid.AssemblyLinearVelocity
 		+ direction * speed
@@ -1207,8 +1185,7 @@ local function seatPlayer(player: Player, seat: Seat | VehicleSeat)
 	elseif podState ~= PodState.DOCKED then
 		return -- the seat is away with its pod
 	end
-	local character = player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local humanoid = Characters.humanoidOf(player)
 	if humanoid and humanoid.Health > 0 and not seat.Occupant then
 		-- Seat and VehicleSeat both have Sit(Humanoid); the checker cannot call a union of methods.
 		(seat :: Seat):Sit(humanoid)
@@ -1236,15 +1213,13 @@ local function addPrompts(
 
 	-- `name` defaults to `<action>Prompt`; PromptPanel finds the Drive prompt by its name.
 	local function prompt(action: string, key: Enum.KeyCode, name: string?): ProximityPrompt
-		local each = Instance.new("ProximityPrompt")
-		each.Name = name or action .. "Prompt"
-		each.ActionText = action
-		each.ObjectText = spec.name
-		each.KeyboardKeyCode = key
-		each.MaxActivationDistance = reach
-		each.RequiresLineOfSight = false
-		each.Parent = anchor
-		return each
+		return Prompts.make({
+			name = name or action .. "Prompt",
+			action = action,
+			object = spec.name,
+			key = key,
+			reach = reach,
+		}, anchor)
 	end
 
 	-- Drive takes the driver seat, or while a pod is away (flying or landed) the legs seat.
@@ -1278,8 +1253,7 @@ local function addPrompts(
 	end
 	local ridePrompt = prompt("Ride", Enum.KeyCode.F)
 	ridePrompt.Triggered:Connect(function(player)
-		local character = player.Character
-		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		local root = Characters.rootOf(player)
 		if not root then
 			return
 		end
@@ -1344,13 +1318,11 @@ local function placeAtExit(skid: BasePart, exit: CFrame, character: Model)
 	if not root then
 		return
 	end
-	-- Pivot the character so its root lands on the exit frame.
-	local rootOffset = character:GetPivot():ToObjectSpace(root.CFrame)
-	-- Never below the terrain surface under the exit, or the player falls through the world.
+	-- The root lands on the exit frame, never below the terrain surface under the exit, or the
+	-- player falls through the world.
 	local lift = Vector3.new(0, exit.Position.Y, 0)
 	local spot = (onTerrain(skid.CFrame * SKID_TO_GROUND * exit - lift, 0, 0)) + lift
-	character:PivotTo(spot * rootOffset:Inverse())
-	root.AssemblyLinearVelocity = Vector3.zero
+	Characters.moveRootTo(character, root, spot)
 end
 
 -- The walkable cab (spec.cab): an invisible volume tagged MechCab (the client's camera looks for
@@ -1384,15 +1356,13 @@ local function addCab(
 
 	-- `name` defaults to `<action>Prompt`; PromptPanel finds the Drive prompt by its name.
 	local function prompt(action: string, key: Enum.KeyCode, name: string?): ProximityPrompt
-		local each = Instance.new("ProximityPrompt")
-		each.Name = name or action .. "Prompt"
-		each.ActionText = action
-		each.ObjectText = spec.name
-		each.KeyboardKeyCode = key
-		each.MaxActivationDistance = reach
-		each.RequiresLineOfSight = false
-		each.Parent = anchor
-		return each
+		return Prompts.make({
+			name = name or action .. "Prompt",
+			action = action,
+			object = spec.name,
+			key = key,
+			reach = reach,
+		}, anchor)
 	end
 
 	local drivePrompt = prompt("Drive", Enum.KeyCode.E, Names.Instances.DrivePrompt)
@@ -1404,8 +1374,7 @@ local function addCab(
 	end)
 
 	local function climbOut(player: Player)
-		local character = player.Character
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local character, humanoid = Characters.parts(player)
 		if character and humanoid and humanoid.Health > 0 and not humanoid.SeatPart then
 			placeAtExit(skid, exit, character)
 		end
@@ -1452,13 +1421,7 @@ local function build(id: string, cframe: CFrame): Model
 			* turn
 			* CFrame.new(0, RAMP_HEIGHT / 2, -L / 2 + ramp / 2)
 			* CFrame.Angles(0, 0, math.pi)
-		wedge.CFrame = skid.CFrame * relative
-		local weld = Instance.new("Weld")
-		weld.Part0 = skid
-		weld.Part1 = wedge
-		weld.C0 = relative
-		weld.Parent = wedge
-		wedge.Parent = model
+		Parts.weldTo(skid, wedge, relative, model)
 	end
 
 	local bones = buildBones(model, skid, spec)
@@ -1483,18 +1446,7 @@ local function build(id: string, cframe: CFrame): Model
 	end
 
 	for _, piece in spec.pieces do
-		local part: BasePart = Instance.new(piece.class or "Part") :: any
-		if piece.shape and part:IsA("Part") then
-			part.Shape = piece.shape
-		end
-		part.Name = piece.name or "Piece"
-		part.Size = piece.size
-		part.Color = piece.color
-		part.Material = piece.material or M.SmoothPlastic
-		part.Transparency = piece.transparency or 0
-		part.Reflectance = piece.reflectance or 0
-		part.CanCollide = false
-		part.CanTouch = false
+		local part = Parts.fromPiece(piece, "Piece")
 		part.CastShadow = part.Transparency < 0.5
 		if piece.hideInCockpit then
 			part:SetAttribute(Names.Attributes.HideInCockpit, true) -- MechCamera
@@ -1672,7 +1624,7 @@ local function build(id: string, cframe: CFrame): Model
 			local occupant = seat.Occupant
 			if occupant then
 				lastDriver = Players:GetPlayerFromCharacter(occupant.Parent)
-				local ok, problem = pcall(skid.SetNetworkOwner, skid, nil)
+				local ok, problem = Ownership.set(skid, nil)
 				if not ok then
 					warn("[Mayhem car] could not take ownership: " .. tostring(problem))
 				end
@@ -1681,12 +1633,11 @@ local function build(id: string, cframe: CFrame): Model
 			local previous = lastDriver
 			lastDriver = nil
 			task.defer(function()
-				local character = previous and previous.Character
-				local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-				if not character or not root then
+				local root = Characters.rootOf(previous)
+				if not root then
 					return
 				end
-				pcall(root.SetNetworkOwner, root, previous)
+				Ownership.set(root, previous)
 			end)
 		end)
 	end
@@ -1719,11 +1670,7 @@ local function build(id: string, cframe: CFrame): Model
 			passengers = passengers,
 			-- Off the legs and onto the ground at the walker's exit.
 			dismount = function(humanoid: Humanoid)
-				local weld = legsSeat and legsSeat:FindFirstChild("SeatWeld")
-				if weld then
-					weld:Destroy()
-				end
-				humanoid.Sit = false
+				Seats.unseat(legsSeat, humanoid)
 				local character = humanoid.Parent
 				if character and character:IsA("Model") then
 					placeAtExit(skid, spec.exit or CFrame.new(0, 3, 0), character)
@@ -1785,9 +1732,7 @@ local function isOccupied(model: Model): boolean
 	local cab = model:FindFirstChild(Names.Instances.Cab)
 	if cab and cab:IsA("BasePart") then
 		for _, player in Players:GetPlayers() do
-			local character = player.Character
-			local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-			if root and MathUtil.insideBox(cab.CFrame, cab.Size, root.Position) then
+			if Characters.isInside(player, cab) then
 				return true
 			end
 		end

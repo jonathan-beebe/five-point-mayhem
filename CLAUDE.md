@@ -34,6 +34,8 @@ src/server/   ServerScriptService.Server. init.server.luau boots in this order:
   world/      Build helpers, Lobby, Roads, Landscape, Regions (per-landmark data), buildings/
   systems/    Combat, Weapons, Session, Creatures, Vehicles, PodFlight, Admin, MacAccess, DayNight,
               CollisionGroups, and the model formats VehicleModel, WeaponModel, CreatureModel
+    util/     Instance helpers the systems share: Characters, Seats, Prompts, Parts, Ownership
+              (tested in tools/tests/server_helpers.luau)
   vehicleModels/ weaponModels/ creatureModels/   one model file per catalog id
 src/client/   StarterPlayerScripts.Client. Feature modules with start(), each task.spawned by
               init.client.luau so one failure cannot stop the rest.
@@ -73,6 +75,20 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   `tools/tests/collision_groups.luau`.
 - Small math shared across modules (`moveToward`, `wrapAngle`, `yawOf`, `insideBox`,
   `clampToRange`, `rateAlpha`/`timeAlpha` follow fractions) comes from `src/shared/MathUtil.luau`.
+- Server systems use `systems/util/` instead of writing these inline:
+  - `Characters`: `parts(player)` (character, Humanoid, root; no health check), `living(player)`
+    (all three and `Health > 0`, else nils), `humanoidOf`, `rootOf`, `isInside(player, box)`,
+    `moveRootTo(character, root, cframe)` (pivot keeping the root offset, then stop the root).
+    Callers testing `Health <= 0` keep that test inline on `parts`: it differs from `> 0` for NaN.
+  - `Seats.unseat(seat?, humanoid)`: destroy the SeatWeld, then `Sit = false`.
+  - `Prompts.make(spec, parent)`: every server ProximityPrompt; Parent set last.
+  - `Parts.fromPiece(piece, defaultName?, scale?)` sets what the three model formats share; the
+    caller adds its own (Vehicles CastShadow/HideInCockpit, Creatures Massless/smooth surfaces,
+    Weapons CanQuery false/Massless). `Parts.weldTo(base, part, offset, parent)` places, welds, and
+    parents last.
+  - `Ownership.set(part, player?)` (pcall'd SetNetworkOwner), `Ownership.isServerSimulated(part)`.
+  A change to a builder's output must keep `tools/tests/server_helpers.luau` passing: it compares
+  each helper with the inline code it replaced.
 - Every file opens with a header comment saying what it is; match the surrounding comment density.
 
 ## UI rules

@@ -31,6 +31,10 @@ local Names = require(ReplicatedStorage.Shared.Names)
 local PodState = require(ReplicatedStorage.Shared.PodState)
 local RemoteActions = require(ReplicatedStorage.Shared.RemoteActions)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Characters = require(script.Parent.util.Characters)
+local Ownership = require(script.Parent.util.Ownership)
+local Prompts = require(script.Parent.util.Prompts)
+local Seats = require(script.Parent.util.Seats)
 
 local PodFlight = {}
 
@@ -153,20 +157,16 @@ local function launch(pod: Pod)
 	local cab = pod.model:FindFirstChild(Names.Instances.Cab) :: BasePart?
 	if cab then
 		for _, player in Players:GetPlayers() do
-			local character = player.Character
-			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-			local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-			if humanoid and root and not humanoid.SeatPart then
-				if MathUtil.insideBox(cab.CFrame, cab.Size, root.Position) then
-					pod.eject(player)
-				end
+			local humanoid = Characters.humanoidOf(player)
+			if humanoid and not humanoid.SeatPart and Characters.isInside(player, cab) then
+				pod.eject(player)
 			end
 		end
 	end
 
 	local root = pod.root
 	pod.joint.Enabled = false
-	pcall(root.SetNetworkOwner, root, nil)
+	Ownership.set(root, nil)
 	local mass = root.AssemblyMass
 	pod.mover.MaxForce = mass * (workspace.Gravity + 400)
 	pod.mover.VectorVelocity = Vector3.zero
@@ -297,11 +297,7 @@ end
 -- Takes `humanoid` out of `seat` and stands it on the ground at the pod's exit spot, moved
 -- `sideways` studs to the exit frame's right.
 local function putOutside(pod: Pod, seat: Seat | VehicleSeat, humanoid: Humanoid, sideways: number)
-	local weld = seat:FindFirstChild("SeatWeld")
-	if weld then
-		weld:Destroy()
-	end
-	humanoid.Sit = false
+	Seats.unseat(seat, humanoid)
 	local character = humanoid.Parent
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not character or not root or not character:IsA("Model") then
@@ -317,9 +313,7 @@ local function putOutside(pod: Pod, seat: Seat | VehicleSeat, humanoid: Humanoid
 	local groundY = if hit then hit.Position.Y else spot.Position.Y - pod.exit.Position.Y
 	local level = spot.Rotation
 		+ Vector3.new(spot.Position.X, groundY + pod.exit.Position.Y, spot.Position.Z)
-	local rootOffset = character:GetPivot():ToObjectSpace(root.CFrame)
-	character:PivotTo(level * rootOffset:Inverse())
-	root.AssemblyLinearVelocity = Vector3.zero
+	Characters.moveRootTo(character, root, level)
 end
 
 -- Settles to HOVER over the ground and puts everyone aboard outside, behind the pod, side by side.
@@ -482,23 +476,22 @@ function PodFlight.new(setup: Setup): Pod
 	anchor.Name = "PodButton"
 	anchor.CFrame = setup.button
 	anchor.Parent = root
-	local prompt = Instance.new("ProximityPrompt")
-	prompt.Name = Names.Instances.PodPrompt
-	prompt.ObjectText = setup.model.Name .. " pod"
-	prompt.KeyboardKeyCode = Enum.KeyCode.F
-	prompt.MaxActivationDistance = 6
-	prompt.RequiresLineOfSight = false
-	prompt.Parent = anchor
+	-- ActionText comes with the state (setState).
+	local prompt = Prompts.make({
+		name = Names.Instances.PodPrompt,
+		object = setup.model.Name .. " pod",
+		key = Enum.KeyCode.F,
+		reach = 6,
+	}, anchor)
 
-	local board = Instance.new("ProximityPrompt")
-	board.Name = "BoardPrompt"
-	board.ActionText = "Board"
-	board.ObjectText = setup.model.Name .. " pod"
-	board.KeyboardKeyCode = Enum.KeyCode.E
-	board.MaxActivationDistance = BOARD_REACH
-	board.RequiresLineOfSight = false
-	board.Enabled = false
-	board.Parent = root
+	local board = Prompts.make({
+		name = "BoardPrompt",
+		action = "Board",
+		object = setup.model.Name .. " pod",
+		key = Enum.KeyCode.E,
+		reach = BOARD_REACH,
+		enabled = false,
+	}, root)
 
 	local pod: Pod = {
 		model = setup.model,
@@ -544,8 +537,7 @@ function PodFlight.new(setup: Setup): Pod
 		)
 	end)
 	board.Triggered:Connect(function(player)
-		local character = player.Character
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local humanoid = Characters.humanoidOf(player)
 		local seat = freeSeat(pod)
 		if pod.state == PodState.LANDED and humanoid and humanoid.Health > 0 and seat then
 			seat:Sit(humanoid)
@@ -565,8 +557,7 @@ end
 
 -- `action` from `player`, who must be the pod's pilot.
 function PodFlight.command(player: Player, pod: Pod, action: any)
-	local character = player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local humanoid = Characters.humanoidOf(player)
 	if not humanoid or pod.seat.Occupant ~= humanoid then
 		return
 	end
@@ -624,8 +615,7 @@ function PodFlight.start()
 		end
 	end)
 	Remotes.PodCommand.OnServerEvent:Connect(function(player, action)
-		local character = player.Character
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local humanoid = Characters.humanoidOf(player)
 		for _, pod in pods do
 			if humanoid and pod.seat.Occupant == humanoid then
 				PodFlight.command(player, pod, action)

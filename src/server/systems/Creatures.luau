@@ -15,13 +15,14 @@ local RemoteActions = require(ReplicatedStorage.Shared.RemoteActions)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Combat = require(script.Parent.Combat)
 local CreatureModel = require(script.Parent.CreatureModel)
+local Characters = require(script.Parent.util.Characters)
+local Parts = require(script.Parent.util.Parts)
 
 local creatureModels = script.Parent.Parent.creatureModels
 
 local Creatures = {}
 
 local rgb = Color3.fromRGB
-local M = Enum.Material
 local random = Random.new()
 
 -- Kinds, their themed regions and lairs: src/shared/CreatureCatalog.luau.
@@ -77,29 +78,11 @@ local function build(kindId: string, position: Vector3): Creature
 	-- Pieces are authored in creature space (origin on the ground); weld them relative to the root.
 	local fromRoot = CreatureModel.rootCenter(spec):Inverse()
 	for _, piece in spec.pieces do
-		local part = Instance.new(piece.class or "Part") :: BasePart
-		if piece.shape then
-			(part :: Part).Shape = piece.shape
-		end
-		part.Name = piece.name or "Part"
-		part.Size = piece.size
-		part.Color = piece.color
-		part.Material = piece.material or M.SmoothPlastic
-		part.Transparency = piece.transparency or 0
-		part.Reflectance = piece.reflectance or 0
-		part.CanCollide = false
-		part.CanTouch = false
+		local part = Parts.fromPiece(piece, "Part")
 		part.Massless = true
 		part.TopSurface = Enum.SurfaceType.Smooth
 		part.BottomSurface = Enum.SurfaceType.Smooth
-		local offset = fromRoot * piece.offset
-		part.CFrame = root.CFrame * offset
-		local weld = Instance.new("Weld")
-		weld.Part0 = root
-		weld.Part1 = part
-		weld.C0 = offset
-		weld.Parent = part
-		part.Parent = model
+		Parts.weldTo(root, part, fromRoot * piece.offset, model)
 	end
 
 	local humanoid = Instance.new("Humanoid")
@@ -118,6 +101,7 @@ local function build(kindId: string, position: Vector3): Creature
 			* CFrame.Angles(0, random:NextNumber(0, 6), 0)
 	)
 	model.Parent = folder
+	-- Unprotected on purpose (not Ownership.set): a failure here should raise.
 	root:SetNetworkOwner(nil)
 	return {
 		model = model,
@@ -229,13 +213,11 @@ end
 local function nearestPlayer(creature: Creature): (Model?, BasePart?, number)
 	local best, bestRoot, bestDistance = nil, nil, creature.kind.aggro
 	for _, player in Players:GetPlayers() do
-		local character = player.Character
-		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local character, humanoid, root = Characters.living(player)
 		if
-			root
+			character
 			and humanoid
-			and humanoid.Health > 0
+			and root
 			and player:GetAttribute(Names.Attributes.Deployed)
 			and not Config.isInLobby(root.Position)
 			and not inVehicle(humanoid)
@@ -325,15 +307,8 @@ end
 local function playersNear(center: Vector3, radius: number): number
 	local count = 0
 	for _, player in Players:GetPlayers() do
-		local character = player.Character
-		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		if
-			root
-			and humanoid
-			and humanoid.Health > 0
-			and player:GetAttribute(Names.Attributes.Deployed)
-		then
+		local character, humanoid, root = Characters.living(player)
+		if character and humanoid and root and player:GetAttribute(Names.Attributes.Deployed) then
 			local offset = root.Position - center
 			if Vector2.new(offset.X, offset.Z).Magnitude < radius then
 				count += 1

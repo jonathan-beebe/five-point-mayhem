@@ -17,6 +17,8 @@ local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 local Combat = require(script.Parent.Combat)
 local WeaponModel = require(script.Parent.WeaponModel)
 local WeaponSounds = require(script.Parent.WeaponSounds)
+local Characters = require(script.Parent.util.Characters)
+local Parts = require(script.Parent.util.Parts)
 
 local modelFiles = script.Parent.Parent:FindFirstChild("weaponModels")
 
@@ -322,35 +324,17 @@ local function modelFor(weapon: Weapon): WeaponModel.Model
 	return model
 end
 
-local function createPart(spec: PieceSpec, scale: number): BasePart
-	local part = Instance.new(spec.class or "Part") :: BasePart
-	if spec.shape and part:IsA("Part") then
-		part.Shape = spec.shape
-	end
-	if spec.name then
-		part.Name = spec.name
-	end
-	part.Size = spec.size * scale
-	part.Color = spec.color
-	part.Material = spec.material or M.SmoothPlastic
-	part.Transparency = spec.transparency or 0
-	part.Reflectance = spec.reflectance or 0
-	part.CanCollide = false
+-- A piece's part, invisible to queries and massless. Without a piece name it keeps the class's
+-- default Name.
+local function createPart(spec: PieceSpec, scale: number?): BasePart
+	local part = Parts.fromPiece(spec, nil, scale)
 	part.CanQuery = false
-	part.CanTouch = false
 	part.Massless = true
 	return part
 end
 
 local function attach(handle: BasePart, spec: PieceSpec, parent: Instance)
-	local part = createPart(spec, 1)
-	part.CFrame = handle.CFrame * spec.offset
-	local weld = Instance.new("Weld")
-	weld.Part0 = handle
-	weld.Part1 = part
-	weld.C0 = spec.offset
-	weld.Parent = part
-	part.Parent = parent
+	Parts.weldTo(handle, createPart(spec), spec.offset, parent)
 end
 
 local function makeHandle(weapon: Weapon): Part
@@ -922,10 +906,8 @@ end
 local function fireHeal(shot: Shot)
 	local weapon = shot.weapon
 	for _, other in Players:GetPlayers() do
-		local character = other.Character
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		if humanoid and root and humanoid.Health > 0 and Combat.areAllies(shot.player, other) then
+		local _, humanoid, root = Characters.living(other)
+		if humanoid and root and Combat.areAllies(shot.player, other) then
 			if (root.Position - shot.root.Position).Magnitude <= weapon.range then
 				humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + weapon.damage)
 				local sparkle = Instance.new("Sparkles")
