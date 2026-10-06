@@ -226,14 +226,16 @@ and works with `/give <who> mech`.
 - With nobody in it, the mech's brake holds it in place when bumped.
 - **Climb**: drive into a wall up to 14 studs tall with room on top, such as a Jaguar Pyramid
   tier, and the mech lifts itself up at 8 studs/s with its legs stepping, then steps onto the top.
-  It climbs the pyramid tier by tier, or its front staircase, to the summit; the east and west
-  faces stop one tier short, where the temple leaves too little room. Let go of the throttle to
+  It climbs the back face of the pyramid tier by tier to the summit; the east and west faces stop
+  one tier short, where the temple leaves too little room. Of the walkers only Heron is narrow
+  enough to walk up the front staircase between its serpent heads and balustrades. Let go of the throttle to
   hang on the wall; push forward to keep climbing; reverse to let go and drop. It does not turn
   while climbing. Taller walls, the lobby, other vehicles and players are not climbed. Every
   walker climbs.
 
 The legs and arms are decoration and do not collide; the cab walls, floor and roof, the hips and
-the back pods do. The cab's furniture does not. Gates, walls and building doors stop it.
+the back pods do. The cab's furniture does not. Gates, walls taller than 14 studs and building
+doors stop it.
 
 ### Aurora's flying pod
 
