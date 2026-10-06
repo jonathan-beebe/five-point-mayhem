@@ -81,8 +81,19 @@ Config.REGIONS = {
 	{ id = "palace", name = "Frost Palace", country = "Russia" },
 }
 
+-- Degrees between neighbouring regions round the ring (72 for five).
+local function regionStep(): number
+	return 360 / #Config.REGIONS
+end
+
+-- Region `index`'s angle round the ring; the first faces north (-Z).
 function Config.regionAngle(index: number): number
-	return math.rad(-90 + (index - 1) * 72)
+	return math.rad(-90 + (index - 1) * regionStep())
+end
+
+-- The angle halfway from region `index` to the next: cross roads, lobby showcase, admin hordes.
+function Config.betweenRegions(index: number): number
+	return Config.regionAngle(index) + math.rad(regionStep() / 2)
 end
 
 function Config.pointAt(angle: number, radius: number, y: number?): Vector3

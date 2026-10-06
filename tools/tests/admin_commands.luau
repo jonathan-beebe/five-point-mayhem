@@ -13,9 +13,12 @@
 --     equal the literals Admin.luau and AdminPanel.luau had at 3c65531
 --   - resolveTargets, giftLabel, chatArguments and meteorSeconds return what the inline code they
 --     replaced in Admin.luau returned, copied below word for word as the reference
+--   - `/horde` with no target sends one horde per region, half a region step past each: the same
+--     points as at f35d32f for five regions, and 30 degrees past each with a sixth
 --
 -- Admin's requires build Instances, so HANDLERS and POWER_UP come from Admin run alone
--- (Sandbox.loadIsolated), and `gift` from Admin run with fakes for its requires and services.
+-- (Sandbox.loadIsolated), and `gift` and `horde` from Admin run with fakes for its requires and
+-- services.
 
 local luau = require("@lune/luau")
 local roblox = require("@lune/roblox")
@@ -441,7 +444,13 @@ local REAL = {
 	VehicleCatalog = true,
 	WeaponCatalog = true,
 }
-local FAKES = { Characters = Characters, Weapons = Weapons, Vehicles = Vehicles }
+local Creatures = {
+	horde = function(position, count)
+		record("Creatures.horde", position, count)
+	end,
+}
+local FAKES =
+	{ Characters = Characters, Weapons = Weapons, Vehicles = Vehicles, Creatures = Creatures }
 local stub = setmetatable({}, {
 	__index = function(self)
 		return self
@@ -607,6 +616,53 @@ for _, item in giftItems do
 				)
 			)
 		end
+	end
+end
+
+Check.section("Admin horde: one horde between each pair of regions")
+-- At main (f35d32f): `Config.pointAt(Config.regionAngle(index) + math.rad(36), 300)`, the angle
+-- written out (regionAngle was `math.rad(-90 + (index - 1) * 72)`). Compiled with luau.load, as
+-- Sandbox.load compiles Admin.
+local hordeAt = luau.load(
+	[[
+local pointAt, step = ...
+return function(index: number): Vector3
+	return pointAt(math.rad(-90 + (index - 1) * step) + math.rad(step / 2), 300)
+end
+]],
+	{ debugName = "horde reference" }
+)
+local Config = Sandbox.require(Shared.Config)
+for _, regions in { 5, 6 } do
+	local added = regions - #Config.REGIONS
+	for index = 1, added do
+		table.insert(Config.REGIONS, { id = "extra" .. index, name = "Extra", country = "None" })
+	end
+	log = {}
+	loaded.HANDLERS.horde({ Name = "caller" }, nil)
+	local hordes = {}
+	for _, entry in log do
+		if entry[1] == "Creatures.horde" then
+			table.insert(hordes, entry)
+		end
+	end
+	equal(#hordes, regions, regions .. " regions: hordes")
+	local hordeReference = hordeAt(Config.pointAt, 360 / regions)
+	for index, entry in hordes do
+		local want = hordeReference(index)
+		check(
+			if regions == 5 then entry[2] == want else (entry[2] - want).Magnitude < 1e-9,
+			("%d regions, horde %d: got %s, want %s"):format(
+				regions,
+				index,
+				tostring(entry[2]),
+				tostring(want)
+			)
+		)
+		equal(entry[3], AdminCommands.TUNING.HORDE_PER_REGION, "horde size")
+	end
+	for _ = 1, added do
+		table.remove(Config.REGIONS)
 	end
 end
 

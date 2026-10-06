@@ -125,7 +125,8 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   PodPilot                                 PodFlight      pod_pilot
   CreatureBrain                            Creatures      creature_brain (+ CreatureCatalog)
   AdminCommands                            Admin          admin_commands
-  Loadout                                  LobbyUI        client_logic
+  Loadout                                  LobbyUI        client_logic, session
+                                             Session
   PodButtons                               PodControls    client_logic
   PromptRules                              PromptPanel    client_logic
   HealthBar                                VehicleHealth  client_logic
@@ -278,7 +279,8 @@ time so prompt cards stay above them. 5) Name what needs a human in Studio: plac
 tablet and desktop.
 
 **Landmark / region.** 1) Append to `Config.REGIONS` (`id`, `name`, `country`).
-`Config.regionAngle` spaces regions 72° apart (five); a sixth needs that changed.
+`Config.regionAngle` spaces regions 360° / #REGIONS apart; `Config.betweenRegions` is half a step
+on (cross roads, lobby showcase, admin hordes).
 2) `src/server/world/Regions.luau`: `BUILDINGS` (module name), `GROUND` (`Enum.Material`),
 `TREES` (styles from Landscape's `TREE_BUILDERS`). 3) `world/buildings/<Name>.luau` exporting
 `build(parent: Instance, base: CFrame): Model`; local -Z of `base` faces the lobby.

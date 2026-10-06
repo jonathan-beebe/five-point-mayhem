@@ -200,7 +200,7 @@ function Lobby.build(parent: Instance, displayModel: (weaponId: string) -> Model
 	local displays = {}
 	local pick = Random.new(4)
 	for index = 1, #Config.REGIONS do
-		local angle = Config.regionAngle(index) + math.rad(36)
+		local angle = Config.betweenRegions(index)
 		local position = Config.pointAt(angle, R - 12, floorTop)
 		Build.column(
 			model,

@@ -365,7 +365,7 @@ local function horde(caller: Player, who: string?)
 	else
 		for index = 1, #Config.REGIONS do
 			Creatures.horde(
-				Config.pointAt(Config.regionAngle(index) + math.rad(36), 300),
+				Config.pointAt(Config.betweenRegions(index), 300),
 				TUNING.HORDE_PER_REGION
 			)
 		end
