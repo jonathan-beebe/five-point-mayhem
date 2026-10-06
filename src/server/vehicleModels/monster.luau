@@ -347,7 +347,11 @@ end
 
 return {
 	name = "Monster Truck",
-	speed = 85,
+	-- Real: 110 km/h, 0-100 km/h in 4 s, brakes 0.6 g, coasts 0.3 g (VehicleDefaults maps them).
+	speed = 48,
+	acceleration = 13.3,
+	braking = 11.9,
+	coasting = 7.5,
 	turnRate = 2.4,
 	footprint = Vector2.new(15.2, 21.2),
 	collision = {

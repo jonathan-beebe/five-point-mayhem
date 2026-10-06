@@ -285,6 +285,12 @@ Vehicles climb ledges up to 1.6 studs (roads, landmark plazas and courtyards, Sa
 steps). Walls, the lobby gates, and taller ledges stop them. Walkers also climb walls up to 14
 studs (see OG).
 
+Each vehicle's top speed, acceleration, braking and coasting come from its real counterpart,
+mapped to the arena in `src/shared/VehicleDefaults.luau` (100 km/h is 45 studs/s; the spread is
+compressed and no vehicle is slower than 20 studs/s). Abrams 35 studs/s, Jeep 62, F1 104, Bugatti
+117. From rest to top speed: Go-Kart 4 seconds, Bugatti 6, Abrams 8, Semi 11, School Bus 13,
+VW Microbus 16.
+
 ### Crashes
 
 A vehicle that stops hard takes damage: driving into a wall, landing a jump, being rammed. Its
@@ -298,14 +304,14 @@ size sets how much. Size is bulk: footprint × the height of its solid parts, ov
 - **Walkers land on their legs**: a walker's landing is free up to 80 studs/s. A one-tier drop
   (12 studs, ~69 studs/s, or the deepest ledge a climbing walker steps off, 14.4 studs, ~75
   studs/s) costs nothing; a 24-stud drop (~97 studs/s) hurts.
-- **Damage**: 0.3 × bulk^0.5 × (speed lost past the free amount)^1.3. A Jeep into a wall at 90
-  takes 49 of 100; a Bugatti head-on at 145 is wrecked; a School Bus at 70 takes 145 of 174; an
+- **Damage**: 0.3 × bulk^0.5 × (speed lost past the free amount)^1.3. A Jeep into a wall at its
+  top speed (62) takes 17 of 100; a Bugatti at 117 is wrecked; a School Bus at 46 takes 61 of 174; an
   OG walking into a wall at 18 takes 6. Aurora's flying pod counts as bulk 6.9 but shares
   Aurora's 215 health: into a tower at full speed (100) it takes 226 and wrecks her.
 - **Rams**: a rammed vehicle takes damage as a crash at the rammer's closing speed (its speed
   toward the struck vehicle, less the struck one's) × 1.1 × their mass ratio (0.15 to 3) × the
-  rammer's ram, up to 140. A Jeep into a parked Taxi at 30 does nothing, at 60 takes 14 of 122,
-  at 90 takes 48; head-on, both speeds add. A walker's legs come down 1.5 times as hard: OG
+  rammer's ram, up to 140. A Jeep into a parked Taxi at 30 does nothing, at 60 takes 14 of 122;
+  head-on, both speeds add: two Jeeps at 62 cost the Taxi 96. A walker's legs come down 1.5 times as hard: OG
   walking into a Jeep at 18 takes 47 of its 100, Aurora at full stride (30) wrecks it. A walker
   creeping under 2 studs/s or turning in place does no damage.
 - A crash worth less than 1 health is nothing: no sound, no sparks.

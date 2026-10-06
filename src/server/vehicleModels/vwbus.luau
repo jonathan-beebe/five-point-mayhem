@@ -403,7 +403,11 @@ cyl("FrontAxleBeam", V3(4.4, 0.35, 0.35), CF(0, 1.6, FRONT_AXLE), UNDERBODY)
 
 return {
 	name = "VW Microbus",
-	speed = 70,
+	-- Real: 105 km/h, 0-100 km/h in 40 s, brakes 0.6 g, coasts 0.15 g (VehicleDefaults maps them).
+	speed = 46,
+	acceleration = 2.9,
+	braking = 11.9,
+	coasting = 4.7,
 	turnRate = 2,
 	footprint = Vector2.new(7.0, 16.4),
 	collision = {

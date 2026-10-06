@@ -406,7 +406,11 @@ end
 
 return {
 	name = "Humvee",
-	speed = 85,
+	-- Real: 113 km/h, 0-100 km/h in 20 s, brakes 0.6 g, coasts 0.15 g (VehicleDefaults maps them).
+	speed = 49,
+	acceleration = 4.6,
+	braking = 11.9,
+	coasting = 4.7,
 	turnRate = 2.2,
 	footprint = Vector2.new(9.2, 19.6),
 	collision = {

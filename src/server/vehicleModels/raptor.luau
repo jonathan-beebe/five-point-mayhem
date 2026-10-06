@@ -812,7 +812,11 @@ end)
 
 return {
 	name = "Ford F-150 Raptor",
-	speed = 105,
+	-- Real: 172 km/h, 0-100 km/h in 5.9 s, brakes 0.75 g, coasts 0.2 g (VehicleDefaults maps them).
+	speed = 65,
+	acceleration = 10.3,
+	braking = 13.9,
+	coasting = 5.7,
 	turnRate = 2.2,
 	footprint = Vector2.new(8, 22),
 	collision = {

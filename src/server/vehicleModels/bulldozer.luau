@@ -398,7 +398,11 @@ cyl("RipperShankPin", V(1.0, 0.4, 0.4), CF(0, 6.2, 14.85), BLACK)
 
 return {
 	name = "Bulldozer",
-	speed = 35,
+	-- Real: 11.7 km/h, 0-11.7 km/h in 4 s, brakes 0.4 g, coasts 0.3 g (VehicleDefaults maps them).
+	speed = 20,
+	acceleration = 5.9,
+	braking = 16.9,
+	coasting = 14,
 	turnRate = 1.6,
 	footprint = Vector2.new(11.4, 18.4),
 	collision = {

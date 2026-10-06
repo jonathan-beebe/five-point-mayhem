@@ -488,7 +488,11 @@ block("BumperPlate", PLATE_WHITE, V(1.7, 0.65, 0.04), CFrame.new(0, 0.8, 4.2))
 
 return {
 	name = "Go-Kart",
-	speed = 105,
+	-- Real: 125 km/h, 0-100 km/h in 4 s, brakes 1.1 g, coasts 0.2 g (VehicleDefaults maps them).
+	speed = 52,
+	acceleration = 13.3,
+	braking = 17.9,
+	coasting = 5.7,
 	turnRate = 3,
 	footprint = Vector2.new(6.4, 8.4),
 	collision = {

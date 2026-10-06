@@ -371,7 +371,11 @@ block("DecklidSeam", V(7.6, 0.03, 0.04), CN(0, 3.865, 7.65), BLACK)
 
 return {
 	name = "NASCAR Stock Car",
-	speed = 135,
+	-- Real: 320 km/h, 0-100 km/h in 3.4 s, brakes 1.3 g, coasts 0.25 g (VehicleDefaults maps them).
+	speed = 98,
+	acceleration = 14.9,
+	braking = 20,
+	coasting = 6.7,
 	turnRate = 2.2,
 	footprint = Vector2.new(8.4, 21.0),
 	collision = {

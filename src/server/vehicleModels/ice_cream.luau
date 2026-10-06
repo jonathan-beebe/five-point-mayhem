@@ -750,7 +750,11 @@ end
 
 return {
 	name = "Ice Cream Truck",
-	speed = 65,
+	-- Real: 105 km/h, 0-100 km/h in 25 s, brakes 0.55 g, coasts 0.12 g (VehicleDefaults maps them).
+	speed = 46,
+	acceleration = 3.9,
+	braking = 11.3,
+	coasting = 4.1,
 	turnRate = 2,
 	footprint = Vector2.new(9.2, 24.4),
 	collision = {

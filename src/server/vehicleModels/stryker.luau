@@ -258,7 +258,11 @@ end
 
 return {
 	name = "Stryker APC",
-	speed = 75,
+	-- Real: 100 km/h, 0-48 km/h in 12 s, brakes 0.5 g, coasts 0.12 g (VehicleDefaults maps them).
+	speed = 45,
+	acceleration = 3.9,
+	braking = 10.6,
+	coasting = 4.1,
 	turnRate = 1.8,
 	footprint = Vector2.new(10.4, 27.0),
 	collision = {

@@ -416,7 +416,11 @@ add("CageHarnessBar", V(4.9, 0.12, 0.12), CN(0, 4.4, 2.3), CAGE)
 
 return {
 	name = "Rally Car",
-	speed = 120,
+	-- Real: 205 km/h, 0-100 km/h in 3.3 s, brakes 1.2 g, coasts 0.25 g (VehicleDefaults maps them).
+	speed = 73,
+	acceleration = 15.2,
+	braking = 19,
+	coasting = 6.7,
 	turnRate = 2.7,
 	footprint = Vector2.new(7.4, 18.6),
 	collision = {

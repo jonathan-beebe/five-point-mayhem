@@ -382,7 +382,11 @@ gun("BarrelCamoBrown", 1.2, 0.72, -16.5, BROWN)
 
 return {
 	name = "Tiger I Tank",
-	speed = 45,
+	-- Real: 38 km/h, 0-30 km/h in 12 s, brakes 0.4 g, coasts 0.15 g (VehicleDefaults maps them).
+	speed = 24,
+	acceleration = 2.9,
+	braking = 9.1,
+	coasting = 4.7,
 	turnRate = 1.5,
 	footprint = Vector2.new(14.2, 25.0),
 	collision = {

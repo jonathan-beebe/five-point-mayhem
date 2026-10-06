@@ -525,7 +525,11 @@ part("SteeringColumn", Vector3.new(0.15, 0.15, 0.9), W * CFrame.new(0, 0, -0.5),
 
 return {
 	name = "Lamborghini Aventador SVJ",
-	speed = 140,
+	-- Real: 350 km/h, 0-100 km/h in 2.8 s, brakes 1.3 g, coasts 0.25 g (VehicleDefaults maps them).
+	speed = 104,
+	acceleration = 16.9,
+	braking = 20,
+	coasting = 6.7,
 	turnRate = 2.5,
 	footprint = Vector2.new(9.0, 22.4),
 	collision = {

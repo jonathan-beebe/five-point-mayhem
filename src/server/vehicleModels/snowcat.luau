@@ -963,7 +963,11 @@ ball("JoystickKnob", 0.35, CFrame.new(1.25, 8.1, -3.8), BLACK, M.SmoothPlastic)
 
 return {
 	name = "Snowcat",
-	speed = 50,
+	-- Real: 23 km/h, 0-23 km/h in 6 s, brakes 0.4 g, coasts 0.3 g (VehicleDefaults maps them).
+	speed = 20,
+	acceleration = 4.5,
+	braking = 10.8,
+	coasting = 8.9,
 	turnRate = 1.8,
 	footprint = Vector2.new(15.6, 18.4),
 	collision = {

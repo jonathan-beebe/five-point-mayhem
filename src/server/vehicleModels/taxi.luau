@@ -578,7 +578,11 @@ part("Antenna", Vector3.new(0.04, 1.4, 0.04), CFrame.new(2.9, 4.6, 9.8), TRIM_BL
 
 return {
 	name = "NYC Taxi",
-	speed = 95,
+	-- Real: 177 km/h, 0-100 km/h in 9 s, brakes 0.8 g, coasts 0.2 g (VehicleDefaults maps them).
+	speed = 66,
+	acceleration = 7.8,
+	braking = 14.5,
+	coasting = 5.7,
 	turnRate = 2.3,
 	footprint = Vector2.new(7.6, 22.0),
 	collision = {

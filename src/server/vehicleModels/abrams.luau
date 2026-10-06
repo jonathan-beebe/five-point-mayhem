@@ -470,7 +470,11 @@ cyl("CrewDukeDome", v(0.5, 1.2, 1.2), CFrame.new(-2.2, 10.0, 6.5) * CYLINDER_Y, 
 
 return {
 	name = "M1 Abrams Tank",
-	speed = 60,
+	-- Real: 68 km/h, 0-32 km/h in 7.2 s, brakes 0.55 g, coasts 0.12 g (VehicleDefaults maps them).
+	speed = 35,
+	acceleration = 4.2,
+	braking = 11.3,
+	coasting = 4.1,
 	turnRate = 1.6,
 	footprint = Vector2.new(14.6, 31.6),
 	collision = {

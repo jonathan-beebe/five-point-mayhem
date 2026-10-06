@@ -440,7 +440,11 @@ add(
 
 return {
 	name = "Jeep Wrangler",
-	speed = 90,
+	-- Real: 160 km/h, 0-100 km/h in 8 s, brakes 0.75 g, coasts 0.2 g (VehicleDefaults maps them).
+	speed = 62,
+	acceleration = 8.4,
+	braking = 13.9,
+	coasting = 5.7,
 	turnRate = 2.4,
 	footprint = Vector2.new(7.4, 15.6),
 	collision = {

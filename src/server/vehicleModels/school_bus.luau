@@ -345,7 +345,11 @@ part("Tailpipe", V(12.0, 0.35, 0.35), C(-3.4, 1.5, 15.6) * CYLINDER_Z, EXHAUST, 
 
 return {
 	name = "School Bus",
-	speed = 70,
+	-- Real: 105 km/h, 0-100 km/h in 30 s, brakes 0.5 g, coasts 0.1 g (VehicleDefaults maps them).
+	speed = 46,
+	acceleration = 3.5,
+	braking = 10.6,
+	coasting = 3.6,
 	turnRate = 1.5,
 	footprint = Vector2.new(9.6, 44),
 	collision = {

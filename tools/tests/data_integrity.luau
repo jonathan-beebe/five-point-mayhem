@@ -7,6 +7,7 @@
 --   - every weapon, vehicle and creature kind has a model file, and every model file has an entry
 --   - every model file passes its define() (on a copy) and tools/lib/ModelChecks
 --   - walkers: the catalog's mech flag matches the model's gait "mech"
+--   - every vehicle model sets acceleration, braking and coasting (VehicleDefaults' mapping)
 --   - sounds: every weapon and vehicle has its SoundCatalog entry (walkers in MECHS), no entry
 --     names an unknown id, pooled weapons are automatic, every walker's cues are complete
 --   - regions: every Config.REGIONS id has a building, ground, trees, a themed monster and a lair
@@ -360,6 +361,14 @@ for id, vehicle in vehicles do
 				tostring(spec.gait)
 			)
 		)
+		-- Drive tuning comes from the real vehicle (VehicleDefaults' mapping), not the defaults.
+		for _, field in { "acceleration", "braking", "coasting" } do
+			local value = spec[field]
+			check(
+				type(value) == "number" and value > 0,
+				string.format("vehicle %s: model needs a positive %s", id, field)
+			)
+		end
 	end
 end
 

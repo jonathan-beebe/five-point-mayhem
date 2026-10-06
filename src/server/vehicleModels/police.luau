@@ -692,7 +692,11 @@ add(part("GunLockBox", V(4.0, 0.8, 1.5), CF(0, 3.25, 7.6), GUN_BOX, M.Metal))
 
 return {
 	name = "Police Interceptor",
-	speed = 120,
+	-- Real: 240 km/h, 0-100 km/h in 5.8 s, brakes 0.95 g, coasts 0.2 g (VehicleDefaults maps them).
+	speed = 81,
+	acceleration = 10.4,
+	braking = 16.2,
+	coasting = 5.7,
 	turnRate = 2.4,
 	footprint = Vector2.new(7.8, 20.0),
 	collision = {

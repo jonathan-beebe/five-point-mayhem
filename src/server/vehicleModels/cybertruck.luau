@@ -462,7 +462,11 @@ end
 
 return {
 	name = "Tesla Cybertruck",
-	speed = 115,
+	-- Real: 209 km/h, 0-100 km/h in 2.7 s, brakes 0.85 g, coasts 0.2 g (VehicleDefaults maps them).
+	speed = 74,
+	acceleration = 17.3,
+	braking = 15.1,
+	coasting = 5.7,
 	turnRate = 2.3,
 	footprint = Vector2.new(8.0, 22.6),
 	collision = {

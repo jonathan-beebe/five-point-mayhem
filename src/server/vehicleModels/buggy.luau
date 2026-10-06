@@ -636,7 +636,11 @@ cyl("GrabBar", 1.2, 0.1, CF(1.05, 3.31, -0.9), CHROME, M.Metal, 0.4)
 
 return {
 	name = "Dune Buggy",
-	speed = 100,
+	-- Real: 130 km/h, 0-100 km/h in 10 s, brakes 0.7 g, coasts 0.2 g (VehicleDefaults maps them).
+	speed = 54,
+	acceleration = 7.2,
+	braking = 13.2,
+	coasting = 5.7,
 	turnRate = 2.6,
 	footprint = Vector2.new(7.0, 13.2),
 	collision = {

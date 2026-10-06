@@ -508,7 +508,11 @@ add("Cooler", v(0.90, 0.30, 0.04), CFrame.new(0, 2.10, -1.95), COOLER)
 
 return {
 	name = "Ducati Panigale V4",
-	speed = 135,
+	-- Real: 299 km/h, 0-100 km/h in 2.6 s, brakes 1.1 g, coasts 0.2 g (VehicleDefaults maps them).
+	speed = 93,
+	acceleration = 17.8,
+	braking = 17.9,
+	coasting = 5.7,
 	turnRate = 3,
 	footprint = Vector2.new(3, 8.4),
 	collision = {
