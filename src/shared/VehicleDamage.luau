@@ -1,3 +1,4 @@
+--!strict
 -- Crash damage for vehicles (pure: no requires, so `tools/tests/vehicle_damage.luau` loads it
 -- under lune). Vehicles samples each driven vehicle's velocity every frame into a tracker; a sharp
 -- loss of speed (`step`) is a crash, and `damage` turns its size into health lost.

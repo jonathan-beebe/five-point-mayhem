@@ -1,3 +1,4 @@
+--!strict
 -- Builds and plays Sounds from SoundCatalog cues. The server plays weapon sounds (they
 -- replicate); each client plays vehicle engines for itself.
 
@@ -17,7 +18,7 @@ local DEFAULT_JITTER = { 0.04, 0.10 }
 local DEFAULT_FADE = 0.3
 
 local function addEffects(parent: Instance, effects: { SoundCatalog.Effect }?)
-	for _, spec in effects or {} do
+	for _, spec in (effects or {}) :: { SoundCatalog.Effect } do
 		local effect = Instance.new(spec.class) :: any
 		for property, value in spec do
 			if property ~= "class" then
@@ -114,7 +115,7 @@ function Sounds.play(sound: Sound, cue: Cue, group: string, gain: number?)
 	end
 	local parent = sound.Parent
 	if parent then
-		for _, layer in cue.layers or {} do
+		for _, layer in (cue.layers or {}) :: { Cue } do
 			playOn(layer, parent, group, gain)
 		end
 	end
@@ -140,7 +141,7 @@ function Sounds.playAt(cue: Cue, position: Vector3, group: string, gain: number?
 	attachment.Position = position -- Terrain sits at the origin
 	attachment.Parent = workspace.Terrain
 	local lifetime = playOn(cue, attachment, group, gain)
-	for _, layer in cue.layers or {} do
+	for _, layer in (cue.layers or {}) :: { Cue } do
 		local length = (layer.stopAfter or SoundCatalog.PALETTE[layer.key].duration)
 			- (layer.start or 0)
 		lifetime = math.max(lifetime, length / ((layer.pitch or 1) * 0.85) + 0.3)

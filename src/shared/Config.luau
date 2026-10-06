@@ -1,3 +1,4 @@
+--!strict
 -- World layout, teams, and tuning shared by server and client.
 
 local Config = {}

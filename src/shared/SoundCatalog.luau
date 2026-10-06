@@ -1,3 +1,4 @@
+--!strict
 -- Every weapon and vehicle sound (data only). Tune by ear here; `src/shared/Sounds.luau` plays
 -- these on the server (weapons) and `src/client/VehicleSounds.luau` on each client (engines and
 -- walkers).
@@ -1037,7 +1038,7 @@ local function check(cue: Cue?, where: string)
 	end
 	assert(PALETTE[cue.key], where .. ": unknown sound " .. cue.key)
 	assert(RANGES[cue.range or "small"], where .. ": unknown range " .. tostring(cue.range))
-	for _, layer in cue.layers or {} do
+	for _, layer in (cue.layers or {}) :: { Cue } do
 		layer.range = layer.range or cue.range
 		layer.jitter = layer.jitter or cue.jitter
 		check(layer, where)

@@ -54,7 +54,7 @@ local function create(
 	for key, value in properties do
 		(instance :: any)[key] = value
 	end
-	for _, child in children or {} do
+	for _, child in (children or {}) :: { Instance } do
 		child.Parent = instance
 	end
 	return instance
@@ -79,7 +79,7 @@ local function label(
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextWrapped = true,
 	})
-	for key, value in properties or {} do
+	for key, value in (properties or {}) :: { [string]: any } do
 		(result :: any)[key] = value
 	end
 	return result

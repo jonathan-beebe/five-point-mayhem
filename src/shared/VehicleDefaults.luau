@@ -1,3 +1,4 @@
+--!strict
 -- Drive tuning for a vehicle model that leaves these fields out (VehicleModel.Model). Pure data,
 -- no requires: the server, the client and the Lune tests read it.
 

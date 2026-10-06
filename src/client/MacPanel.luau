@@ -42,7 +42,7 @@ local function create(
 	for key, value in properties do
 		(instance :: any)[key] = value
 	end
-	for _, child in children or {} do
+	for _, child in (children or {}) :: { Instance } do
 		child.Parent = instance
 	end
 	return instance

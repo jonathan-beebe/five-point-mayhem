@@ -1,3 +1,4 @@
+--!strict
 -- Day and night clock math: pure, no services, so Lune can load it for tests.
 --
 -- A cycle's phase runs 0..1: 0 is dawn (ClockTime 6), `dayFraction` is dusk (ClockTime 18), and 1

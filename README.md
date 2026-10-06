@@ -7,8 +7,14 @@ Roblox arena game. The entire world is built from code at server start (`src/ser
 ```sh
 rokit install
 rojo serve      # then connect from the Rojo plugin in Studio and press Play
-lune run tools/test   # tests and data checks, no Studio needed (optional name filter)
+lune run tools/check  # format, lint, types, tests; exits 1 on any failure
 ```
+
+`lune run tools/check` runs stylua, selene, the luau-lsp type check over `src` and every test,
+and lists `TEMPORARY` markers as warnings. `--fast` skips the type check. The first full run
+downloads the Roblox type definitions to `.cache/` (needs network); without luau-lsp the type
+check is skipped with a warning. `lune run tools/test [filter]` runs only the tests. Files in
+`src/shared` are `--!strict`; the rest of `src` is nonstrict (`.luaurc`).
 
 ## Layout
 
@@ -20,6 +26,7 @@ lune run tools/test   # tests and data checks, no Studio needed (optional name f
 | `src/shared/CreatureCatalog.luau` | Monster kinds, each landmark's themed monster and zombie lair (data only) |
 | `src/server/vehicleModels` | One part-built model per vehicle (format: `src/server/systems/VehicleModel.luau`) |
 | `src/server/creatureModels` | One part-built model per monster (format: `src/server/systems/CreatureModel.luau`) |
+| `tools/check.luau` | Runs every check: format, lint, types, tests (`lune run tools/check [--fast]`) |
 | `tools/test.luau` | Runs every test (`lune run tools/test [filter]`) |
 | `tools/tests` | Tests for shared game logic, models and data (`data_integrity`: catalogs, model files, sounds, regions), run under Lune |
 | `tools/lib` | Lune harness: `Sandbox` loads game files outside Roblox, `Check` tallies assertions, `ModelChecks` validates model files |

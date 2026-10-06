@@ -1,3 +1,4 @@
+--!strict
 -- Every drivable vehicle (data only). The server builds each one from its model file in
 -- `src/server/vehicleModels/<id>.luau`; the admin panel lists them as gifts.
 

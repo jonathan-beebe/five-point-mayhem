@@ -145,7 +145,7 @@ function Build.wall(
 	openings: { Opening }?
 )
 	local cuts = { -length / 2, length / 2 }
-	for _, opening in openings or {} do
+	for _, opening in (openings or {}) :: { Opening } do
 		table.insert(cuts, math.clamp(opening.x - opening.width / 2, -length / 2, length / 2))
 		table.insert(cuts, math.clamp(opening.x + opening.width / 2, -length / 2, length / 2))
 	end
@@ -157,7 +157,7 @@ function Build.wall(
 		if width > 0.05 then
 			local mid = (a + b) / 2
 			local covering: Opening? = nil
-			for _, opening in openings or {} do
+			for _, opening in (openings or {}) :: { Opening } do
 				if math.abs(mid - opening.x) < opening.width / 2 then
 					covering = opening
 					break

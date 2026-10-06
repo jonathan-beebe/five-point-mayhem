@@ -1,3 +1,4 @@
+--!strict
 -- Monster kinds and where they live (data only, no requires). The server's Creatures system spawns
 -- them; tools/tests/data_integrity checks every kind has a model file and every region a themed
 -- kind and a lair.

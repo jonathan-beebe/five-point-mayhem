@@ -1,3 +1,4 @@
+--!strict
 -- Walk cycle for every walker's bones: pure math, no services, so Lune can load it for tests and
 -- the preview renderer. The legs are decoration driven by the skid's measured velocity; nothing
 -- here touches physics. Stride lengths and heights are OG's (legs 19 studs long),
@@ -169,8 +170,8 @@ end
 
 -- Builds the rig from rest pivots in vehicle space, keyed by bone name.
 function MechGait.rig(pivots: { [string]: Vector3 }): Rig
-	local legs = {}
-	for _, side in { "L", "R" } :: { Side } do
+	local legs: { Leg } = {}
+	for _, side: Side in { "L", "R" } :: { Side } do
 		local hip = assert(pivots["thigh_" .. side], "rig needs thigh_" .. side)
 		local knee = assert(pivots["shin_" .. side], "rig needs shin_" .. side)
 		local ankle = assert(pivots["foot_" .. side], "rig needs foot_" .. side)
@@ -344,7 +345,7 @@ function MechGait.step(state: State, input: Input, dt: number): { Footfall }
 
 	if state.weight > 0.3 then
 		local strength = state.weight * (0.5 + 0.5 * math.min(g / state.topSpeed, 1))
-		for _, side in { "L", "R" } :: { Side } do
+		for _, side: Side in { "L", "R" } :: { Side } do
 			if strikes[side] then
 				table.insert(footfalls, { foot = side, strength = strength })
 			end

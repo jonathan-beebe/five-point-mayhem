@@ -432,7 +432,7 @@ local function buildBones(
 	spec: VehicleModel.Model
 ): { [string]: Bone }
 	local bones: { [string]: Bone } = {}
-	for _, boneSpec in spec.bones or {} do
+	for _, boneSpec in (spec.bones or {}) :: { VehicleModel.BoneSpec } do
 		local part = Instance.new("Part")
 		part.Name = "Bone_" .. boneSpec.name
 		part.Size = Vector3.new(0.2, 0.2, 0.2)
@@ -487,7 +487,7 @@ end
 
 -- An Attachment "Smoke" at each smokestack mouth, on its bone. Clients (MechMotion) emit from it.
 local function addSmoke(skid: BasePart, bones: { [string]: Bone }, spec: VehicleModel.Model)
-	for _, stack in spec.smoke or {} do
+	for _, stack in (spec.smoke or {}) :: { VehicleModel.SmokeSpec } do
 		local bone = stack.bone and bones[stack.bone]
 		local attachment = Instance.new("Attachment")
 		attachment.Name = "Smoke"
@@ -500,7 +500,7 @@ end
 
 -- Climbable TrussParts welded to the skid.
 local function addLadders(model: Model, skid: BasePart, spec: VehicleModel.Model)
-	for index, ladder in spec.ladders or {} do
+	for index, ladder in (spec.ladders or {}) :: { VehicleModel.LadderSpec } do
 		local truss = Instance.new("TrussPart")
 		truss.Name = "Ladder" .. index
 		truss.Size = Vector3.new(2, ladder.height, 2)
@@ -518,7 +518,7 @@ local function solidHeight(spec: VehicleModel.Model): number
 	for _, box in spec.collision :: { VehicleModel.BoxSpec } do
 		top = math.max(top, box.offset.Position.Y + box.size.Y / 2)
 	end
-	for _, ladder in spec.ladders or {} do
+	for _, ladder in (spec.ladders or {}) :: { VehicleModel.LadderSpec } do
 		top = math.max(top, ladder.base.Y + ladder.height)
 	end
 	return top
@@ -1238,7 +1238,8 @@ local function seatPlayer(player: Player, seat: Seat | VehicleSeat)
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if humanoid and humanoid.Health > 0 and not seat.Occupant then
-		seat:Sit(humanoid)
+		-- Seat and VehicleSeat both have Sit(Humanoid); the checker cannot call a union of methods.
+		(seat :: Seat):Sit(humanoid)
 	end
 end
 
@@ -1635,14 +1636,15 @@ local function build(id: string, cframe: CFrame): Model
 	local climbs = spec.gait ~= nil and spec.climbs ~= false
 	local climber: LinearVelocity? = nil
 	if climbs then
-		climber = Instance.new("LinearVelocity")
-		climber.Name = "Climber"
-		climber.Attachment0 = driveAttachment
-		climber.RelativeTo = Enum.ActuatorRelativeTo.World
-		climber.VelocityConstraintMode = Enum.VelocityConstraintMode.Line
-		climber.LineDirection = Vector3.yAxis
-		climber.Enabled = false
-		climber.Parent = skid
+		local made = Instance.new("LinearVelocity")
+		made.Name = "Climber"
+		made.Attachment0 = driveAttachment
+		made.RelativeTo = Enum.ActuatorRelativeTo.World
+		made.VelocityConstraintMode = Enum.VelocityConstraintMode.Line
+		made.LineDirection = Vector3.yAxis
+		made.Enabled = false
+		made.Parent = skid
+		climber = made
 	end
 
 	local ram = spec.ram or 1
@@ -1790,8 +1792,9 @@ local function park(spot: Spot)
 	if spot.model then
 		spot.model:Destroy()
 	end
-	spot.model = build(spot.id, spot.cframe)
-	spot.model:SetAttribute("LastUsed", os.clock())
+	local model = build(spot.id, spot.cframe)
+	spot.model = model
+	model:SetAttribute("LastUsed", os.clock())
 end
 
 -- Someone in a seat, or standing in the cab.

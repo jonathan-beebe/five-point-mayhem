@@ -174,7 +174,7 @@ function VehicleModel.define(model: Model): Model
 			)
 		end
 	end
-	for _, stack in model.smoke or {} do
+	for _, stack in (model.smoke or {}) :: { SmokeSpec } do
 		assert(
 			stack.bone == nil or bones[stack.bone],
 			model.name .. ": a smoke spot names an unknown bone"
@@ -190,7 +190,7 @@ function VehicleModel.define(model: Model): Model
 		model.seatBone == nil or bones[model.seatBone],
 		model.name .. ": seatBone names an unknown bone"
 	)
-	for _, ladder in model.ladders or {} do
+	for _, ladder in (model.ladders or {}) :: { LadderSpec } do
 		assert(ladder.base.Y >= 1, model.name .. ": a ladder's base must be at y >= 1")
 		assert(
 			ladder.height > 0 and ladder.height % 2 == 0,

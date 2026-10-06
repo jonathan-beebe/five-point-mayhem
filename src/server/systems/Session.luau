@@ -1,3 +1,5 @@
+--!nolint DeprecatedApi
+-- TODO: GetRankInGroup is deprecated; moving to GetRankInGroupAsync changes behaviour, so it waits.
 -- Player lifecycle: teams, leaderstats, admin flag, collision groups, and deploying from the
 -- lobby with a loadout of up to three weapons. Every respawn returns the player to the lobby.
 
