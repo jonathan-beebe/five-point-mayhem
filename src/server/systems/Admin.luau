@@ -8,7 +8,8 @@
 --   /gravity                   toggle moon gravity
 --   /freeze <who>              freeze players solid for 10 seconds
 --   /horde [who]               summon a monster horde (around a player, or across the board)
---   /night                     toggle day and night
+--   /day                       jump to morning (cycle keeps running)
+--   /night                     jump to nightfall (cycle keeps running)
 --
 -- <who> is "all", "me", or the start of a player's name.
 
@@ -25,6 +26,7 @@ local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 local Combat = require(script.Parent.Combat)
 local Creatures = require(script.Parent.Creatures)
+local DayNight = require(script.Parent.DayNight)
 local MacAccess = require(script.Parent.MacAccess)
 local Session = require(script.Parent.Session)
 local Vehicles = require(script.Parent.Vehicles)
@@ -354,10 +356,9 @@ local function horde(caller: Player, who: string?)
 	announce("👹 THE HORDE APPROACHES 👹", rgb(140, 255, 100), 3, "alarm")
 end
 
-local function night()
-	local isDay = Lighting.ClockTime > 6 and Lighting.ClockTime < 18
-	TweenService:Create(Lighting, TweenInfo.new(3), { ClockTime = if isDay then 0 else 14 }):Play()
-	announce(if isDay then "🌑 NIGHT FALLS" else "☀ DAYBREAK", rgb(200, 200, 255), 3)
+local function setTime(night: boolean)
+	DayNight.jumpTo(night)
+	announce(if night then "🌑 NIGHT FALLS" else "☀ DAYBREAK", rgb(200, 200, 255), 3)
 end
 
 -- Dispatch -----------------------------------------------------------------------------------
@@ -379,8 +380,10 @@ function Admin.run(caller: Player, command: string, first: string?, second: stri
 		freeze(caller, first)
 	elseif command == "horde" then
 		horde(caller, first)
+	elseif command == "day" then
+		setTime(false)
 	elseif command == "night" then
-		night()
+		setTime(true)
 	end
 end
 
@@ -413,7 +416,7 @@ function Admin.start()
 	local commands = Instance.new("Folder")
 	commands.Name = "MayhemCommands"
 	commands.Parent = TextChatService
-	for _, name in { "mayhem", "give", "meteors", "gravity", "freeze", "horde", "night" } do
+	for _, name in { "mayhem", "give", "meteors", "gravity", "freeze", "horde", "day", "night" } do
 		local command = Instance.new("TextChatCommand")
 		command.Name = "Mayhem_" .. name
 		command.PrimaryAlias = "/" .. name

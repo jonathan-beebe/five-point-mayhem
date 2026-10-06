@@ -49,6 +49,15 @@ end
 Config.NORMAL_GRAVITY = 196.2
 Config.MOON_GRAVITY = 38
 
+-- Day and night: one full day plus night lasts DAY_NIGHT_CYCLE_SECONDS. Day is ClockTime 6..18 and
+-- takes DAY_NIGHT_DAY_FRACTION of the cycle. The server drives the clock (server DayNight).
+Config.DAY_NIGHT_CYCLE_SECONDS = 300
+Config.DAY_NIGHT_DAY_FRACTION = 0.5
+Config.DAY_NIGHT_START_CLOCK = 14
+Config.DAY_NIGHT_DAY_CLOCK = 7 -- where DAY jumps to: just after sunrise
+Config.DAY_NIGHT_NIGHT_CLOCK = 19 -- where NIGHT jumps to: just after dusk
+Config.DAY_NIGHT_FADE_SECONDS = 3
+
 Config.FFA_TEAM = "Lone Wolves"
 Config.TEAMS = {
 	{
