@@ -87,10 +87,10 @@ end
 -- Constraint strengths, tuned on an 8 x 14 skid and scaled with mass and size.
 local BASE_MASS = 8 * 14 * 4
 local BASE_SPAN = 8 ^ 2 + 14 ^ 2
-local ACCELERATION = 55
-local BRAKING = 90
-local COASTING = 30
-local TURN_RATE = 2.4 -- default
+local ACCELERATION = VehicleModel.DEFAULTS.acceleration
+local BRAKING = VehicleModel.DEFAULTS.braking
+local COASTING = VehicleModel.DEFAULTS.coasting
+local TURN_RATE = VehicleModel.DEFAULTS.turnRate
 local SETTLING = 45 -- studs/s^2 an empty vehicle slows by, frictionless skid and all
 local SPIN_SETTLING = 4 -- rad/s^2 an empty vehicle's yaw spin slows by
 local CLIMB_LIFT = 60 -- studs/s^2 the climber can accelerate a walker by, beyond gravity

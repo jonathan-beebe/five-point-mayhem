@@ -14,6 +14,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local MechGait = require(ReplicatedStorage.Shared.MechGait)
+local VehicleDefaults = require(ReplicatedStorage.Shared.VehicleDefaults)
 
 local MechMotion = {}
 
@@ -220,7 +221,7 @@ local function animate(mech: Mech, dt: number, viewer: Vector3)
 		yawRate = skid.AssemblyAngularVelocity.Y,
 		occupied = seat.Occupant ~= nil or legsRidden(mech.model),
 		topSpeed = (seat:GetAttribute("TopSpeed") :: number?) or 18,
-		turnRate = (seat:GetAttribute("TurnRate") :: number?) or 0.7,
+		turnRate = (seat:GetAttribute("TurnRate") :: number?) or VehicleDefaults.turnRate,
 		time = os.clock(),
 	}, dt)
 	local poses = MechGait.pose(state)

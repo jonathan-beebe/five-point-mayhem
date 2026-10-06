@@ -81,7 +81,7 @@ export type CabSpec = { center: Vector3, size: Vector3 }
 export type Model = {
 	name: string,
 	speed: number, -- top speed, studs per second
-	turnRate: number?, -- yaw rate at full lock, radians per second; default 2.4
+	turnRate: number?, -- yaw rate at full lock, radians per second; default in DEFAULTS
 	footprint: Vector2, -- skid width (X) and length (Z)
 	-- Solid boxes players and the world collide with. Default: the footprint up to 4 studs tall.
 	collision: { BoxSpec }?,
@@ -101,9 +101,9 @@ export type Model = {
 	cameraFocus: Vector3?, -- outside-view camera subject
 	cockpitCamera: boolean?, -- the driver gets the first-person cockpit camera
 	gait: string?, -- client animator for the bones; "mech" is the only one
-	acceleration: number?, -- studs/s^2 toward the target speed; default 55
-	braking: number?, -- studs/s^2 against the motion; default 90
-	coasting: number?, -- studs/s^2 to rest with no throttle; default 30
+	acceleration: number?, -- studs/s^2 toward the target speed; default in DEFAULTS
+	braking: number?, -- studs/s^2 against the motion; default in DEFAULTS
+	coasting: number?, -- studs/s^2 to rest with no throttle; default in DEFAULTS
 	turnAcceleration: number?, -- rad/s^2 on the yaw rate; nil = instant
 	turnInPlace: boolean?, -- full turn rate at zero speed
 	parkingBrake: boolean?, -- with no driver, the drive constraints hold it still
@@ -115,12 +115,17 @@ export type Model = {
 	ram: number?, -- how hard it shoves vehicles, fells trees, flings creatures; default 1
 }
 
+local VehicleDefaults = require(game:GetService("ReplicatedStorage").Shared.VehicleDefaults)
+
 local VehicleModel = {}
 
 VehicleModel.MAX_PIECES = 320
 VehicleModel.MAX_SEATS = 8
 VehicleModel.MAX_BONES = 32
 VehicleModel.SEAT_SIZE = Vector3.new(2, 1, 2)
+
+-- Drive tuning for a model that leaves these fields out (src/shared/VehicleDefaults.luau).
+VehicleModel.DEFAULTS = VehicleDefaults
 
 -- Rotations that lay a cylinder's X axis along Z (axles across the car need none) or Y.
 VehicleModel.CYLINDER_Z = CFrame.Angles(0, math.rad(90), 0)

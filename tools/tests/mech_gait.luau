@@ -10,35 +10,23 @@
 --   - heel strikes fire while walking
 --   - a wobble (antenna spring) moves while walking and settles after a stop
 
-local fs = require("@lune/fs")
-local luau = require("@lune/luau")
-local process = require("@lune/process")
 local roblox = require("@lune/roblox")
 
-local function load(file: string): any
-	local environment = { CFrame = roblox.CFrame, Vector3 = roblox.Vector3 }
-	return luau.load(fs.readFile(file), { debugName = file, environment = environment })()
-end
+local Check = require("../lib/Check")
+local Sandbox = require("../lib/Sandbox")
 
-local MechGait = load("src/shared/MechGait.luau")
+local MechGait = Sandbox.load("src/shared/MechGait.luau")
+local DEFAULTS = Sandbox.load("src/shared/VehicleDefaults.luau")
 local CFrame, Vector3 = roblox.CFrame, roblox.Vector3
 
 -- Rest pivots, top speed and turn rate of the walker under test (set by the loop at the bottom).
 local PIVOTS: { [string]: any } = {}
-local TOP, TURN, RISE, FALL = 18, 0.7, 1.8, 1.3
+local TOP, TURN, RISE, FALL = 18, DEFAULTS.turnRate, 1.8, 1.3
 
--- Every walker's model file, loaded the way export.luau loads it.
+-- Every walker's model file.
 local walkers = {}
-for _, file in fs.readDir("src/server/vehicleModels") do
-	local path = "src/server/vehicleModels/" .. file
-	local environment = {
-		CFrame = roblox.CFrame,
-		Vector3 = roblox.Vector3,
-		Vector2 = roblox.Vector2,
-		Color3 = roblox.Color3,
-		Enum = roblox.Enum,
-	}
-	local spec = luau.load(fs.readFile(path), { debugName = path, environment = environment })()
+for _, model in Sandbox.loadVehicleModels() do
+	local spec = model.spec
 	if spec.gait == "mech" then
 		local pivots = {}
 		for _, bone in spec.bones do
@@ -48,9 +36,11 @@ for _, file in fs.readDir("src/server/vehicleModels") do
 			name = spec.name,
 			pivots = pivots,
 			speed = spec.speed,
-			turnRate = spec.turnRate or 0.7,
-			rise = spec.speed / (spec.acceleration or 55), -- seconds from rest to top speed
-			fall = spec.speed / (spec.coasting or 30), -- seconds to coast from top speed to rest
+			turnRate = spec.turnRate or DEFAULTS.turnRate,
+			-- seconds from rest to top speed
+			rise = spec.speed / (spec.acceleration or DEFAULTS.acceleration),
+			-- seconds to coast from top speed to rest
+			fall = spec.speed / (spec.coasting or DEFAULTS.coasting),
 		})
 	end
 end
@@ -60,20 +50,8 @@ end)
 
 local DT = 1 / 60
 local SKATE = 0.05
-local failures = 0
-local walkerFailures = 0 -- failures printed for the walker under test
-local checks = 0
-
-local function check(ok: boolean, message: string)
-	checks += 1
-	if not ok then
-		failures += 1
-		walkerFailures += 1
-		if walkerFailures <= 10 then
-			print("FAIL " .. message)
-		end
-	end
-end
+local check = Check.check
+Check.printLimit = 10 -- FAIL lines per walker
 
 -- Ankle position in vehicle space from the posed Transforms (forward kinematics, as Motor6Ds do).
 local function ankle(rig, poses, side: string): any
@@ -213,8 +191,7 @@ end
 for _, walker in walkers do
 	PIVOTS, TOP, TURN = walker.pivots, walker.speed, walker.turnRate
 	RISE, FALL = walker.rise, walker.fall
-	walkerFailures = 0
-	print(walker.name)
+	Check.section(walker.name)
 	-- Steady walk at top speed (a jump to full speed, so checks start once the stride settles).
 	local _, walkSteps, _, walkWobble = run("walk at top speed", 12, function()
 		return TOP, 0
@@ -261,18 +238,14 @@ for _, walker in walkers do
 	do
 		local rig = MechGait.rig(PIVOTS)
 		local state = MechGait.new(rig)
-		MechGait.step(
-			state,
-			{
-				forward = 0,
-				yawRate = 0,
-				occupied = false,
-				topSpeed = TOP,
-				turnRate = TURN,
-				time = 0,
-			},
-			DT
-		)
+		MechGait.step(state, {
+			forward = 0,
+			yawRate = 0,
+			occupied = false,
+			topSpeed = TOP,
+			turnRate = TURN,
+			time = 0,
+		}, DT)
 		local poses = MechGait.pose(state)
 		for bone, pose in poses do
 			if bone ~= "hatch" then
@@ -288,7 +261,4 @@ for _, walker in walkers do
 	end
 end
 
-print(string.format("%d checks, %d failures", checks, failures))
-if failures > 0 then
-	process.exit(1)
-end
+Check.finish()

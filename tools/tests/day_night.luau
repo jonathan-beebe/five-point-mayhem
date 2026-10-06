@@ -12,33 +12,17 @@
 --   - sample/jump: the clock is continuous across a fade's end, a jump pressed mid-fade starts
 --     from the blended clock, and the fade is dropped once it has run
 
-local fs = require("@lune/fs")
-local luau = require("@lune/luau")
-local process = require("@lune/process")
+local Check = require("../lib/Check")
+local Sandbox = require("../lib/Sandbox")
 
-local DayNight =
-	luau.load(fs.readFile("src/shared/DayNight.luau"), { debugName = "src/shared/DayNight.luau" })()
+local DayNight = Sandbox.load("src/shared/DayNight.luau")
 
-local EPSILON = 1e-6
-local failures = 0
-local checks = 0
-
-local function check(ok: boolean, message: string)
-	checks += 1
-	if not ok then
-		failures += 1
-		print("FAIL " .. message)
-	end
-end
-
-local function near(a: number, b: number): boolean
-	return math.abs(a - b) < EPSILON
-end
+local check, near = Check.check, Check.isNear
 
 -- Distance on the 24-hour clock face.
 local function clockNear(a: number, b: number): boolean
 	local d = math.abs(a - b) % 24
-	return math.min(d, 24 - d) < EPSILON
+	return near(math.min(d, 24 - d), 0)
 end
 
 for _, f in { 0.5, 0.6, 0.25 } do
@@ -231,7 +215,4 @@ do
 	)
 end
 
-print(string.format("%d checks, %d failures", checks, failures))
-if failures > 0 then
-	process.exit(1)
-end
+Check.finish()

@@ -7,7 +7,7 @@ Roblox arena game. The entire world is built from code at server start (`src/ser
 ```sh
 rokit install
 rojo serve      # then connect from the Rojo plugin in Studio and press Play
-lune run tools/tests/day_night.luau   # day/night clock math, no Studio needed
+lune run tools/test   # tests and sound catalog checks, no Studio needed (optional name filter)
 ```
 
 ## Layout
@@ -19,6 +19,9 @@ lune run tools/tests/day_night.luau   # day/night clock math, no Studio needed
 | `src/shared/VehicleCatalog.luau` | All vehicles (data only) |
 | `src/server/vehicleModels` | One part-built model per vehicle (format: `src/server/systems/VehicleModel.luau`) |
 | `src/server/creatureModels` | One part-built model per monster (format: `src/server/systems/CreatureModel.luau`) |
+| `tools/test.luau` | Runs every test and the sound catalog check (`lune run tools/test [filter]`) |
+| `tools/tests` | Tests for shared game logic and models, run under Lune |
+| `tools/lib` | Lune harness: `Sandbox` loads game files outside Roblox, `Check` tallies assertions |
 | `tools/preview` | Renders a vehicle, weapon or creature model file to a PNG of orthographic views |
 | `tools/audition.luau` | Plays every weapon and vehicle sound; paste into the Studio Command Bar during Play |
 | `src/server/world` | Lobby, roads, terrain/scenery, the five landmarks |
@@ -271,7 +274,7 @@ size sets how much. Size is bulk: footprint × the height of its solid parts, ov
   no crash damage of its own, but rams damage every vehicle.
 - Tuning lives at the top of `src/shared/VehicleDamage.luau` (formulas, crash detection) and in the
   crash damage section of `src/server/systems/Vehicles.luau` (wreck, smoke and fire);
-  `lune run tools/tests/vehicle_damage.luau` checks it.
+  `lune run tools/test vehicle_damage` checks it.
 
 ### OG
 
@@ -331,8 +334,7 @@ Passengers look out in first person like the pilot.
 Check the walkers' walk cycle and climb assist without Studio (needs `lune`):
 
 ```sh
-lune run tools/tests/mech_gait.luau
-lune run tools/tests/mech_climb.luau
+lune run tools/test mech_
 ```
 
 Preview a vehicle model without Studio (needs `lune` from `rokit install` and Python with Pillow):
