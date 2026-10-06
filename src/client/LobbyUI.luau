@@ -11,11 +11,14 @@ local Names = require(ReplicatedStorage.Shared.Names)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 local Announcer = require(script.Parent.Announcer)
+local Create = require(script.Parent.ui.Create)
+local Theme = require(script.Parent.ui.Theme)
 
 local LobbyUI = {}
 
 local player = Players.LocalPlayer
 local rgb = Color3.fromRGB
+local create, label = Create.create, Create.label
 
 local BACKGROUND = rgb(18, 18, 28)
 local PANEL = rgb(32, 32, 48)
@@ -46,44 +49,8 @@ local KIND_LABELS = {
 local selected: { string } = {}
 local category = "All"
 
-local function create(
-	className: string,
-	properties: { [string]: any },
-	children: { Instance }?
-): any
-	local instance = Instance.new(className)
-	for key, value in properties do
-		(instance :: any)[key] = value
-	end
-	for _, child in (children or {}) :: { Instance } do
-		child.Parent = instance
-	end
-	return instance
-end
-
 local function corner(radius: number): UICorner
-	return create("UICorner", { CornerRadius = UDim.new(0, radius) })
-end
-
-local function label(
-	text: string,
-	size: number,
-	color: Color3,
-	properties: { [string]: any }?
-): TextLabel
-	local result = create("TextLabel", {
-		BackgroundTransparency = 1,
-		Text = text,
-		TextSize = size,
-		TextColor3 = color,
-		Font = Enum.Font.GothamBold,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextWrapped = true,
-	})
-	for key, value in (properties or {}) :: { [string]: any } do
-		(result :: any)[key] = value
-	end
-	return result
+	return Create.corner(UDim.new(0, radius))
 end
 
 local function speedLabel(cooldown: number): string
@@ -104,7 +71,7 @@ local gui = create("ScreenGui", {
 	ResetOnSpawn = false,
 	IgnoreGuiInset = true,
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-	DisplayOrder = 10,
+	DisplayOrder = Theme.DisplayOrder.lobby,
 })
 
 local panel = create("Frame", {
@@ -116,7 +83,7 @@ local panel = create("Frame", {
 	Parent = gui,
 }, {
 	corner(18),
-	create("UIStroke", { Color = ACCENT, Thickness = 3 }),
+	Create.stroke(ACCENT, 3),
 })
 local scale = create("UIScale", { Parent = panel })
 
@@ -126,7 +93,7 @@ local function rescale()
 end
 
 label("CHOOSE YOUR WEAPONS", 34, TEXT, {
-	Font = Enum.Font.LuckiestGuy,
+	Font = Theme.Fonts.title,
 	Position = UDim2.fromOffset(24, 14),
 	Size = UDim2.fromOffset(600, 40),
 	Parent = panel,
@@ -145,7 +112,7 @@ local lookButton = create("TextButton", {
 	Text = "👀 Look around",
 	TextColor3 = TEXT,
 	TextSize = 16,
-	Font = Enum.Font.GothamBold,
+	Font = Theme.Fonts.bold,
 	Parent = panel,
 }, { corner(10) })
 
@@ -157,15 +124,12 @@ local openButton = create("TextButton", {
 	Text = "🔫 CHOOSE WEAPONS",
 	TextColor3 = TEXT,
 	TextSize = 20,
-	Font = Enum.Font.LuckiestGuy,
+	Font = Theme.Fonts.title,
 	Visible = false,
 	Parent = gui,
 }, {
 	corner(14),
-	create(
-		"UIStroke",
-		{ Color = TEXT, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }
-	),
+	Create.stroke(TEXT, 2, Enum.ApplyStrokeMode.Border),
 })
 
 -- Category tabs.
@@ -198,12 +162,7 @@ local grid = create("ScrollingFrame", {
 		CellPadding = UDim2.fromOffset(8, 8),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 	}),
-	create("UIPadding", {
-		PaddingTop = UDim.new(0, 8),
-		PaddingLeft = UDim.new(0, 8),
-		PaddingRight = UDim.new(0, 8),
-		PaddingBottom = UDim.new(0, 8),
-	}),
+	Create.padding(UDim.new(0, 8), UDim.new(0, 8)),
 })
 
 -- Sidebar: loadout slots, teams, deploy.
@@ -217,7 +176,7 @@ label(
 	"YOUR LOADOUT",
 	20,
 	GOLD,
-	{ Font = Enum.Font.LuckiestGuy, Size = UDim2.fromOffset(300, 26), Parent = sidebar }
+	{ Font = Theme.Fonts.title, Size = UDim2.fromOffset(300, 26), Parent = sidebar }
 )
 local slots: { TextButton } = {}
 for index = 1, Config.LOADOUT_SIZE do
@@ -227,13 +186,13 @@ for index = 1, Config.LOADOUT_SIZE do
 		BackgroundColor3 = PANEL,
 		TextColor3 = TEXT,
 		TextSize = 16,
-		Font = Enum.Font.GothamBold,
+		Font = Theme.Fonts.bold,
 		Parent = sidebar,
 	}, { corner(10) })
 end
 
 label("TEAM", 20, GOLD, {
-	Font = Enum.Font.LuckiestGuy,
+	Font = Theme.Fonts.title,
 	Position = UDim2.fromOffset(0, 192),
 	Size = UDim2.fromOffset(300, 26),
 	Parent = sidebar,
@@ -247,7 +206,7 @@ for index, spec in Config.TEAMS do
 		Text = spec.name .. "  ·  " .. spec.blurb,
 		TextColor3 = TEXT,
 		TextSize = 14,
-		Font = Enum.Font.GothamBold,
+		Font = Theme.Fonts.bold,
 		Parent = sidebar,
 	}, {
 		corner(10),
@@ -274,15 +233,12 @@ local deployButton = create("TextButton", {
 	TextStrokeColor3 = rgb(40, 0, 10),
 	TextStrokeTransparency = 0.3,
 	TextSize = 30,
-	Font = Enum.Font.LuckiestGuy,
+	Font = Theme.Fonts.title,
 	TextWrapped = true,
 	Parent = sidebar,
 }, {
 	corner(14),
-	create(
-		"UIStroke",
-		{ Color = TEXT, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }
-	),
+	Create.stroke(TEXT, 2, Enum.ApplyStrokeMode.Border),
 })
 
 -- Behaviour -----------------------------------------------------------------------------------
@@ -401,7 +357,7 @@ for order, weapon in WeaponCatalog.ALL do
 		label(weapon.description, 12, MUTED, {
 			Position = UDim2.fromOffset(8, 48),
 			Size = UDim2.fromOffset(150, 44),
-			Font = Enum.Font.Gotham,
+			Font = Theme.Fonts.regular,
 			TextYAlignment = Enum.TextYAlignment.Top,
 		}),
 		label(
@@ -446,7 +402,7 @@ for order, entry in tabList do
 		Text = entry.icon .. " " .. entry.id,
 		TextColor3 = TEXT,
 		TextSize = 13,
-		Font = Enum.Font.GothamBold,
+		Font = Theme.Fonts.bold,
 		Parent = tabs,
 	}, { corner(8) })
 	button.Activated:Connect(function()

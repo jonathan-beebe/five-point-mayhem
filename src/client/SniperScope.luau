@@ -14,8 +14,13 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
+local HudLayout = require(ReplicatedStorage.Shared.HudLayout)
 local MathUtil = require(ReplicatedStorage.Shared.MathUtil)
 local Names = require(ReplicatedStorage.Shared.Names)
+local Create = require(script.Parent.ui.Create)
+local Hud = require(script.Parent.ui.Hud)
+local Theme = require(script.Parent.ui.Theme)
+local TouchButton = require(script.Parent.ui.TouchButton)
 
 local SniperScope = {}
 
@@ -61,7 +66,7 @@ local overlayGui = Instance.new("ScreenGui")
 overlayGui.Name = "SniperScope"
 overlayGui.ResetOnSpawn = false
 overlayGui.IgnoreGuiInset = true
-overlayGui.DisplayOrder = 5
+overlayGui.DisplayOrder = Theme.DisplayOrder.scope
 overlayGui.Enabled = false
 
 local function blackFrame(name: string): Frame
@@ -86,12 +91,8 @@ lens.AnchorPoint = Vector2.new(0.5, 0.5)
 lens.Position = UDim2.fromScale(0.5, 0.5)
 lens.BackgroundTransparency = 1
 lens.Parent = overlayGui
-local lensCorner = Instance.new("UICorner")
-lensCorner.CornerRadius = UDim.new(0.5, 0)
-lensCorner.Parent = lens
-local lensStroke = Instance.new("UIStroke")
-lensStroke.Color = rgb(0, 0, 0)
-lensStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+Create.corner(Theme.Radius.round).Parent = lens
+local lensStroke = Create.stroke(rgb(0, 0, 0), nil, Enum.ApplyStrokeMode.Border)
 lensStroke.Parent = lens
 
 local function reticleLine(name: string, size: UDim2): Frame
@@ -112,9 +113,7 @@ reticleLine("Vertical", UDim2.new(0, 2, 1, 0))
 local dot = reticleLine("Dot", UDim2.fromOffset(4, 4))
 dot.BackgroundColor3 = rgb(255, 40, 40)
 dot.BackgroundTransparency = 0
-local dotCorner = Instance.new("UICorner")
-dotCorner.CornerRadius = UDim.new(0.5, 0)
-dotCorner.Parent = dot
+Create.corner(Theme.Radius.round).Parent = dot
 
 local function layoutOverlay()
 	local viewport = Workspace.CurrentCamera.ViewportSize
@@ -139,74 +138,38 @@ end
 local buttonGui = Instance.new("ScreenGui")
 buttonGui.Name = Names.Instances.SniperScopeButton
 buttonGui.ResetOnSpawn = false
-buttonGui.DisplayOrder = 6
+buttonGui.DisplayOrder = Theme.DisplayOrder.touch
 buttonGui.Enabled = false
+Hud.addBottomControls(buttonGui)
 
-local button = Instance.new("TextButton")
-button.Name = "Scope"
-button.AnchorPoint = Vector2.new(0.5, 1)
-button.BackgroundColor3 = rgb(20, 20, 28)
-button.BackgroundTransparency = 0.25
-button.TextColor3 = rgb(255, 255, 255)
-button.Font = Enum.Font.GothamBold
-button.TextScaled = true
-button.Text = "SCOPE"
-button.Parent = buttonGui
-local buttonCorner = Instance.new("UICorner")
-buttonCorner.CornerRadius = UDim.new(0.5, 0)
-buttonCorner.Parent = button
-local buttonStroke = Instance.new("UIStroke")
-buttonStroke.Color = rgb(255, 255, 255)
-buttonStroke.Thickness = 2
-buttonStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-buttonStroke.Parent = button
-local buttonPadding = Instance.new("UIPadding")
-buttonPadding.PaddingLeft = UDim.new(0.12, 0)
-buttonPadding.PaddingRight = UDim.new(0.12, 0)
-buttonPadding.PaddingTop = UDim.new(0.3, 0)
-buttonPadding.PaddingBottom = UDim.new(0.3, 0)
-buttonPadding.Parent = button
-
-local function jumpButton(): GuiObject?
-	local playerGui = player:FindFirstChildOfClass("PlayerGui")
-	local touchGui = playerGui and playerGui:FindFirstChild("TouchGui")
-	local frame = touchGui and touchGui:FindFirstChild("TouchControlFrame")
-	local jump = frame and frame:FindFirstChild("JumpButton")
-	return if jump and jump:IsA("GuiObject") then jump else nil
-end
+local button = TouchButton.new({
+	name = "Scope",
+	text = "SCOPE",
+	parent = buttonGui,
+	anchor = Vector2.new(0.5, 1),
+	color = Theme.Colors.hud,
+	transparency = Theme.HUD_TRANSPARENCY,
+	strokeColor = Theme.Colors.white,
+	paddingX = 0.12,
+	paddingY = 0.3,
+})
 
 -- Sits directly above the default jump button, measured at runtime, in the same coordinate
 -- space (the button's ScreenGui copies TouchGui's inset setting).
 local function layoutButton()
-	local jump = jumpButton()
+	local jump = Hud.jumpButton()
+	local placed
 	if jump then
-		local touchGui = jump:FindFirstAncestorOfClass("ScreenGui")
-		if touchGui then
-			buttonGui.IgnoreGuiInset = touchGui.IgnoreGuiInset
-		end
-		local size = math.floor(math.min(jump.AbsoluteSize.X, jump.AbsoluteSize.Y) * 0.8)
-		local gap = math.floor(jump.AbsoluteSize.Y * 0.15)
-		local center = jump.AbsolutePosition.X + jump.AbsoluteSize.X / 2
-		button.Size = UDim2.fromOffset(size, size)
-		button.Position = UDim2.fromOffset(math.floor(center), jump.AbsolutePosition.Y - gap)
+		Hud.matchInset(buttonGui, jump)
+		placed = HudLayout.scopeButton(jump.AbsolutePosition, jump.AbsoluteSize)
 	else
-		local viewport = Workspace.CurrentCamera.ViewportSize
-		local size = math.floor(math.min(viewport.X, viewport.Y) * 0.14)
-		button.Size = UDim2.fromOffset(size, size)
-		button.Position = UDim2.fromScale(0.88, 0.62)
+		placed = HudLayout.scopeButtonFallback(Workspace.CurrentCamera.ViewportSize)
 	end
+	button.Size = placed.size
+	button.Position = placed.position
 end
 
-local watchedJump: GuiObject? = nil
-local function watchJumpButton()
-	local jump = jumpButton()
-	if jump and jump ~= watchedJump then
-		watchedJump = jump
-		jump:GetPropertyChangedSignal("AbsolutePosition"):Connect(layoutButton)
-		jump:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutButton)
-	end
-	layoutButton()
-end
+local watchJumpButton = Hud.jumpWatcher(layoutButton)
 
 -- Scoping -------------------------------------------------------------------------------------
 
@@ -277,7 +240,7 @@ local function scopeOut()
 		end
 	end
 	overlayGui.Enabled = false
-	button.BackgroundColor3 = rgb(20, 20, 28)
+	button.BackgroundColor3 = Theme.Colors.hud
 end
 
 local function scopeIn()

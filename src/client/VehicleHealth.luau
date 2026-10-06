@@ -9,6 +9,8 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local Names = require(ReplicatedStorage.Shared.Names)
+local Create = require(script.Parent.ui.Create)
+local Theme = require(script.Parent.ui.Theme)
 
 local VehicleHealth = {}
 
@@ -25,7 +27,7 @@ local CRITICAL = rgb(230, 50, 40)
 local gui = Instance.new("ScreenGui")
 gui.Name = "VehicleHealth"
 gui.ResetOnSpawn = false
-gui.DisplayOrder = 5
+gui.DisplayOrder = Theme.DisplayOrder.vehicleBar
 gui.Enabled = false
 
 local frame = Instance.new("Frame")
@@ -33,18 +35,12 @@ frame.Name = "Bar"
 frame.AnchorPoint = Vector2.new(0.5, 1)
 frame.Position = UDim2.new(0.5, 0, 1, -BAR_BOTTOM)
 frame.Size = UDim2.fromOffset(BAR_SIZE.X, BAR_SIZE.Y)
-frame.BackgroundColor3 = rgb(20, 20, 28)
-frame.BackgroundTransparency = 0.25
+frame.BackgroundColor3 = Theme.Colors.hud
+frame.BackgroundTransparency = Theme.HUD_TRANSPARENCY
 frame.ClipsDescendants = true
 frame.Parent = gui
-local frameCorner = Instance.new("UICorner")
-frameCorner.CornerRadius = UDim.new(0.5, 0)
-frameCorner.Parent = frame
-local stroke = Instance.new("UIStroke")
-stroke.Color = rgb(255, 255, 255)
-stroke.Thickness = 2
-stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-stroke.Parent = frame
+Create.corner(Theme.Radius.round).Parent = frame
+Create.stroke(Theme.Colors.white, 2, Enum.ApplyStrokeMode.Border).Parent = frame
 
 local fill = Instance.new("Frame")
 fill.Name = "Fill"
@@ -52,9 +48,7 @@ fill.BorderSizePixel = 0
 fill.Size = UDim2.fromScale(1, 1)
 fill.BackgroundColor3 = HEALTHY
 fill.Parent = frame
-local fillCorner = Instance.new("UICorner")
-fillCorner.CornerRadius = UDim.new(0.5, 0)
-fillCorner.Parent = fill
+Create.corner(Theme.Radius.round).Parent = fill
 
 local flash = Instance.new("Frame")
 flash.Name = "Flash"
@@ -68,7 +62,7 @@ local label = Instance.new("TextLabel")
 label.Name = "Label"
 label.BackgroundTransparency = 1
 label.Size = UDim2.fromScale(1, 1)
-label.Font = Enum.Font.GothamBold
+label.Font = Theme.Fonts.bold
 label.TextSize = 14
 label.TextColor3 = rgb(255, 255, 255)
 label.TextStrokeTransparency = 0.4
