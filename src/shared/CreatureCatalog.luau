@@ -1,7 +1,8 @@
 --!strict
--- Monster kinds and where they live (data only, no requires). The server's Creatures system spawns
--- them; tools/tests/data_integrity checks every kind has a model file and every region a themed
--- kind and a lair.
+-- Monster kinds, where they live, how many and how often (data only, no requires). The server's
+-- Creatures system spawns them and CreatureBrain holds the rules that read these numbers;
+-- tools/tests/data_integrity checks every kind has a model file and every region a themed kind and
+-- a lair; tools/tests/creature_brain pins the numbers and checks every kind they name exists.
 
 -- `scale` sets knockback strength; the look and size come from the kind's file in
 -- src/server/creatureModels (format: src/server/systems/CreatureModel.luau).
@@ -106,8 +107,65 @@ local LAIRS = {
 	palace = { inside = -27, outside = -60, y = 1.6, xs = { 0 } },
 }
 
+-- Roaming creatures spawned at start, by kind; each landmark's themed kind adds THEMED_COUNT.
+-- Roaming creatures respawn RESPAWN_SECONDS after dying, at a fresh spot.
+local ROAMING: { [string]: number } = { goblin = 12, slime = 6, zombie = 30 }
+local THEMED_COUNT = 3
+local RESPAWN_SECONDS = 25
+
+-- The admin horde (Creatures.horde) picks each monster from this list; repeats weigh the draw.
+-- Horde monsters do not respawn.
+local HORDE_KINDS = {
+	"zombie",
+	"zombie",
+	"zombie",
+	"goblin",
+	"slime",
+	"skeleton",
+	"oni",
+	"yeti",
+	"trex",
+	"robot",
+	"brute",
+}
+
+-- Lairs: deployed players within LAIR_TRIGGER_RADIUS (flat) of a landmark's center release a horde
+-- of LAIR_HORDE_BASE + LAIR_HORDE_PER_PLAYER per extra player, every LAIR_BRUTE_EVERY-th of them
+-- a LAIR_BRUTE, the rest LAIR_KIND; at most once per LAIR_COOLDOWN seconds, and not while
+-- LAIR_CAP or more from that lair are alive. A lair creature with no target for LAIR_DESPAWN
+-- seconds vanishes.
+local LAIR_TRIGGER_RADIUS = 175
+local LAIR_COOLDOWN = 50
+local LAIR_CAP = 30
+local LAIR_HORDE_BASE = 14
+local LAIR_HORDE_PER_PLAYER = 6
+local LAIR_BRUTE_EVERY = 8
+local LAIR_KIND = "zombie"
+local LAIR_BRUTE = "brute"
+local LAIR_DESPAWN = 45
+
+-- Brains: every creature thinks each THINK_INTERVAL seconds and attacks at most once per
+-- ATTACK_INTERVAL.
+local THINK_INTERVAL = 0.3
+local ATTACK_INTERVAL = 1.1
+
 return {
 	KINDS = KINDS,
 	REGION_KIND = REGION_KIND,
 	LAIRS = LAIRS,
+	ROAMING = ROAMING,
+	THEMED_COUNT = THEMED_COUNT,
+	RESPAWN_SECONDS = RESPAWN_SECONDS,
+	HORDE_KINDS = HORDE_KINDS,
+	LAIR_TRIGGER_RADIUS = LAIR_TRIGGER_RADIUS,
+	LAIR_COOLDOWN = LAIR_COOLDOWN,
+	LAIR_CAP = LAIR_CAP,
+	LAIR_HORDE_BASE = LAIR_HORDE_BASE,
+	LAIR_HORDE_PER_PLAYER = LAIR_HORDE_PER_PLAYER,
+	LAIR_BRUTE_EVERY = LAIR_BRUTE_EVERY,
+	LAIR_KIND = LAIR_KIND,
+	LAIR_BRUTE = LAIR_BRUTE,
+	LAIR_DESPAWN = LAIR_DESPAWN,
+	THINK_INTERVAL = THINK_INTERVAL,
+	ATTACK_INTERVAL = ATTACK_INTERVAL,
 }

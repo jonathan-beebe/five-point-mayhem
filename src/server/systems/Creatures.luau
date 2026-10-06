@@ -9,6 +9,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local CreatureBrain = require(ReplicatedStorage.Shared.CreatureBrain)
 local CreatureCatalog = require(ReplicatedStorage.Shared.CreatureCatalog)
 local Names = require(ReplicatedStorage.Shared.Names)
 local RemoteActions = require(ReplicatedStorage.Shared.RemoteActions)
@@ -25,7 +26,8 @@ local Creatures = {}
 local rgb = Color3.fromRGB
 local random = Random.new()
 
--- Kinds, their themed regions and lairs: src/shared/CreatureCatalog.luau.
+-- Kinds, their themed regions, lairs, counts and timings: src/shared/CreatureCatalog.luau. The
+-- spawn, wander and lair rules: src/shared/CreatureBrain.luau.
 type Kind = CreatureCatalog.Kind
 
 local KINDS = CreatureCatalog.KINDS
@@ -119,20 +121,6 @@ end
 
 -- Spawning -----------------------------------------------------------------------------------
 
-local function randomGroundPoint(center: Vector3, minRadius: number, maxRadius: number): Vector3
-	for _ = 1, 20 do
-		local angle = random:NextNumber(0, math.pi * 2)
-		local radius = random:NextNumber(minRadius, maxRadius)
-		local point = center + Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
-		local fromOrigin = Vector2.new(point.X, point.Z).Magnitude
-		local _, regionDistance = Config.nearestRegion(point)
-		if fromOrigin > 130 and fromOrigin < Config.WORLD_RADIUS - 40 and regionDistance > 100 then
-			return point
-		end
-	end
-	return Config.pointAt(random:NextNumber(0, math.pi * 2), 300)
-end
-
 local spawnOne: (kindId: string, near: Vector3?) -> ()
 
 local function untrack(creature: Creature)
@@ -148,7 +136,7 @@ local function track(creature: Creature, kindId: string, respawn: boolean)
 		untrack(creature)
 		Debris:AddItem(creature.model, 3)
 		if respawn then
-			task.delay(25, spawnOne, kindId)
+			task.delay(CreatureCatalog.RESPAWN_SECONDS, spawnOne, kindId)
 		end
 	end)
 end
@@ -165,27 +153,15 @@ spawnOne = function(kindId: string, near: Vector3?)
 			end
 		end
 		position = if regionKind
-			then randomGroundPoint(Config.regionCenter(regionKind), 110, 220)
-			else randomGroundPoint(Vector3.zero, 150, Config.WORLD_RADIUS - 50)
+			then CreatureBrain.groundPoint(random, Config.regionCenter(regionKind), 110, 220)
+			else CreatureBrain.groundPoint(random, Vector3.zero, 150, Config.WORLD_RADIUS - 50)
 	end
 	track(build(kindId, position), kindId, near == nil)
 end
 
 -- Summons a temporary horde around a point (admin command). These do not respawn.
 function Creatures.horde(center: Vector3, count: number)
-	local ids = {
-		"zombie",
-		"zombie",
-		"zombie",
-		"goblin",
-		"slime",
-		"skeleton",
-		"oni",
-		"yeti",
-		"trex",
-		"robot",
-		"brute",
-	}
+	local ids = CreatureCatalog.HORDE_KINDS
 	for _ = 1, count do
 		local kindId = ids[random:NextInteger(1, #ids)]
 		local angle = random:NextNumber(0, math.pi * 2)
@@ -252,7 +228,10 @@ local function think(creature: Creature, now: number)
 		if creature.kind.hops then
 			creature.humanoid.Jump = true
 		end
-		if distance <= creature.reach and now - creature.lastAttack > 1.1 then
+		if
+			distance <= creature.reach
+			and now - creature.lastAttack > CreatureCatalog.ATTACK_INTERVAL
+		then
 			creature.lastAttack = now
 			local victim = target:FindFirstChildOfClass("Humanoid")
 			if victim and Combat.damage(nil, target, victim, creature.kind.damage) then
@@ -266,20 +245,14 @@ local function think(creature: Creature, now: number)
 				)
 			end
 		end
-	elseif creature.lair and now - creature.lastSeen > 45 then
+	elseif creature.lair and now - creature.lastSeen > CreatureCatalog.LAIR_DESPAWN then
 		untrack(creature)
 		creature.model:Destroy()
 	elseif now > creature.wanderAt then
-		creature.wanderAt = now + random:NextNumber(4, 9)
-		local fromHome = (creature.root.Position - creature.home).Magnitude
-		local goal = if fromHome > 150
-			then creature.home
-			else creature.root.Position + Vector3.new(
-				random:NextNumber(-40, 40),
-				0,
-				random:NextNumber(-40, 40)
-			)
-		if Vector2.new(goal.X, goal.Z).Magnitude > Config.LOBBY_RADIUS + 20 then
+		local wanderAt, goal =
+			CreatureBrain.wander(random, now, creature.root.Position, creature.home)
+		creature.wanderAt = wanderAt
+		if goal then
 			creature.humanoid:MoveTo(goal)
 		end
 	end
@@ -289,8 +262,6 @@ end
 
 -- Where each landmark's horde appears (CreatureCatalog).
 local LAIRS = CreatureCatalog.LAIRS
-local LAIR_TRIGGER_RADIUS = 175
-local LAIR_COOLDOWN = 50
 
 local lairCooldown: { [string]: number } = {}
 
@@ -341,7 +312,7 @@ local function releaseHorde(index: number, size: number)
 				lair.inside + random:NextNumber(-2, 2)
 			)
 		local outside = frame * Vector3.new(x + random:NextNumber(-12, 12), 0, lair.outside)
-		local kindId = if count % 8 == 0 then "brute" else "zombie"
+		local kindId = CreatureBrain.lairKind(count)
 		local creature = build(kindId, inside)
 		creature.lair = region.id
 		creature.exit = outside
@@ -356,14 +327,18 @@ local function watchLairs()
 		task.wait(1)
 		local now = os.clock()
 		for index, region in Config.REGIONS do
-			local nearby = playersNear(Config.regionCenter(index), LAIR_TRIGGER_RADIUS)
+			local nearby =
+				playersNear(Config.regionCenter(index), CreatureCatalog.LAIR_TRIGGER_RADIUS)
 			if
-				nearby > 0
-				and now >= (lairCooldown[region.id] or 0)
-				and liveFromLair(region.id) < 30
+				CreatureBrain.lairOpens(
+					nearby,
+					now,
+					lairCooldown[region.id],
+					liveFromLair(region.id)
+				)
 			then
-				lairCooldown[region.id] = now + LAIR_COOLDOWN
-				task.spawn(releaseHorde, index, 14 + 6 * (nearby - 1))
+				lairCooldown[region.id] = now + CreatureCatalog.LAIR_COOLDOWN
+				task.spawn(releaseHorde, index, CreatureBrain.hordeSize(nearby))
 			end
 		end
 	end
@@ -371,9 +346,9 @@ end
 
 function Creatures.start()
 	task.spawn(watchLairs)
-	local mix = { goblin = 12, slime = 6, zombie = 30 }
+	local mix = table.clone(CreatureCatalog.ROAMING)
 	for _, region in Config.REGIONS do
-		mix[REGION_KIND[region.id]] = 3
+		mix[REGION_KIND[region.id]] = CreatureCatalog.THEMED_COUNT
 	end
 	for kindId, count in mix do
 		for _ = 1, count do
@@ -382,7 +357,7 @@ function Creatures.start()
 	end
 	task.spawn(function()
 		while true do
-			task.wait(0.3)
+			task.wait(CreatureCatalog.THINK_INTERVAL)
 			local now = os.clock()
 			for _, creature in table.clone(active) do
 				if creature.humanoid.Health > 0 and creature.model.Parent then

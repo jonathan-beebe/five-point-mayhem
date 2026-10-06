@@ -24,7 +24,9 @@ runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is
 | `src/shared/Config.luau` | World layout, teams, admin user ids |
 | `src/shared/WeaponCatalog.luau` | All 52 weapons (data only) |
 | `src/shared/VehicleCatalog.luau` | All vehicles (data only) |
-| `src/shared/CreatureCatalog.luau` | Monster kinds, each landmark's themed monster and zombie lair (data only) |
+| `src/shared/CreatureCatalog.luau` | Monster kinds, each landmark's themed monster and zombie lair, roaming counts, horde list, lair and brain timings (data only) |
+| `src/shared/CreatureBrain.luau` | Monster rules the server applies (spawn spots, wandering, when a lair opens, horde size, brutes) |
+| `src/shared/AdminCommands.luau` | Every admin command (chat command, GOD MODE button), the gifts, power tuning, and the target, gift label, chat and meteor rules |
 | `src/shared/Names.luau` | Attribute, tag, collision group and instance names shared between modules and with the client |
 | `src/shared/PodState.luau` | A flying pod's states and the rules read from them (server and client) |
 | `src/shared/RemoteActions.luau` | The action strings remotes carry: pod and MAC commands, announcement styles |
@@ -35,7 +37,7 @@ runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is
 | `src/server/creatureModels` | One part-built model per monster (format: `src/server/systems/CreatureModel.luau`) |
 | `tools/check.luau` | Runs every check: format, line length, lint, types, tests (`lune run tools/check [--fast]`) |
 | `tools/test.luau` | Runs every test (`lune run tools/test [filter]`) |
-| `tools/tests` | Tests for shared game logic, models and data (`data_integrity`: catalogs, model files, sounds, regions; `names`: the shared names' values; `math_util`; `weapon_math`; `collision_groups`: the collision matrix), run under Lune |
+| `tools/tests` | Tests for shared game logic, models and data (`data_integrity`: catalogs, model files, sounds, regions; `names`: the shared names' values; `math_util`; `weapon_math`; `creature_brain`; `admin_commands`: every command has a handler; `collision_groups`: the collision matrix), run under Lune |
 | `tools/lib` | Lune harness: `Sandbox` loads game files outside Roblox, `Check` tallies assertions, `ModelChecks` validates model files |
 | `tools/preview` | Renders a vehicle, weapon or creature model file to a PNG of orthographic views |
 | `tools/audition.luau` | Plays every weapon and vehicle sound; paste into the Studio Command Bar during Play |
@@ -401,5 +403,6 @@ For `/give`. The start of a weapon's name also works.
 
 - Chat commands need the default TextChatService chat, which new places use. If they do nothing,
   the panel performs the same commands.
-- The source of truth is `src/server/systems/Admin.luau` (commands) and
-  `src/client/AdminPanel.luau` (panel).
+- The source of truth is `src/shared/AdminCommands.luau` (command ids, chat commands, panel
+  buttons, gifts, power tuning), `src/server/systems/Admin.luau` (each command's handler) and
+  `src/client/AdminPanel.luau` (panel layout).

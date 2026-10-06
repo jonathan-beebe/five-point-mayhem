@@ -4,6 +4,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local AdminCommands = require(ReplicatedStorage.Shared.AdminCommands)
 local Names = require(ReplicatedStorage.Shared.Names)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
@@ -15,63 +16,9 @@ local AdminPanel = {}
 local player = Players.LocalPlayer
 local rgb = Color3.fromRGB
 
-local GIFTS = {
-	{ id = "arsenal", label = "🧰 EVERY WEAPON" },
-	{ id = "sniper", label = "🎯 Sniper Rifle" },
-	{ id = "heal", label = "❤ Full heal" },
-	{ id = "shield", label = "🛡 Shield (30s)" },
-	{ id = "speed", label = "👟 Super speed" },
-	{ id = "jump", label = "🦘 Mega jump" },
-	{ id = "giant", label = "🗿 Giant" },
-	{ id = "car", label = "🚙 Random vehicle" },
-}
-
-local POWERS = {
-	{
-		command = "mayhem",
-		label = "☢ MAYHEM",
-		color = rgb(200, 20, 30),
-		hint = "Destroy everyone outside the lobby",
-	},
-	{
-		command = "meteors",
-		label = "☄ METEORS",
-		color = rgb(220, 110, 30),
-		hint = "30 second meteor storm",
-	},
-	{
-		command = "gravity",
-		label = "🌙 GRAVITY",
-		color = rgb(70, 90, 180),
-		hint = "Toggle moon gravity",
-	},
-	{
-		command = "freeze",
-		label = "❄ FREEZE",
-		color = rgb(60, 160, 210),
-		hint = "Freeze the target",
-		targeted = true,
-	},
-	{
-		command = "day",
-		label = "☀ DAY",
-		color = rgb(220, 170, 40),
-		hint = "Jump to morning",
-	},
-	{
-		command = "night",
-		label = "🌑 NIGHT",
-		color = rgb(50, 40, 90),
-		hint = "Jump to nightfall",
-	},
-	{
-		command = "horde",
-		label = "👹 HORDE",
-		color = rgb(60, 140, 50),
-		hint = "Summon monsters",
-		targeted = true,
-	},
-}
+-- The gift menu and the power buttons: src/shared/AdminCommands.luau.
+local GIFTS = AdminCommands.GIFTS
+local POWERS = AdminCommands.POWERS
 
 local function create(
 	className: string,

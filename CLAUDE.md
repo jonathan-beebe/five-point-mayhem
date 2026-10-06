@@ -24,7 +24,9 @@ src/shared/   ReplicatedStorage.Shared. Every file --!strict. Loads under Lune.
   pure logic  DayNight, VehicleDamage, MechGait, MechClimb, VehicleDefaults, MathUtil, and the
               vehicle math Vehicles applies: VehicleDrive, VehicleSizing, VehicleRam,
               VehicleLayout; the pod flight math PodFlight applies: PodPilot; the weapon math
-              Weapons applies: WeaponMath (tested in tools/tests)
+              Weapons applies: WeaponMath; the creature rules Creatures applies: CreatureBrain
+              (tested in tools/tests)
+  registry    AdminCommands: admin command ids, chat list, panel buttons, gifts, power tuning
   Config      world layout, REGIONS, teams, admin ids;  Remotes: every RemoteEvent, typed record
   contracts   Names (attributes, tags, collision groups, instance names), PodState, RemoteActions
 src/server/   ServerScriptService.Server. init.server.luau boots in this order:
@@ -68,6 +70,8 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   `WeaponModel.define({...})`.
 - A broken vehicle file becomes a grey placeholder (`pcall` in `Vehicles/Specs`). A broken creature
   file stops server boot (`Creatures` requires every one at load, no `pcall`).
+- `workspace.Creatures` (`Names.Instances.Creatures`) is created by `Creatures` when first
+  required; `Combat` and `Vehicles/Trees` find it by name at call time.
 
 ## Conventions
 
@@ -116,6 +120,24 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   `sideways` (where a rider put outside stands). PodFlight keeps the raycasts, the clock, the seat
   locks and every Instance write. `tools/tests/pod_pilot.luau` compares each with the inline code
   it replaced.
+- Creature rules are in `src/shared/CreatureBrain.luau` and `Creatures` applies them:
+  `acceptsGroundPoint`, `groundPoint` (spawn spot from an injected `Random`, two draws per attempt,
+  one more for the fallback), `wander` (next wander time, then the goal: one draw, plus two unless
+  heading home), `lairOpens`, `hordeSize`, `lairKind` (brute cadence). Counts, kind lists and
+  timings are in `CreatureCatalog` (`ROAMING`, `THEMED_COUNT`, `HORDE_KINDS`, `LAIR_*`,
+  `RESPAWN_SECONDS`, `THINK_INTERVAL`, `ATTACK_INTERVAL`). `tools/tests/creature_brain.luau`
+  compares each with the inline code it replaced and pins the catalog numbers.
+- Admin commands are registered in `src/shared/AdminCommands.luau`: `COMMANDS` (id, `chat`,
+  optional `panel` button with `slot`), derived `CHAT` (chat order) and `POWERS` (panel order),
+  `POWER_UPS`, the panel's `GIFTS`, `TUNING`, and the pure rules `resolveTargets`, `giftLabel`,
+  `chatArguments`, `meteorSeconds`. `Admin.HANDLERS` maps each id to its handler; `Admin.run`
+  dispatches through it. `Admin.POWER_UP` maps each power-up but `arsenal` and `car` to its effect;
+  `gift` checks it after the living-character check and before vehicle and weapon matches
+  (`WeaponCatalog.find` matches by prefix: `giant`, `heal`). `HANDLERS`, `POWER_UP` and `gift` are
+  exposed on `Admin` for the test only. `tools/tests/admin_commands.luau` checks ids against
+  handlers and power-ups against `POWER_UP` both ways (via `Sandbox.loadIsolated`: keep both tables
+  free of top-level work on required values), runs `gift` against its old code with recording
+  fakes, and pins the lists, tuning and helpers.
 - Small math shared across modules (`moveToward`, `wrapAngle`, `yawOf`, `insideBox`,
   `clampToRange`, `rateAlpha`/`timeAlpha` follow fractions) comes from `src/shared/MathUtil.luau`.
 - Server systems use `systems/util/` instead of writing these inline:
@@ -182,16 +204,26 @@ Enforced: field types, known enums, kind-only fields, every `kinds/` module in `
 file ↔ id, `define()`/`ModelChecks`, sound entry, header ↔ server value sets.
 
 **Creature.** 1) Kind in `CreatureCatalog.KINDS`. 2) `src/server/creatureModels/<id>.luau`,
-require-free, per `CreatureModel.Model` (one piece named `Head`). 3) Make it spawn: roaming count in
-`mix` in `Creatures.start`, the horde list in `Creatures.horde`, or a landmark's `REGION_KIND`.
-Enforced: kind ↔ model file both ways, `ModelChecks` pass, no aliased kind tables.
+require-free, per `CreatureModel.Model` (one piece named `Head`). 3) Make it spawn: a roaming
+count in `CreatureCatalog.ROAMING`, an entry in `CreatureCatalog.HORDE_KINDS` (the admin horde),
+or a landmark's `REGION_KIND`. Spawn, wander and lair rules change in `CreatureBrain` with its test;
+counts and timings in `CreatureCatalog` (update `tools/tests/creature_brain.luau`'s pinned values:
+a gameplay change). Enforced: kind ↔ model file both ways, `ModelChecks` pass, no aliased kind
+tables, every kind `ROAMING`, `HORDE_KINDS` and the lair names exists.
 
-**Admin power.** 1) `systems/Admin.luau`: the function, a branch in `Admin.run`, the name in the
-chat-command list in `Admin.start`, the header comment. 2) `src/client/AdminPanel.luau`: a
-`POWERS` entry (`command`, `label`, `color`, `hint`, `targeted`). A gift is a `GIFTS` entry plus
-handling in `give`. 3) Client effects: a new field in `src/shared/Remotes.luau` and a client
-module with `start()` listed in `init.client.luau`. 4) README God mode: panel, chat table, power.
-The `AdminCommand` remote forwards two arguments (`first`, `second`). Nothing tests this yet.
+**Admin power.** 1) One `AdminCommands.COMMANDS` entry: `id` (lower case; its place in the list
+is its chat order), `chat`, and a `panel` button (`slot`, `label`, `color`, `hint`, `targeted`)
+if it has one. Tuning numbers go in `AdminCommands.TUNING`. 2) One handler in `Admin.HANDLERS`
+under the same id, and a line in Admin's header comment. The chat command and the panel button
+follow. A power-up gift is a `POWER_UPS` id plus its function in `Admin.POWER_UP`;
+an `AdminCommands.GIFTS` entry puts it in the panel's gift menu. 3) Client effects: a new field in
+`src/shared/Remotes.luau` and a client module with `start()` listed in `init.client.luau`.
+4) README God mode: panel, chat table, power. 5) `tools/tests/admin_commands.luau`: add the new
+id, button, gift or tuning value to its pinned lists. The `AdminCommand` remote forwards two
+arguments (`first`, `second`): a third works from chat only (known gap).
+Enforced: every id has a handler and every handler an id, unique lower-case ids, panel slots
+1..n, `POWER_UP` (plus `arsenal`, `car`) equals `POWER_UPS`, every panel gift is a power-up or a
+weapon id, `gift`'s branches and effects match its code at 3c65531.
 
 **Landmark / region.** 1) Append to `Config.REGIONS` (`id`, `name`, `country`).
 `Config.regionAngle` spaces regions 72° apart (five); a sixth needs that changed.
@@ -253,6 +285,10 @@ Move these word for word; do not "simplify" them.
   (`src/shared/Names.luau`, `PodState.luau`, `RemoteActions.luau`) are a contract between server
   and client: never change a value. `tools/tests/names.luau` pins each one.
 - Numbers in `VehicleDamage`, `VehicleDrive`, `VehicleSizing`, `VehicleRam`, `VehicleLayout`,
-  `PodPilot`, `WeaponMath`, `MechClimb`, `MechGait` and `DayNight` are tuning pinned by tests;
+  `PodPilot`, `WeaponMath`, `CreatureBrain`, `MechClimb`, `MechGait` and `DayNight`, and the
+  creature numbers in `CreatureCatalog` and `AdminCommands.TUNING`, are tuning pinned by tests;
   changing one is a gameplay change. `VehicleLayout.randomSpot` draws four numbers per call, in a
-  fixed order, from the `Random` it is given; `WeaponMath.spreadDirection` two (none at no spread).
+  fixed order, from the `Random` it is given; `WeaponMath.spreadDirection` two (none at no spread);
+  `CreatureBrain.groundPoint` and `wander` as the Conventions say.
+- Admin command ids (`AdminCommands`) are a contract between AdminPanel, chat and the server:
+  never change one.
