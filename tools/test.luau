@@ -1,10 +1,13 @@
--- Runs every test in tools/tests, each in its own Lune process, and prints PASS or FAIL, the check
--- count and the time per file. A failing file's output follows its line. Exits 1 if any file fails.
+-- Runs every test in tools/tests, each in its own Lune process, all at once, and prints PASS or
+-- FAIL, the check count and the time per file, in file order once all finish. A file's time
+-- includes contention with the others running beside it. A failing file's output follows its
+-- line. Exits 1 if any file fails.
 -- Usage: lune run tools/test [filter]   (filter: run only the files whose name contains it)
 
 local DateTime = require("@lune/datetime")
 local fs = require("@lune/fs")
 local process = require("@lune/process")
+local task = require("@lune/task")
 
 local Sandbox = require("./lib/Sandbox")
 
@@ -22,23 +25,50 @@ local function now(): number
 	return DateTime.now().unixTimestampMillis / 1000
 end
 
-local passed, failed = 0, 0
+local selected = {}
 for _, file in files do
 	local name = string.match(file, "([^/]+)%.luau$") :: string
-	if filter and not string.find(name, filter, 1, true) then
-		continue
+	if not filter or string.find(name, filter, 1, true) then
+		table.insert(selected, { file = file, name = name })
 	end
-	local start = now()
-	local result = process.exec("lune", { "run", file }, { cwd = Sandbox.ROOT })
-	local seconds = now() - start
+end
+
+-- Every file at once (process.exec yields), results kept by index, printed in order at the end.
+type Result = { ok: boolean, stdout: string, stderr: string, seconds: number }
+local results: { Result } = {}
+local pending = #selected
+local main = coroutine.running()
+for index, entry in selected do
+	task.spawn(function()
+		local start = now()
+		local result = process.exec("lune", { "run", entry.file }, { cwd = Sandbox.ROOT })
+		results[index] = {
+			ok = result.ok,
+			stdout = result.stdout,
+			stderr = result.stderr,
+			seconds = now() - start,
+		}
+		pending -= 1
+		if pending == 0 then
+			task.spawn(main)
+		end
+	end)
+end
+if pending > 0 then
+	coroutine.yield()
+end
+
+local passed, failed = 0, 0
+for index, entry in selected do
+	local result = results[index]
 	local checks = string.match(result.stdout, "(%d+) checks, %d+ failures%s*$")
 	print(
 		string.format(
 			"%s %-16s %14s %6.2f s",
 			if result.ok then "PASS" else "FAIL",
-			name,
+			entry.name,
 			if checks then checks .. " checks" else "",
-			seconds
+			result.seconds
 		)
 	)
 	if result.ok then

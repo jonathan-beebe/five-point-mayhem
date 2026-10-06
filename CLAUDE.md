@@ -23,7 +23,7 @@ src/shared/   ReplicatedStorage.Shared. Every file --!strict. Loads under Lune.
   *Catalog    data only: WeaponCatalog, VehicleCatalog, CreatureCatalog, SoundCatalog
   pure logic  DayNight, VehicleDamage, MechGait, MechClimb, VehicleDefaults, MathUtil, and the
               vehicle math Vehicles applies: VehicleDrive, VehicleSizing, VehicleRam,
-              VehicleLayout (tested in tools/tests)
+              VehicleLayout; the pod flight math PodFlight applies: PodPilot (tested in tools/tests)
   Config      world layout, REGIONS, teams, admin ids;  Remotes: every RemoteEvent, typed record
   contracts   Names (attributes, tags, collision groups, instance names), PodState, RemoteActions
 src/server/   ServerScriptService.Server. init.server.luau boots in this order:
@@ -91,6 +91,13 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   clearance, parking spots from an injected `Random`, guard ring, respawn rule), `PodState`
   (`canSit`, `driveSeat`). `tools/tests/vehicle_logic.luau` compares each with the inline code it
   replaced; a deliberate tuning change updates that reference too.
+- Pod flight math is in `src/shared/PodPilot.luau` and `PodFlight` applies it: `fly` (turn, speed,
+  `rise` with ground clearance, launch rise and ceiling, bank and pitch), `home` (the autopilot's
+  climb, cross, settle phases from the dock frame and root position; `onDock` ends a settle),
+  `hover`, `canLand`, `prompt` (launch prompt text and enabled per state), `standFrame` and
+  `sideways` (where a rider put outside stands). PodFlight keeps the raycasts, the clock, the seat
+  locks and every Instance write. `tools/tests/pod_pilot.luau` compares each with the inline code
+  it replaced.
 - Small math shared across modules (`moveToward`, `wrapAngle`, `yawOf`, `insideBox`,
   `clampToRange`, `rateAlpha`/`timeAlpha` follow fractions) comes from `src/shared/MathUtil.luau`.
 - Server systems use `systems/util/` instead of writing these inline:
@@ -215,6 +222,6 @@ Move these word for word; do not "simplify" them.
   (`src/shared/Names.luau`, `PodState.luau`, `RemoteActions.luau`) are a contract between server
   and client: never change a value. `tools/tests/names.luau` pins each one.
 - Numbers in `VehicleDamage`, `VehicleDrive`, `VehicleSizing`, `VehicleRam`, `VehicleLayout`,
-  `MechClimb`, `MechGait` and `DayNight` are tuning pinned by tests; changing one is a gameplay
-  change. `VehicleLayout.randomSpot` draws four numbers per call, in a fixed order, from the
-  `Random` it is given.
+  `PodPilot`, `MechClimb`, `MechGait` and `DayNight` are tuning pinned by tests; changing one is a
+  gameplay change. `VehicleLayout.randomSpot` draws four numbers per call, in a fixed order, from
+  the `Random` it is given.

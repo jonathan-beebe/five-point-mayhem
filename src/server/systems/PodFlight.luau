@@ -18,6 +18,9 @@
 -- whoever walks up, the pilot's seat first. It stays landed until the pilot presses LAUNCH, so
 -- the others can board too.
 --
+-- The flight math and its tuning (speeds, CLEARANCE, LAND_HEIGHT, HOVER, the autopilot) are in
+-- src/shared/PodPilot.luau; this module casts the rays, reads the clock and moves the instances.
+--
 -- The model's PodState attribute ("docked", "flying", "returning", "landed", "wrecked") tells
 -- clients what is going on, PodCanLand whether the pod is low enough to land; PodBone names the
 -- bone that flies. A wrecked pod (Vehicles) is dead: no controls, no autopilot, no seat locks.
@@ -28,6 +31,7 @@ local RunService = game:GetService("RunService")
 
 local MathUtil = require(ReplicatedStorage.Shared.MathUtil)
 local Names = require(ReplicatedStorage.Shared.Names)
+local PodPilot = require(ReplicatedStorage.Shared.PodPilot)
 local PodState = require(ReplicatedStorage.Shared.PodState)
 local RemoteActions = require(ReplicatedStorage.Shared.RemoteActions)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -38,31 +42,7 @@ local Seats = require(script.Parent.util.Seats)
 
 local PodFlight = {}
 
-local SPEED = 100 -- top forward speed, studs/s
-local REVERSE = 0.4 -- of SPEED
-local ACCELERATION = 45 -- studs/s^2
-local TURN_RATE = 1.6 -- rad/s at full steer
-local CLIMB = 28 -- studs/s at full lift
-local CLEARANCE = 4 -- the pod's root never goes lower than this over the ground
-local CEILING = 400 -- nor higher than this
-local LAUNCH_RISE = 16 -- studs/s straight up for LAUNCH_TIME after letting go
-local LAUNCH_TIME = 1
-local BANK = math.rad(18) -- roll at full steer
-local PITCH = math.rad(8) -- nose down at top speed
-local LIFT_PITCH = math.rad(14) -- nose up at full climb (E), down at full descent (Q)
-local TILT_RATE = 3 -- 1/s: how fast the bank and pitch follow
-
-local LAND_HEIGHT = 15 -- LAND works with the root this close over the ground
-local HOVER = 1.2 -- a landed pod's root over the ground (its hull starts 0.5 above the root)
 local BOARD_REACH = 14
-
-local HOME_HEIGHT = 25 -- the autopilot crosses this high over the dock
-local HOME_SPEED = 60
-local HOME_TURN = 2.2 -- rad/s
-local DESCENT = 12 -- fastest settle, studs/s
-local DOCK_DISTANCE = 0.3 -- studs from the dock that count as docked
-local DOCK_ANGLE = math.rad(2)
-local HOME_TIMEOUT = 60 -- seconds; past this the pod snaps onto the dock
 
 local WRECK_FRICTION = 0.8 -- a wrecked pod's hull away from its legs
 
@@ -96,7 +76,7 @@ export type Pod = {
 	pitch: number,
 	launchedAt: number,
 	returningSince: number,
-	phase: "climb" | "cross" | "settle",
+	phase: PodPilot.Phase,
 }
 
 local pods: { [Model]: Pod } = {}
@@ -113,7 +93,7 @@ local function clearance(pod: Pod): number
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = { pod.model }
 	local origin = pod.root.Position
-	local hit = workspace:Raycast(origin, Vector3.new(0, -CEILING - 50, 0), params)
+	local hit = workspace:Raycast(origin, Vector3.new(0, -PodPilot.CEILING - 50, 0), params)
 	return if hit then origin.Y - hit.Position.Y else math.huge
 end
 
@@ -133,8 +113,9 @@ end
 local function setState(pod: Pod, state: State)
 	pod.state = state
 	pod.model:SetAttribute(Names.Attributes.PodState, state)
-	pod.prompt.ActionText = if PodState.isAtRest(state) then "Launch" else "Return home"
-	pod.prompt.Enabled = state ~= PodState.RETURNING and state ~= PodState.WRECKED
+	local action, enabled = PodPilot.prompt(state)
+	pod.prompt.ActionText = action
+	pod.prompt.Enabled = enabled
 	pod.board.Enabled = state == PodState.LANDED and freeSeat(pod) ~= nil
 	for _, jet in pod.jets do
 		jet.Enabled = PodState.inFlight(state)
@@ -205,93 +186,32 @@ end
 
 -- The pilot's controls.
 local function fly(pod: Pod, dt: number)
-	pod.yaw = MathUtil.wrapAngle(pod.yaw - pod.steer * TURN_RATE * dt)
-	local target = pod.throttle * SPEED
-	if pod.throttle < 0 then
-		target = pod.throttle * SPEED * REVERSE
-	end
-	pod.speed = MathUtil.moveToward(pod.speed, target, ACCELERATION * dt)
-
-	local rise = pod.lift * CLIMB
-	if os.clock() - pod.launchedAt < LAUNCH_TIME then
-		rise = math.max(rise, LAUNCH_RISE)
-	end
+	local sinceLaunch = os.clock() - pod.launchedAt
 	local height = clearance(pod)
-	local canLand = height < LAND_HEIGHT
+	local canLand = PodPilot.canLand(height)
 	if pod.model:GetAttribute(Names.Attributes.PodCanLand) ~= canLand then
 		pod.model:SetAttribute(Names.Attributes.PodCanLand, canLand)
 	end
-	if height < CLEARANCE then
-		rise = math.max(rise, (CLEARANCE - height) * 4)
-	elseif height > CEILING then
-		rise = math.min(rise, 0)
-	end
-
-	local heading = CFrame.Angles(0, pod.yaw, 0)
-	pod.mover.VectorVelocity = heading.LookVector * pod.speed + Vector3.new(0, rise, 0)
-	local follow = MathUtil.rateAlpha(TILT_RATE, dt)
-	pod.bank += (-pod.steer * BANK - pod.bank) * follow
-	local pitch = -PITCH * pod.speed / SPEED + LIFT_PITCH * pod.lift
-	pod.pitch += (pitch - pod.pitch) * follow
-	pod.aligner.CFrame = heading * CFrame.Angles(pod.pitch, 0, pod.bank)
+	local velocity, attitude = PodPilot.fly(pod, height, sinceLaunch, dt)
+	pod.mover.VectorVelocity = velocity
+	pod.aligner.CFrame = attitude
 end
 
--- The autopilot: climb to HOME_HEIGHT over the dock, cross to above it, settle onto it.
+-- The autopilot (PodPilot.home): docks a settling pod on the dock, or any pod past HOME_TIMEOUT.
 local function returnHome(pod: Pod, dt: number)
 	local target = dock(pod)
 	local position = pod.root.Position
-	if os.clock() - pod.returningSince > HOME_TIMEOUT then
+	if os.clock() - pod.returningSince > PodPilot.HOME_TIMEOUT then
 		docked(pod)
 		return
 	end
-	local cruise = math.max(target.Position.Y + HOME_HEIGHT, position.Y)
-	local flat = Vector3.new(target.Position.X - position.X, 0, target.Position.Z - position.Z)
-	local distance = flat.Magnitude
-	local dockYaw = MathUtil.yawOf(target.LookVector)
-	local wantYaw = dockYaw
-	local velocity = Vector3.zero
-
-	if pod.phase == "climb" then
-		velocity = Vector3.new(0, CLIMB, 0)
-		if position.Y >= target.Position.Y + HOME_HEIGHT - 1 or distance < 1 then
-			pod.phase = "cross"
-		end
-	elseif pod.phase == "cross" then
-		local pace = math.min(HOME_SPEED, distance * 1.5)
-		velocity = if distance > 0.01 then flat.Unit * pace else Vector3.zero
-		velocity += Vector3.new(0, math.clamp((cruise - position.Y) * 2, -CLIMB, CLIMB), 0)
-		if distance > 8 then
-			wantYaw = MathUtil.yawOf(flat)
-		end
-		if distance < 0.6 and math.abs(MathUtil.wrapAngle(pod.yaw - dockYaw)) < DOCK_ANGLE then
-			pod.phase = "settle"
-		end
-	else
-		local drop = position.Y - target.Position.Y
-		local correction = flat * 4
-		if correction.Magnitude > 6 then
-			correction = correction.Unit * 6
-		end
-		local down = if distance > DOCK_DISTANCE and drop < 1
-			then 0
-			else math.clamp(drop * 1.2 + 0.8, 0.8, DESCENT)
-		velocity = correction - Vector3.new(0, down, 0)
-		if
-			(target.Position - position).Magnitude < DOCK_DISTANCE
-			and math.abs(MathUtil.wrapAngle(pod.yaw - dockYaw)) < DOCK_ANGLE
-		then
-			docked(pod)
-			return
-		end
+	if pod.phase == "settle" and PodPilot.onDock(pod.yaw, target, position) then
+		docked(pod)
+		return
 	end
-
-	local turn = MathUtil.wrapAngle(wantYaw - pod.yaw)
-	pod.yaw = MathUtil.wrapAngle(pod.yaw + math.clamp(turn, -HOME_TURN * dt, HOME_TURN * dt))
-	local follow = MathUtil.rateAlpha(TILT_RATE, dt)
-	pod.bank += (0 - pod.bank) * follow
-	pod.pitch += (0 - pod.pitch) * follow
+	local velocity, attitude = PodPilot.home(pod, target, position, dt)
 	pod.mover.VectorVelocity = velocity
-	pod.aligner.CFrame = CFrame.Angles(0, pod.yaw, 0) * CFrame.Angles(pod.pitch, 0, pod.bank)
+	pod.aligner.CFrame = attitude
 end
 
 -- Takes `humanoid` out of `seat` and stands it on the ground at the pod's exit spot, moved
@@ -310,15 +230,13 @@ local function putOutside(pod: Pod, seat: Seat | VehicleSeat, humanoid: Humanoid
 	params.FilterDescendantsInstances = { pod.model, character }
 	local hit =
 		workspace:Raycast(spot.Position + Vector3.new(0, 20, 0), Vector3.new(0, -200, 0), params)
-	local groundY = if hit then hit.Position.Y else spot.Position.Y - pod.exit.Position.Y
-	local level = spot.Rotation
-		+ Vector3.new(spot.Position.X, groundY + pod.exit.Position.Y, spot.Position.Z)
+	local level = PodPilot.standFrame(spot, pod.exit.Position.Y, hit and hit.Position.Y)
 	Characters.moveRootTo(character, root, level)
 end
 
 -- Settles to HOVER over the ground and puts everyone aboard outside, behind the pod, side by side.
 local function land(pod: Pod)
-	if pod.state ~= PodState.FLYING or clearance(pod) >= LAND_HEIGHT then
+	if pod.state ~= PodState.FLYING or clearance(pod) >= PodPilot.LAND_HEIGHT then
 		return
 	end
 	setState(pod, PodState.LANDED) -- before anyone gets out, so the seat locks let go
@@ -332,16 +250,14 @@ local function land(pod: Pod)
 		local rider = seat.Occupant
 		pod.riders[seat] = nil
 		if rider then
-			putOutside(pod, seat, rider, if index % 2 == 1 then -3.5 else 3.5)
+			putOutside(pod, seat, rider, PodPilot.sideways(index))
 		end
 	end
 end
 
 -- A landed pod hovers HOVER over the ground, level, where it is.
 local function hover(pod: Pod)
-	local height = clearance(pod)
-	local rise = if height == math.huge then 0 else math.clamp((HOVER - height) * 3, -6, 6)
-	pod.mover.VectorVelocity = Vector3.new(0, rise, 0)
+	pod.mover.VectorVelocity = PodPilot.hover(clearance(pod))
 	pod.pitch, pod.bank = 0, 0
 	pod.aligner.CFrame = CFrame.Angles(0, pod.yaw, 0)
 end
