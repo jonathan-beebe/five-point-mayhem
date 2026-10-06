@@ -24,8 +24,9 @@ src/shared/   ReplicatedStorage.Shared. Every file --!strict. Loads under Lune.
   pure logic  DayNight, VehicleDamage, MechGait, MechClimb, VehicleDefaults, MathUtil, and the
               vehicle math Vehicles applies: VehicleDrive, VehicleSizing, VehicleRam,
               VehicleLayout; the pod flight math PodFlight applies: PodPilot; the weapon math
-              Weapons applies: WeaponMath; the creature rules Creatures applies: CreatureBrain
-              (tested in tools/tests)
+              Weapons applies: WeaponMath; the creature rules Creatures applies: CreatureBrain;
+              HudLayout, the client's HUD layout math; the client's rules and math (Conventions
+              lists them) (all tested in tools/tests)
   registry    AdminCommands: admin command ids, chat list, panel buttons, gifts, power tuning
   Config      world layout, REGIONS, teams, admin ids;  Remotes: every RemoteEvent, typed record
   contracts   Names (attributes, tags, collision groups, instance names), PodState, RemoteActions
@@ -58,6 +59,7 @@ src/server/   ServerScriptService.Server. init.server.luau boots in this order:
   vehicleModels/ weaponModels/ creatureModels/   one model file per catalog id
 src/client/   StarterPlayerScripts.Client. Feature modules with start(), each task.spawned by
               init.client.luau so one failure cannot stop the rest.
+  ui/         the UI kit (no start()): Create, Theme, TouchButton, Hud, RightColumn
 tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau, preview/
 ```
 
@@ -94,6 +96,8 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   which runs a module with `require`, `game`, `workspace` and `Instance` stubbed: keep those
   tables free of top-level work on required values (arithmetic, comparisons, iteration). Combat's
   effects and Landscape's tree builders are still read as text.
+  `Sandbox.globals` adds globals to every later load, requires included (`ui_kit` sets
+  `Instance` so the kit's modules can require each other).
 - Cross-module names come from `src/shared/Names.luau` (attributes, tags, collision groups,
   instance names set in one module and read in another), `PodState.luau` (pod states) and
   `RemoteActions.luau` (remote action strings). Module-private names stay local literals. Add a
@@ -138,6 +142,18 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   handlers and power-ups against `POWER_UP` both ways (via `Sandbox.loadIsolated`: keep both tables
   free of top-level work on required values), runs `gift` against its old code with recording
   fakes, and pins the lists, tuning and helpers.
+- Client rules and math are in `src/shared` and the client module applies them (Lune cannot load
+  `src/client`): LobbyUI `Loadout` (speed and stat texts, admin-only availability, prune, toggle
+  returning `"full"`), PodControls `PodButtons` (pod button text/colour/active, LAND and ▲▼
+  visibility, jump lock, the command sent), PromptPanel `PromptRules` (`useful`, key text, input
+  type, card order; the MaxActivationDistance save/restore stays in PromptPanel), VehicleHealth
+  `HealthBar`, CarInput `DriveAxes` (keys over seat floats over move vector, clamps, lift, the
+  resend rule), VehicleSounds `EngineEnvelope` (follow, fade, loop pitch/volume, walker targets)
+  and `NearestSet` (nearest N with hysteresis), SniperScope `ScopeMath` (overlay, turn, pitch),
+  MechCamera `FootfallShake`, NukeStrike `NukeMath` (fall, wave, shake; follows
+  `Config.NUKE_*`), MacPanel `ConfirmTap` (two-tap arm/fire). Render steps and camera writes stay
+  in the client module. `tools/tests/client_logic.luau` compares each with the inline code it
+  replaced; a deliberate change updates that reference too.
 - Small math shared across modules (`moveToward`, `wrapAngle`, `yawOf`, `insideBox`,
   `clampToRange`, `rateAlpha`/`timeAlpha` follow fractions) comes from `src/shared/MathUtil.luau`.
 - Server systems use `systems/util/` instead of writing these inline:
@@ -161,7 +177,22 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
 - Never guess pixel offsets. Derive positions from measured on-screen elements
   (`AbsolutePosition`/`AbsoluteSize` of the MAC button, the touch jump button, the thumbstick),
   re-layout on resize, and fall back to fractions of the screen. Existing fixed offsets
-  (`MacPanel.TOGGLE_TOP`, `VehicleHealth` `BAR_BOTTOM`, LobbyUI's `-110`) are debts, not precedent.
+  (`RightColumn.TOGGLE_TOP` and `MARGIN`, `VehicleHealth` `BAR_BOTTOM`, LobbyUI's `-110`) are
+  debts, not precedent.
+- Build client UI with `src/client/ui` (each header lists its functions):
+  - `Create`: `create(className, properties, children?)`, `corner(radius)`,
+    `stroke(color, thickness?, mode?)`, `padding(horizontal, vertical)`, `label(...)` (LobbyUI's)
+  - `Theme`: `Fonts`, the colours more than one module uses (`Colors.hud`, `white`, `cyan`,
+    `HUD_TRANSPARENCY`), `Radius.round`/`panel`, and `DisplayOrder`: every ScreenGui's layer.
+    A new ScreenGui takes its DisplayOrder from there (`ui_kit` fails on a literal).
+  - `TouchButton.new(options)`: the round bottom-right touch button
+  - `Hud`: `jumpButton`, `jumpWatcher`, `matchInset`, `edgeY`, `shownIn`, and the list of
+    bottom-right control guis PromptPanel's cards stay above (`addBottomControls`)
+  - `RightColumn`: the GOD MODE/MAC column's constants, `makeToggle`, `makePanel`, `toggle`,
+    `panels`, `opened`
+  Layout arithmetic goes in `src/shared/HudLayout.luau` with a case in
+  `tools/tests/hud_layout.luau`. A change to a kit builder must keep `tools/tests/ui_kit.luau`
+  passing: it compares each widget with the inline code it replaced.
 - Persistent HUD never sits at the screen center. Exempt: UI the player opens and closes (MAC and
   GOD MODE panels, the lobby armory), transient prompt cards, the sniper scope's lens and
   reticle, full-screen flashes (MAYHEM, alarms).
@@ -224,6 +255,16 @@ arguments (`first`, `second`): a third works from chat only (known gap).
 Enforced: every id has a handler and every handler an id, unique lower-case ids, panel slots
 1..n, `POWER_UP` (plus `arsenal`, `car`) equals `POWER_UPS`, every panel gift is a power-up or a
 weapon id, `gift`'s branches and effects match its code at 3c65531.
+
+**HUD element.** 1) A client module with `start()` listed in `init.client.luau`; its ScreenGui's
+`DisplayOrder` from a `Theme.DisplayOrder` layer (a new layer goes in Theme's header table and in
+`ORDERS` in `tools/tests/ui_kit.luau`). 2) Build with `ui/Create` and `ui/Theme`; a bottom-right
+touch button is `TouchButton.new`. 3) Place it against measured elements: `Hud.jumpButton()` plus
+`Hud.jumpWatcher(layout)` and `Hud.matchInset`, or `RightColumn`'s toggle and panels; re-layout on
+`ViewportSize` changes. The arithmetic goes in `HudLayout` with a reference case in
+`tools/tests/hud_layout.luau`. 4) Bottom-right controls: `Hud.addBottomControls(gui)` at require
+time so prompt cards stay above them. 5) Name what needs a human in Studio: placement on phone,
+tablet and desktop.
 
 **Landmark / region.** 1) Append to `Config.REGIONS` (`id`, `name`, `country`).
 `Config.regionAngle` spaces regions 72° apart (five); a sixth needs that changed.

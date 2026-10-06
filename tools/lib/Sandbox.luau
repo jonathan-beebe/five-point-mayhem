@@ -14,7 +14,8 @@
 --     is src/shared, ServerScriptService.Server is src/server)
 --
 -- `load(path, extra)`: `extra` adds or overrides globals for that file only; modules it requires
--- get the plain sandbox.
+-- get the plain sandbox. `Sandbox.globals` adds globals to every file loaded after it is set,
+-- required modules included (e.g. `Instance` for client UI modules that require each other).
 --
 -- `Sandbox.loadIsolated(target)` runs a module with its requires and services stubbed, to read the
 -- tables it defines (see the function).
@@ -125,6 +126,8 @@ local SERVICES = {
 	ReplicatedStorage = { Shared = "src/shared" },
 	ServerScriptService = { Server = "src/server" },
 }
+
+Sandbox.globals = {} :: { [string]: any }
 
 local cache: { [string]: any } = {}
 local load: (string, { [string]: any }?) -> any
@@ -245,6 +248,9 @@ function load(path: string, extra: { [string]: any }?): any
 	}
 	for _, name in DATATYPES do
 		environment[name] = (roblox :: any)[name]
+	end
+	for key, value in Sandbox.globals do
+		environment[key] = value
 	end
 	for key, value in extra or {} do
 		environment[key] = value

@@ -8,6 +8,7 @@ local TweenService = game:GetService("TweenService")
 
 local RemoteActions = require(ReplicatedStorage.Shared.RemoteActions)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Theme = require(script.Parent.ui.Theme)
 
 local Announcer = {}
 
@@ -15,7 +16,7 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "MayhemAnnouncer"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
-gui.DisplayOrder = 20
+gui.DisplayOrder = Theme.DisplayOrder.announcer
 gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
 
 local overlay = Instance.new("Frame")
@@ -31,7 +32,7 @@ banner.AnchorPoint = Vector2.new(0.5, 0)
 banner.Position = UDim2.fromScale(0.5, 0.12)
 banner.Size = UDim2.fromScale(0.8, 0.1)
 banner.BackgroundTransparency = 1
-banner.Font = Enum.Font.LuckiestGuy
+banner.Font = Theme.Fonts.title
 banner.TextScaled = true
 banner.TextStrokeTransparency = 0
 banner.TextTransparency = 1

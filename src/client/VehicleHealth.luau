@@ -8,7 +8,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
+local HealthBar = require(ReplicatedStorage.Shared.HealthBar)
 local Names = require(ReplicatedStorage.Shared.Names)
+local Create = require(script.Parent.ui.Create)
+local Theme = require(script.Parent.ui.Theme)
 
 local VehicleHealth = {}
 
@@ -18,14 +21,11 @@ local rgb = Color3.fromRGB
 local BAR_SIZE = Vector2.new(260, 22)
 local BAR_BOTTOM = 100 -- pixels from the bottom of the screen: clear of the backpack hotbar
 local FLASH_TIME = 0.15
-local HEALTHY = rgb(70, 210, 90)
-local HURT = rgb(245, 200, 40)
-local CRITICAL = rgb(230, 50, 40)
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "VehicleHealth"
 gui.ResetOnSpawn = false
-gui.DisplayOrder = 5
+gui.DisplayOrder = Theme.DisplayOrder.vehicleBar
 gui.Enabled = false
 
 local frame = Instance.new("Frame")
@@ -33,28 +33,20 @@ frame.Name = "Bar"
 frame.AnchorPoint = Vector2.new(0.5, 1)
 frame.Position = UDim2.new(0.5, 0, 1, -BAR_BOTTOM)
 frame.Size = UDim2.fromOffset(BAR_SIZE.X, BAR_SIZE.Y)
-frame.BackgroundColor3 = rgb(20, 20, 28)
-frame.BackgroundTransparency = 0.25
+frame.BackgroundColor3 = Theme.Colors.hud
+frame.BackgroundTransparency = Theme.HUD_TRANSPARENCY
 frame.ClipsDescendants = true
 frame.Parent = gui
-local frameCorner = Instance.new("UICorner")
-frameCorner.CornerRadius = UDim.new(0.5, 0)
-frameCorner.Parent = frame
-local stroke = Instance.new("UIStroke")
-stroke.Color = rgb(255, 255, 255)
-stroke.Thickness = 2
-stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-stroke.Parent = frame
+Create.corner(Theme.Radius.round).Parent = frame
+Create.stroke(Theme.Colors.white, 2, Enum.ApplyStrokeMode.Border).Parent = frame
 
 local fill = Instance.new("Frame")
 fill.Name = "Fill"
 fill.BorderSizePixel = 0
 fill.Size = UDim2.fromScale(1, 1)
-fill.BackgroundColor3 = HEALTHY
+fill.BackgroundColor3 = HealthBar.HEALTHY
 fill.Parent = frame
-local fillCorner = Instance.new("UICorner")
-fillCorner.CornerRadius = UDim.new(0.5, 0)
-fillCorner.Parent = fill
+Create.corner(Theme.Radius.round).Parent = fill
 
 local flash = Instance.new("Frame")
 flash.Name = "Flash"
@@ -68,19 +60,11 @@ local label = Instance.new("TextLabel")
 label.Name = "Label"
 label.BackgroundTransparency = 1
 label.Size = UDim2.fromScale(1, 1)
-label.Font = Enum.Font.GothamBold
+label.Font = Theme.Fonts.bold
 label.TextSize = 14
 label.TextColor3 = rgb(255, 255, 255)
 label.TextStrokeTransparency = 0.4
 label.Parent = frame
-
--- Green at full health, yellow at half, red at none.
-local function colorFor(share: number): Color3
-	if share >= 0.5 then
-		return HURT:Lerp(HEALTHY, (share - 0.5) * 2)
-	end
-	return CRITICAL:Lerp(HURT, share * 2)
-end
 
 local vehicles: Instance? = nil -- workspace.Vehicles
 local current: Model? = nil -- the vehicle shown
@@ -92,12 +76,13 @@ local function refresh()
 	if not model then
 		return
 	end
-	local health = (model:GetAttribute(Names.Attributes.Health) :: number?) or 0
-	local maxHealth = math.max((model:GetAttribute(Names.Attributes.MaxHealth) :: number?) or 1, 1)
-	local share = math.clamp(health / maxHealth, 0, 1)
+	local health, maxHealth, share = HealthBar.read(
+		model:GetAttribute(Names.Attributes.Health) :: number?,
+		model:GetAttribute(Names.Attributes.MaxHealth) :: number?
+	)
 	fill.Size = UDim2.fromScale(share, 1)
-	fill.BackgroundColor3 = colorFor(share)
-	label.Text = string.format("%s  %d / %d", model.Name, math.ceil(health), maxHealth)
+	fill.BackgroundColor3 = HealthBar.colorFor(share)
+	label.Text = HealthBar.labelText(model.Name, health, maxHealth)
 	if health < lastHealth then
 		flash.BackgroundTransparency = 0.2
 		TweenService:Create(flash, TweenInfo.new(FLASH_TIME), { BackgroundTransparency = 1 }):Play()

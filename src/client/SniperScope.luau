@@ -14,8 +14,14 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
+local HudLayout = require(ReplicatedStorage.Shared.HudLayout)
 local MathUtil = require(ReplicatedStorage.Shared.MathUtil)
 local Names = require(ReplicatedStorage.Shared.Names)
+local ScopeMath = require(ReplicatedStorage.Shared.ScopeMath)
+local Create = require(script.Parent.ui.Create)
+local Hud = require(script.Parent.ui.Hud)
+local Theme = require(script.Parent.ui.Theme)
+local TouchButton = require(script.Parent.ui.TouchButton)
 
 local SniperScope = {}
 
@@ -32,8 +38,6 @@ local TOUCH_RATE = 0.03 -- per pixel of drag
 local GAMEPAD_RATE = 18 -- per second at full right-stick deflection
 local GAMEPAD_DEADZONE = 0.15
 local EASE_SECONDS = 0.15 -- time constant of the view easing toward the target heading
-local MAX_PITCH = math.rad(80)
-local VIEW_FRACTION = 0.9 -- scope circle diameter as a fraction of the shorter screen side
 
 type Saved = {
 	camera: Camera,
@@ -61,7 +65,7 @@ local overlayGui = Instance.new("ScreenGui")
 overlayGui.Name = "SniperScope"
 overlayGui.ResetOnSpawn = false
 overlayGui.IgnoreGuiInset = true
-overlayGui.DisplayOrder = 5
+overlayGui.DisplayOrder = Theme.DisplayOrder.scope
 overlayGui.Enabled = false
 
 local function blackFrame(name: string): Frame
@@ -86,12 +90,8 @@ lens.AnchorPoint = Vector2.new(0.5, 0.5)
 lens.Position = UDim2.fromScale(0.5, 0.5)
 lens.BackgroundTransparency = 1
 lens.Parent = overlayGui
-local lensCorner = Instance.new("UICorner")
-lensCorner.CornerRadius = UDim.new(0.5, 0)
-lensCorner.Parent = lens
-local lensStroke = Instance.new("UIStroke")
-lensStroke.Color = rgb(0, 0, 0)
-lensStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+Create.corner(Theme.Radius.round).Parent = lens
+local lensStroke = Create.stroke(rgb(0, 0, 0), nil, Enum.ApplyStrokeMode.Border)
 lensStroke.Parent = lens
 
 local function reticleLine(name: string, size: UDim2): Frame
@@ -112,26 +112,20 @@ reticleLine("Vertical", UDim2.new(0, 2, 1, 0))
 local dot = reticleLine("Dot", UDim2.fromOffset(4, 4))
 dot.BackgroundColor3 = rgb(255, 40, 40)
 dot.BackgroundTransparency = 0
-local dotCorner = Instance.new("UICorner")
-dotCorner.CornerRadius = UDim.new(0.5, 0)
-dotCorner.Parent = dot
+Create.corner(Theme.Radius.round).Parent = dot
 
 local function layoutOverlay()
-	local viewport = Workspace.CurrentCamera.ViewportSize
-	local diameter = math.floor(math.min(viewport.X, viewport.Y) * VIEW_FRACTION)
-	local x0 = math.floor((viewport.X - diameter) / 2)
-	local y0 = math.floor((viewport.Y - diameter) / 2)
-	lens.Size = UDim2.fromOffset(diameter, diameter)
-	-- A square's corner sits radius * (sqrt(2) - 1) outside its inscribed circle.
-	lensStroke.Thickness = math.ceil(diameter / 2 * (math.sqrt(2) - 1)) + 2
-	top.Position = UDim2.fromOffset(0, 0)
-	top.Size = UDim2.new(1, 0, 0, y0)
-	bottom.Position = UDim2.fromOffset(0, y0 + diameter)
-	bottom.Size = UDim2.new(1, 0, 1, -(y0 + diameter))
-	left.Position = UDim2.fromOffset(0, y0)
-	left.Size = UDim2.fromOffset(x0, diameter)
-	right.Position = UDim2.fromOffset(x0 + diameter, y0)
-	right.Size = UDim2.new(1, -(x0 + diameter), 0, diameter)
+	local placed = ScopeMath.overlay(Workspace.CurrentCamera.ViewportSize)
+	lens.Size = placed.lensSize
+	lensStroke.Thickness = placed.stroke
+	top.Position = placed.topPosition
+	top.Size = placed.topSize
+	bottom.Position = placed.bottomPosition
+	bottom.Size = placed.bottomSize
+	left.Position = placed.leftPosition
+	left.Size = placed.leftSize
+	right.Position = placed.rightPosition
+	right.Size = placed.rightSize
 end
 
 -- Touch button --------------------------------------------------------------------------------
@@ -139,74 +133,38 @@ end
 local buttonGui = Instance.new("ScreenGui")
 buttonGui.Name = Names.Instances.SniperScopeButton
 buttonGui.ResetOnSpawn = false
-buttonGui.DisplayOrder = 6
+buttonGui.DisplayOrder = Theme.DisplayOrder.touch
 buttonGui.Enabled = false
+Hud.addBottomControls(buttonGui)
 
-local button = Instance.new("TextButton")
-button.Name = "Scope"
-button.AnchorPoint = Vector2.new(0.5, 1)
-button.BackgroundColor3 = rgb(20, 20, 28)
-button.BackgroundTransparency = 0.25
-button.TextColor3 = rgb(255, 255, 255)
-button.Font = Enum.Font.GothamBold
-button.TextScaled = true
-button.Text = "SCOPE"
-button.Parent = buttonGui
-local buttonCorner = Instance.new("UICorner")
-buttonCorner.CornerRadius = UDim.new(0.5, 0)
-buttonCorner.Parent = button
-local buttonStroke = Instance.new("UIStroke")
-buttonStroke.Color = rgb(255, 255, 255)
-buttonStroke.Thickness = 2
-buttonStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-buttonStroke.Parent = button
-local buttonPadding = Instance.new("UIPadding")
-buttonPadding.PaddingLeft = UDim.new(0.12, 0)
-buttonPadding.PaddingRight = UDim.new(0.12, 0)
-buttonPadding.PaddingTop = UDim.new(0.3, 0)
-buttonPadding.PaddingBottom = UDim.new(0.3, 0)
-buttonPadding.Parent = button
-
-local function jumpButton(): GuiObject?
-	local playerGui = player:FindFirstChildOfClass("PlayerGui")
-	local touchGui = playerGui and playerGui:FindFirstChild("TouchGui")
-	local frame = touchGui and touchGui:FindFirstChild("TouchControlFrame")
-	local jump = frame and frame:FindFirstChild("JumpButton")
-	return if jump and jump:IsA("GuiObject") then jump else nil
-end
+local button = TouchButton.new({
+	name = "Scope",
+	text = "SCOPE",
+	parent = buttonGui,
+	anchor = Vector2.new(0.5, 1),
+	color = Theme.Colors.hud,
+	transparency = Theme.HUD_TRANSPARENCY,
+	strokeColor = Theme.Colors.white,
+	paddingX = 0.12,
+	paddingY = 0.3,
+})
 
 -- Sits directly above the default jump button, measured at runtime, in the same coordinate
 -- space (the button's ScreenGui copies TouchGui's inset setting).
 local function layoutButton()
-	local jump = jumpButton()
+	local jump = Hud.jumpButton()
+	local placed
 	if jump then
-		local touchGui = jump:FindFirstAncestorOfClass("ScreenGui")
-		if touchGui then
-			buttonGui.IgnoreGuiInset = touchGui.IgnoreGuiInset
-		end
-		local size = math.floor(math.min(jump.AbsoluteSize.X, jump.AbsoluteSize.Y) * 0.8)
-		local gap = math.floor(jump.AbsoluteSize.Y * 0.15)
-		local center = jump.AbsolutePosition.X + jump.AbsoluteSize.X / 2
-		button.Size = UDim2.fromOffset(size, size)
-		button.Position = UDim2.fromOffset(math.floor(center), jump.AbsolutePosition.Y - gap)
+		Hud.matchInset(buttonGui, jump)
+		placed = HudLayout.scopeButton(jump.AbsolutePosition, jump.AbsoluteSize)
 	else
-		local viewport = Workspace.CurrentCamera.ViewportSize
-		local size = math.floor(math.min(viewport.X, viewport.Y) * 0.14)
-		button.Size = UDim2.fromOffset(size, size)
-		button.Position = UDim2.fromScale(0.88, 0.62)
+		placed = HudLayout.scopeButtonFallback(Workspace.CurrentCamera.ViewportSize)
 	end
+	button.Size = placed.size
+	button.Position = placed.position
 end
 
-local watchedJump: GuiObject? = nil
-local function watchJumpButton()
-	local jump = jumpButton()
-	if jump and jump ~= watchedJump then
-		watchedJump = jump
-		jump:GetPropertyChangedSignal("AbsolutePosition"):Connect(layoutButton)
-		jump:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutButton)
-	end
-	layoutButton()
-end
+local watchJumpButton = Hud.jumpWatcher(layoutButton)
 
 -- Scoping -------------------------------------------------------------------------------------
 
@@ -227,9 +185,8 @@ local function hideCharacter()
 end
 
 local function turn(current: Saved, yawDegrees: number, pitchDegrees: number)
-	current.targetYaw -= math.rad(yawDegrees)
-	current.targetPitch =
-		math.clamp(current.targetPitch - math.rad(pitchDegrees), -MAX_PITCH, MAX_PITCH)
+	current.targetYaw, current.targetPitch =
+		ScopeMath.turn(current.targetYaw, current.targetPitch, yawDegrees, pitchDegrees)
 end
 
 local function rootPart(): BasePart?
@@ -277,7 +234,7 @@ local function scopeOut()
 		end
 	end
 	overlayGui.Enabled = false
-	button.BackgroundColor3 = rgb(20, 20, 28)
+	button.BackgroundColor3 = Theme.Colors.hud
 end
 
 local function scopeIn()
@@ -287,7 +244,7 @@ local function scopeIn()
 	end
 	local look = camera.CFrame.LookVector
 	local yaw = MathUtil.yawOf(look)
-	local pitch = math.clamp(math.asin(math.clamp(look.Y, -1, 1)), -MAX_PITCH, MAX_PITCH)
+	local pitch = ScopeMath.pitchOf(look)
 	local root = rootPart()
 	saved = {
 		camera = camera,
