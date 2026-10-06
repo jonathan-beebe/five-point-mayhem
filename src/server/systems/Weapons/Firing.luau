@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Names = require(ReplicatedStorage.Shared.Names)
+local RemoteGuard = require(ReplicatedStorage.Shared.RemoteGuard)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 local WeaponMath = require(ReplicatedStorage.Shared.WeaponMath)
 local WeaponSounds = require(script.Parent.Parent.WeaponSounds)
@@ -24,9 +25,14 @@ local function forget(player: Player)
 	lastFired[player] = nil
 end
 
--- The FireWeapon handler: the remote's arguments, unchecked until the first test.
+-- The FireWeapon handler: the remote's arguments, unchecked until the first test. An aim that is
+-- not a Vector3 with finite components (RemoteGuard) is dropped, as is a shot from a player who
+-- left (no Parent): `forget` has run, so make no cooldown clocks.
 local function onFire(player: Player, weaponId, aim)
-	if typeof(weaponId) ~= "string" or typeof(aim) ~= "Vector3" then
+	if not player.Parent then
+		return
+	end
+	if typeof(weaponId) ~= "string" or not RemoteGuard.isFiniteVector(aim) then
 		return
 	end
 	local weapon = WeaponCatalog.get(weaponId)

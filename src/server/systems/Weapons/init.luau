@@ -2,9 +2,9 @@
 -- Clients only report "I fired weapon X at point P"; range, cooldown, damage, and the safe
 -- zone are all enforced here.
 --
--- This module is the facade (createTool, displayModel, give); each module in the folder says in
--- its header what it owns. Requires inside the folder (each row requires only rows above it, so
--- there are no cycles):
+-- This module is the facade (createTool, displayModel, give, holds); each module in the folder
+-- says in its header what it owns. Requires inside the folder (each row requires only rows above
+-- it, so there are no cycles):
 --   FallbackModels, Effects   none (FallbackModels: WeaponCatalog and WeaponModel only)
 --   Aim                       Effects
 --   Tools                     FallbackModels
@@ -36,5 +36,6 @@ Remotes.FireWeapon.OnServerEvent:Connect(Firing.onFire)
 Weapons.createTool = Tools.createTool
 Weapons.displayModel = Tools.displayModel
 Weapons.give = Tools.give
+Weapons.holds = Tools.holds
 
 return Weapons

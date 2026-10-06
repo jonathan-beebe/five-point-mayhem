@@ -1,6 +1,6 @@
 -- Weapon tools and display models: each weapon's model (its file in `weaponModels`, else
--- FallbackModels from its catalog shape, cached), the Tool a player holds (createTool, give), and
--- the anchored copy on the lobby's display stands (displayModel).
+-- FallbackModels from its catalog shape, cached), the Tool a player holds (createTool, give,
+-- holds), and the anchored copy on the lobby's display stands (displayModel).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -122,6 +122,18 @@ function Tools.give(player: Player, weaponId: string): boolean
 	end
 	Tools.createTool(weapon).Parent = backpack
 	return true
+end
+
+-- Whether the player's Backpack or character holds a Tool of this weapon id.
+function Tools.holds(player: Player, weaponId: string): boolean
+	for _, container in { player:FindFirstChildOfClass("Backpack"), player.Character } do
+		for _, child in container:GetChildren() do
+			if child:IsA("Tool") and child:GetAttribute(Names.Attributes.WeaponId) == weaponId then
+				return true
+			end
+		end
+	end
+	return false
 end
 
 Tools.modelFor = modelFor

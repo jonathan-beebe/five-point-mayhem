@@ -30,6 +30,7 @@ runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is
 | `src/shared/Names.luau` | Attribute, tag, collision group and instance names shared between modules and with the client |
 | `src/shared/PodState.luau` | A flying pod's states and the rules read from them (server and client) |
 | `src/shared/RemoteActions.luau` | The action strings remotes carry: pod and MAC commands, announcement styles |
+| `src/shared/RemoteGuard.luau` | What the server accepts from a client over a remote: finite drive axes, finite aim points, string arguments, and the per-player DriveInput rate limit |
 | `src/shared/MathUtil.luau` | Small math helpers shared by server and client (move toward, angle wrap, yaw, inside a box, clamp to range, follow rates) |
 | `src/shared/WeaponMath.luau` | Weapon math the server applies (spread, cooldown, melee reach, push cone, projectile step and size, display centering) |
 | `src/shared/VehicleDrive.luau` | Drive math the server applies (target speed, yaw rate, settling, constraint strengths) |

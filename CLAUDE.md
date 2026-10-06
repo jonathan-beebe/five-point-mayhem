@@ -21,8 +21,9 @@ placement on phone/tablet/desktop, network ownership, sounds by ear (`tools/audi
 ```
 src/shared/   ReplicatedStorage.Shared. Every file --!strict. Loads under Lune.
   *Catalog    data only: WeaponCatalog, VehicleCatalog, CreatureCatalog, SoundCatalog
-  pure logic  DayNight, MathUtil, MechGait, MechClimb, VehicleDefaults, and the modules in the
-              Conventions table (applied by a server or client module); tested in tools/tests
+  pure logic  DayNight, MathUtil, MechGait, MechClimb, VehicleDefaults, RemoteGuard, and the
+              modules in the Conventions table (applied by a server or client module); tested
+              in tools/tests
   registry    AdminCommands: admin command ids, chat list, panel buttons, gifts, power tuning
   Config      world layout, REGIONS, teams, admin ids;  Remotes: every RemoteEvent, typed record
   contracts   Names (attributes, tags, collision groups, instance names), PodState, RemoteActions
@@ -32,9 +33,9 @@ src/server/   ServerScriptService.Server. init.server.luau boots in this order:
   2. buildWorld(): Lobby, Roads, one building per Config.REGIONS entry (in order), Landscape
   3. Session, Creatures, Vehicles (PodFlight.start, then layOut), Admin, MacAccess .start()
   (Requiring Systems.Vehicles, first from Admin, creates the workspace Vehicles folder and
-  connects its Heartbeats, DriveInput and the Tree tag listener; requiring Systems.Weapons, first
-  from Session, creates the WeaponEffects folder and connects its Heartbeat, PlayerRemoving and
-  FireWeapon: see Hazards.)
+  connects its Heartbeats, DriveInput, PlayerRemoving and the Tree tag listener; requiring
+  Systems.Weapons, first from Session, creates the WeaponEffects folder and connects its
+  Heartbeat, PlayerRemoving and FireWeapon: see Hazards.)
   4. CharacterAutoLoads back on: nobody spawns before the lobby exists
   world/      Build helpers, Lobby, Roads, Landscape, Regions (per-landmark data), buildings/
   systems/    Combat, Weapons, WeaponSounds, Session, Creatures, Vehicles, PodFlight, Admin,
@@ -45,7 +46,7 @@ src/server/   ServerScriptService.Server. init.server.luau boots in this order:
               (vehicle space, welds, onTerrain), Climb, Drive, Health (crashes, wrecks), Trees,
               Contact (rams, contact damage), Boarding (prompts, cab), Builder, Parking (spots,
               respawn loop). init.luau's header lists the require graph.
-    Weapons/  init.luau is the facade (createTool, displayModel, give) and wires the system.
+    Weapons/  init.luau is the facade (createTool, displayModel, give, holds) and wires it.
               Modules: FallbackModels (models by catalog shape, loads under Lune), Effects
               (WeaponEffects folder, the shared Random, beam/flash/lightning), Aim (Shot, spread,
               raycast), Tools (model files, tools, display models), Projectiles (flight, IMPACTS),
@@ -117,6 +118,8 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   VehicleDrive VehicleSizing VehicleRam    Vehicles       vehicle_logic
     VehicleLayout VehicleDamage PodState
   WeaponMath (COOLDOWN_SLACK 0.85)         Weapons        weapon_math
+  RemoteGuard                              Drive Firing   remote_guard, remote_handlers
+                                             Admin
   PodPilot                                 PodFlight      pod_pilot
   CreatureBrain                            Creatures      creature_brain (+ CreatureCatalog)
   AdminCommands                            Admin          admin_commands
@@ -132,6 +135,17 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   ConfirmTap                               MacPanel       client_logic
   HudLayout                                client HUD     hud_layout
   ```
+- Remote handlers trust nothing a client sends: any value, NaN and ±inf included (`math.clamp`
+  passes NaN through). Check each argument with `src/shared/RemoteGuard` before use: numbers with
+  `isFinite`/`axis`, positions with `isFiniteVector`, strings with `optionalString`, and a
+  per-player `newLimiter`/`allow` bucket (fed `os.clock()`, dropped on PlayerRemoving) for a
+  remote sent every frame. A handler that keeps per-player state ignores a player who left
+  (`not player.Parent`) so an event queued behind PlayerRemoving makes none. A remote that
+  creates Instances (MAC SNIPER: `Weapons.holds`) is bounded by what the player already has.
+  A wrong type drops the event. A non-finite drive axis becomes 0 (neutral), as a missing lift
+  already did. A new handler is a named function on its module so
+  `tools/tests/remote_handlers.luau` can call it with recording fakes; a limit is set from the
+  client's real send rate with margin (RemoteGuard's header has DriveInput's numbers).
 - Server systems use `systems/util/` instead of writing these inline:
   - `Characters`: `parts(player)` (character, Humanoid, root; no health check), `living(player)`
     (all three and `Health > 0`, else nils), `humanoidOf`, `rootOf`, `isInside(player, box)`,
@@ -231,8 +245,7 @@ and before the vehicle and weapon matches: `WeaponCatalog.find` matches by prefi
 `start()` listed in `init.client.luau`. 4) README God mode: panel, chat table, power.
 5) `tools/tests/admin_commands.luau`: add the new id, button, gift or tuning value to its pinned
 lists. `HANDLERS`, `POWER_UP` and `gift` are exposed on `Admin` for that test only. The
-`AdminCommand` remote forwards two arguments (`first`, `second`): a third works from chat only
-(known gap).
+`AdminCommand` remote (`Admin.onCommand`) forwards up to three string arguments, as chat does.
 Enforced: every id has a handler and every handler an id, unique lower-case ids, panel slots
 1..n, `POWER_UP` (plus `arsenal`, `car`) equals `POWER_UPS`, every panel gift is a power-up or a
 weapon id, `gift`'s branches and effects match the code before the admin registry refactor (run
@@ -282,9 +295,10 @@ Move these word for word; do not "simplify" them.
   - `Builder.build`'s `watchDriver`: the server takes the skid's network ownership when a driver
     sits and hands the leaving driver's character back in a `task.defer`.
   - `init.luau` wires everything at require time, in this order: Heartbeat `Drive.heartbeat`,
-    DriveInput `Drive.onInput`, the Tree tag listener (`Contact.addGrove`), Heartbeat
-    `Contact.heartbeat` (crash, then contact). Registry creates the Vehicles folder when first
-    required, before any of them. Keep new require-time work in init.luau, in that order.
+    DriveInput `Drive.onInput`, PlayerRemoving `Drive.forget`, the Tree tag listener
+    (`Contact.addGrove`), Heartbeat `Contact.heartbeat` (crash, then contact). Registry creates
+    the Vehicles folder when first required, before any of them. Keep new require-time work in
+    init.luau, in that order.
   - `Parking.start` (`Vehicles.start`) calls `PodFlight.start()` before `layOut()`.
   - Requires inside the folder stay acyclic: a module requires only modules above it in the
     table in init.luau's header. Two modules that need each other share a lower module or an

@@ -22,10 +22,11 @@
 --   Parking                      Builder, Specs
 --   init                         Contact, Drive, Health, Parking
 -- Requiring this module wires the system, in this order (CLAUDE.md, Hazards): the Vehicles folder
--- in workspace (Registry), the Heartbeat that drives, DriveInput, the tree tag listener, then the
--- Heartbeat that samples crashes and contact.
+-- in workspace (Registry), the Heartbeat that drives, DriveInput, PlayerRemoving (forget the
+-- DriveInput limit), the tree tag listener, then the Heartbeat that samples crashes and contact.
 
 local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
@@ -40,6 +41,7 @@ local Vehicles = {}
 
 RunService.Heartbeat:Connect(Drive.heartbeat)
 Remotes.DriveInput.OnServerEvent:Connect(Drive.onInput)
+Players.PlayerRemoving:Connect(Drive.forget)
 CollectionService:GetInstanceAddedSignal(Names.Tags.Tree):Connect(Contact.addGrove)
 for _, tree in CollectionService:GetTagged(Names.Tags.Tree) do
 	Contact.addGrove(tree)
