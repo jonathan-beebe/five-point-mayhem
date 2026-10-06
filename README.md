@@ -25,6 +25,19 @@ lune run tools/tests/day_night.luau   # day/night clock math, no Studio needed
 | `src/server/systems` | Combat, weapons, players/teams, creatures, vehicles, admin powers |
 | `src/client` | Armory UI, weapon input, car input, vehicle health bar, mech animation and camera, admin panel, announcer |
 
+## UI conventions
+
+- Nothing goes in the center of the screen. Overlays, prompts and buttons sit at the edges.
+  Exempt: the sniper scope's lens and reticle (they are the aim point), the lobby armory (a
+  full-screen menu), and full-screen flashes (MAYHEM, alarms).
+- Positions are measured from on-screen elements (the MAC button, the touch jump button), never
+  guessed pixel offsets.
+- Every ProximityPrompt is drawn as a card at the right edge, under the MAC button (left of an
+  open MAC or GOD MODE panel), above the bottom-right touch buttons: key (TAP on touch), object,
+  action. Tap or click a card to use it. `src/client/PromptPanel.luau`.
+- Seated in a vehicle, only prompts that work from that seat show: **Drive** from a passenger seat,
+  and the pod console for Aurora's pilot. Other vehicles' prompts are hidden until you get out.
+
 ## God mode
 
 ### Who is an admin

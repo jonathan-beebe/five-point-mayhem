@@ -4,17 +4,12 @@
 -- while flying, ▲ and ▼ beside the column climb and descend; keyboards use E and Q (CarInput
 -- reads both). Passengers get only the jump lock. Near the ground (server attribute PodCanLand) a LAND button (or L) appears left of
 -- it: the pod settles to hover and the pilot gets out. While the pod flies the seat is locked
--- here too: jumping is disabled.
---
--- The console button's prompt (PodFlight) is anchored in the middle of the pod, so in the outside
--- view it would cover the pod. Each frame it is moved down on this client to the bottom of the
--- screen.
+-- here too: jumping is disabled. The console button's prompt (PodFlight) is drawn at the side of
+-- the screen with every other prompt (PromptPanel).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local Workspace = game:GetService("Workspace")
 
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local MechCamera = require(script.Parent.MechCamera)
@@ -69,14 +64,6 @@ local humanoid: Humanoid? = nil
 local touchLift = { up = false, down = false }
 local jumpLocked = false
 local passenger = false -- seated in a passenger seat (no buttons, only the jump lock)
-
--- Gap between the bottom of the screen and the prompt's center: half the default prompt's height
--- (Vehicles stacks prompts 72 pixels apart) and a little more.
-local PROMPT_GAP = 48
-
--- The pod bone and the console prompt, looked up once per pod.
-type Cached = { bone: BasePart?, prompt: ProximityPrompt? }
-local cached: Cached = {}
 
 local function state(): string
 	return if model then (model:GetAttribute("PodState") or "docked") :: string else "docked"
@@ -145,7 +132,6 @@ local function setModel(new: Model?)
 		watching = nil
 	end
 	model = new
-	cached = {}
 	if new then
 		watching = new.AttributeChanged:Connect(function(name)
 			if name == "PodState" or name == "PodCanLand" then
@@ -176,60 +162,6 @@ local function onCharacter(character: Model)
 	humanoid = new
 	new:GetPropertyChangedSignal("SeatPart"):Connect(onSeat)
 	onSeat()
-end
-
--- The pod bone and the console prompt on it.
-local function podParts(): (BasePart?, ProximityPrompt?)
-	local bone = model and model:FindFirstChild("Bone_" .. tostring(model:GetAttribute("PodBone")))
-	if not bone or not bone:IsA("BasePart") then
-		return nil, nil
-	end
-	local anchor = bone:FindFirstChild("PodButton")
-	return bone, anchor and anchor:FindFirstChildOfClass("ProximityPrompt")
-end
-
--- Moves the prompt below the pod on screen; no offset when the pod's bottom is off screen (the
--- cockpit view).
-local probeAt = 0 -- TEMPORARY: os.clock() of the last [PodPromptProbe] line
-
-local function placePrompt()
-	if not cached.bone or not cached.bone.Parent then
-		local bone, prompt = podParts()
-		cached = { bone = bone, prompt = prompt }
-	end
-	local prompt = cached.prompt
-	if not prompt then
-		if os.clock() - probeAt > 1 then -- TEMPORARY
-			probeAt = os.clock()
-			print("[PodPromptProbe] no prompt found; bone:", cached.bone)
-		end
-		return
-	end
-	local anchor = prompt.Parent :: Attachment
-	local camera = Workspace.CurrentCamera
-	local viewport = camera.ViewportSize
-	local anchorOnScreen, anchorVisible = camera:WorldToViewportPoint(anchor.WorldPosition)
-	local offset = Vector2.zero
-	if anchorVisible then
-		offset = Vector2.new(0, math.max(0, viewport.Y - PROMPT_GAP - anchorOnScreen.Y))
-	end
-	if prompt.UIOffset ~= offset then
-		prompt.UIOffset = offset
-	end
-	if os.clock() - probeAt > 1 then -- TEMPORARY
-		probeAt = os.clock()
-		print(
-			string.format(
-				"[PodPromptProbe] anchor y=%.0f visible=%s viewport y=%.0f offset y=%.0f UIOffset=%s prompt=%s",
-				anchorOnScreen.Y,
-				tostring(anchorVisible),
-				viewport.Y,
-				offset.Y,
-				tostring(prompt.UIOffset),
-				prompt:GetFullName()
-			)
-		)
-	end
 end
 
 -- Climb (+1) or descend (-1) from the touch buttons.
@@ -282,11 +214,6 @@ function PodControls.start()
 	hold(upButton, "up")
 	hold(downButton, "down")
 	MechCamera.layoutChanged:Connect(layout)
-	RunService.RenderStepped:Connect(function()
-		if model then
-			placePrompt()
-		end
-	end)
 	player.CharacterAdded:Connect(onCharacter)
 	if player.Character then
 		task.spawn(onCharacter, player.Character)

@@ -1173,7 +1173,9 @@ end)
 
 -- Collision boxes can enclose seats, so players get in by prompt: Drive (E) takes the driver
 -- seat, Ride (F) the free passenger seat nearest the player. Both prompts sit above the middle of
--- the vehicle and reach past its far end, so they work from any side.
+-- the vehicle and reach past its far end, so they work from any side. Clients draw every prompt at
+-- the side of the screen and switch off the ones that do nothing for a seated player
+-- (src/client/PromptPanel.luau).
 local function seatPlayer(player: Player, seat: Seat | VehicleSeat)
 	local model = seat.Parent
 	local podState = model and model:GetAttribute("PodState") or "docked"
@@ -1210,13 +1212,12 @@ local function addPrompts(
 		reach = spec.prompt.reach
 	end
 
-	local function prompt(action: string, key: Enum.KeyCode, order: number): ProximityPrompt
+	local function prompt(action: string, key: Enum.KeyCode): ProximityPrompt
 		local each = Instance.new("ProximityPrompt")
 		each.Name = action .. "Prompt"
 		each.ActionText = action
 		each.ObjectText = spec.name
 		each.KeyboardKeyCode = key
-		each.UIOffset = Vector2.new(0, order * 72)
 		each.MaxActivationDistance = reach
 		each.RequiresLineOfSight = false
 		each.Parent = anchor
@@ -1232,7 +1233,7 @@ local function addPrompts(
 		end
 		return if legsSeat and (podState == "flying" or podState == "landed") then legsSeat else nil
 	end
-	local drivePrompt = prompt("Drive", Enum.KeyCode.E, 0)
+	local drivePrompt = prompt("Drive", Enum.KeyCode.E)
 	drivePrompt.Triggered:Connect(function(player)
 		local seat = driveSeat()
 		if seat then
@@ -1252,7 +1253,7 @@ local function addPrompts(
 	if #passengers == 0 then
 		return
 	end
-	local ridePrompt = prompt("Ride", Enum.KeyCode.F, 1)
+	local ridePrompt = prompt("Ride", Enum.KeyCode.F)
 	ridePrompt.Triggered:Connect(function(player)
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -1358,20 +1359,19 @@ local function addCab(
 	anchor.Parent = volume
 	local reach = math.sqrt((cab.size.X / 2) ^ 2 + (cab.size.Z / 2) ^ 2) + 0.5
 
-	local function prompt(action: string, key: Enum.KeyCode, order: number): ProximityPrompt
+	local function prompt(action: string, key: Enum.KeyCode): ProximityPrompt
 		local each = Instance.new("ProximityPrompt")
 		each.Name = action .. "Prompt"
 		each.ActionText = action
 		each.ObjectText = spec.name
 		each.KeyboardKeyCode = key
-		each.UIOffset = Vector2.new(0, order * 72)
 		each.MaxActivationDistance = reach
 		each.RequiresLineOfSight = false
 		each.Parent = anchor
 		return each
 	end
 
-	local drivePrompt = prompt("Drive", Enum.KeyCode.E, 0)
+	local drivePrompt = prompt("Drive", Enum.KeyCode.E)
 	drivePrompt.Triggered:Connect(function(player)
 		seatPlayer(player, driver)
 	end)
@@ -1386,7 +1386,7 @@ local function addCab(
 			placeAtExit(skid, exit, character)
 		end
 	end
-	prompt("Climb out", Enum.KeyCode.Q, 1).Triggered:Connect(function(player)
+	prompt("Climb out", Enum.KeyCode.Q).Triggered:Connect(function(player)
 		if (model:GetAttribute("PodState") or "docked") == "docked" then
 			climbOut(player)
 		end

@@ -18,6 +18,11 @@ MacPanel.TOGGLE_HEIGHT = 40
 MacPanel.GAP = 6
 MacPanel.PANEL_TOP = MacPanel.TOGGLE_TOP + 2 * (MacPanel.TOGGLE_HEIGHT + MacPanel.GAP)
 
+-- Measured by PromptPanel, which stacks prompts under the MAC button and left of open panels: the
+-- MAC button once built, and every panel that opens in the column (the MAC's, GOD MODE's).
+MacPanel.toggle = nil :: GuiObject?
+MacPanel.panels = {} :: { GuiObject }
+
 local PANEL_WIDTH = 300
 local PANEL_HEIGHT = 142
 local CONFIRM_SECONDS = 3
@@ -88,6 +93,8 @@ local function build()
 		Parent = gui,
 	}, { corner(), create("UIStroke", { Color = rgb(80, 190, 255), Thickness = 2 }) })
 	panel = frame
+	MacPanel.toggle = toggle
+	table.insert(MacPanel.panels, frame)
 
 	create("TextLabel", {
 		Position = UDim2.fromOffset(10, 8),
