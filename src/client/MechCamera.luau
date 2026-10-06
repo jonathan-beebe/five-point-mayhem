@@ -60,7 +60,7 @@ local session: Session? = nil
 
 -- The button column, for other modules that stack buttons beside it (PodControls): button size
 -- and gap in pixels, and the bottom-right corner of VIEW. Set whenever the buttons are laid out.
-export type Layout = { size: number, gap: number, corner: UDim2, ignoreInset: boolean }
+export type Layout = { size: number, gap: number, corner: UDim2, insets: Enum.ScreenInsets }
 MechCamera.layout = nil :: Layout?
 local layoutEvent = Instance.new("BindableEvent")
 MechCamera.layoutChanged = layoutEvent.Event
@@ -110,8 +110,7 @@ local function layoutButton()
 	viewButton.Position = corner
 	standButton.Size = UDim2.fromOffset(size, size)
 	standButton.Position = HudLayout.standPosition(column)
-	MechCamera.layout =
-		{ size = size, gap = gap, corner = corner, ignoreInset = buttonGui.IgnoreGuiInset }
+	MechCamera.layout = { size = size, gap = gap, corner = corner, insets = buttonGui.ScreenInsets }
 	layoutEvent:Fire()
 end
 

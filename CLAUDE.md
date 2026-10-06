@@ -56,7 +56,9 @@ src/server/   ServerScriptService.Server. init.server.luau boots in this order:
               (tested in tools/tests/server_helpers.luau); Guard (tools/tests/guard.luau)
   vehicleModels/ weaponModels/ creatureModels/   one model file per catalog id
 src/client/   StarterPlayerScripts.Client. Feature modules with start(), each task.spawned by
-              init.client.luau so one failure cannot stop the rest.
+              init.client.luau so one failure cannot stop the rest. init.client requires every
+              module first, outside that isolation: LobbyUI and Announcer build nothing at require
+              time (tools/tests/client_lifecycle); a new screen builds in start().
   ui/         the UI kit (no start()): Create, Theme, TouchButton, Hud, RightColumn
 tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau, preview/
 ```
@@ -181,10 +183,13 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
 ## UI rules
 
 - Never guess pixel offsets. Derive positions from measured on-screen elements
-  (`AbsolutePosition`/`AbsoluteSize` of the MAC button, the touch jump button, the thumbstick),
-  re-layout on resize, and fall back to fractions of the screen. Existing fixed offsets
-  (`RightColumn.TOGGLE_TOP` and `MARGIN`, `VehicleHealth` `BAR_BOTTOM`, LobbyUI's `-110`) are
-  debts, not precedent.
+  (`AbsolutePosition`/`AbsoluteSize` of the MAC button, the touch jump button, the thumbstick) or
+  from the engine's safe areas (a ScreenGui's `ScreenInsets`: `CoreUISafeInsets`, the default,
+  starts below the top bar and inside the device's cutouts; `GuiService.TopbarInset` is the free
+  strip inside the top bar), re-layout on resize, and fall back to fractions of the screen where
+  nothing is measurable (`HudLayout.*Fallback`: no jump button on desktop). A gap from a measured
+  edge (`RightColumn.MARGIN`, `GAP`) is a spacing value, not a guess. Fixed offsets the user
+  accepted: `VehicleHealth` `BAR_BOTTOM`, LobbyUI's CHOOSE WEAPONS `-110`. Not precedent.
 - Build client UI with `src/client/ui` (each header lists its functions):
   - `Create`: `create(className, properties, children?)`, `corner(radius)`,
     `stroke(color, thickness?, mode?)`, `padding(horizontal, vertical)`, `label(...)` (LobbyUI's)
@@ -194,8 +199,8 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   - `TouchButton.new(options)`: the round bottom-right touch button
   - `Hud`: `jumpButton`, `jumpWatcher`, `matchInset`, `edgeY`, `shownIn`, and the list of
     bottom-right control guis PromptPanel's cards stay above (`addBottomControls`)
-  - `RightColumn`: the GOD MODE/MAC column's constants, `makeToggle`, `makePanel`, `toggle`,
-    `panels`, `opened`
+  - `RightColumn`: the GOD MODE/MAC column's constants (`SCREEN_INSETS` for its ScreenGuis and
+    PromptPanel's), `makeToggle`, `makePanel`, `fullHeight`, `toggle`, `panels`, `opened`
   Layout arithmetic goes in `src/shared/HudLayout.luau` with a case in
   `tools/tests/hud_layout.luau`. `tools/tests/ui_kit.luau` compares each widget with the inline
   code it replaced.

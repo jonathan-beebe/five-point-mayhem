@@ -40,6 +40,7 @@ local function build()
 	local gui = create("ScreenGui", {
 		Name = "MayhemAdmin",
 		ResetOnSpawn = false,
+		ScreenInsets = RightColumn.SCREEN_INSETS,
 		DisplayOrder = Theme.DisplayOrder.panels,
 		Parent = player:WaitForChild("PlayerGui"),
 	})
@@ -53,7 +54,7 @@ local function build()
 	-- a short (phone) screen every part of it stays reachable.
 	local width = RightColumn.PANEL_WIDTH
 	local panel = RightColumn.makePanel("ScrollingFrame", gui, rgb(255, 200, 40), {
-		Size = UDim2.new(0, width, 1, -(RightColumn.PANEL_TOP + RightColumn.MARGIN)),
+		Size = RightColumn.fullHeight(width),
 		BackgroundColor3 = rgb(20, 16, 10),
 		BorderSizePixel = 0,
 		ScrollBarThickness = 6,

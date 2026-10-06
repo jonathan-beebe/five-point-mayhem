@@ -1,11 +1,12 @@
 -- Screen controls for flying pods (server PodFlight). While the local player sits in the driver
--- seat of a walker with a pod (model attribute PodBone), a wide button above MechCamera's STAND
+-- seat of a walker with a pod (model attribute PodBone), a wide button left of MechCamera's STAND
 -- reads LAUNCH (pod docked), RETURN HOME (flying) or RETURNING (the autopilot has it). On touch,
--- while flying, ▲ and ▼ beside the column climb and descend; keyboards use E and Q (CarInput reads
+-- while flying, ▲ and ▼ left of VIEW climb and descend; keyboards use E and Q (CarInput reads
 -- both). Passengers get only the jump lock. Near the ground (server attribute PodCanLand) a LAND
--- button (or L) appears left of it: the pod settles to hover and the pilot gets out. While the pod
--- flies the seat is locked here too: jumping is disabled. The console button's prompt (PodFlight)
--- is drawn at the side of the screen with every other prompt (PromptPanel).
+-- button (or L) appears where STAND was (STAND hides in flight): the pod settles to hover and the
+-- pilot gets out. While the pod flies the seat is locked here too: jumping is disabled. The console
+-- button's prompt (PodFlight) is drawn at the side of the screen with every other prompt
+-- (PromptPanel).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -66,14 +67,14 @@ local function state(): PodState.State
 		else PodState.DOCKED
 end
 
--- The column MechCamera measured: the pod button spans two slots above STAND (its right edge on
--- the column's), LAND as wide just left of it, ▲ left of STAND and ▼ left of VIEW.
+-- The column MechCamera measured, two rows (HudLayout.podButtons): the pod button spans two slots
+-- left of STAND, LAND takes STAND's slot, ▼ sits left of VIEW and ▲ left of ▼.
 local function layout()
 	local measured = MechCamera.layout
 	if not measured then
 		return
 	end
-	gui.IgnoreGuiInset = measured.ignoreInset
+	gui.ScreenInsets = measured.insets
 	local placed = HudLayout.podButtons(measured)
 	podButton.Size = placed.pod.size
 	podButton.Position = placed.pod.position
