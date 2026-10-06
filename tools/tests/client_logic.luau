@@ -3,13 +3,18 @@
 -- Roblox.
 -- Usage: lune run tools/tests/client_logic.luau
 --
---   - every function gives the same bits (signed zeros and NaNs included; vectors, colours and
---     UDim2s component by component) as the inline code it replaced in src/client, copied below
---     word for word as the reference from f584174 (stand-ins for the instances and services it
---     read), composed the way each client module now calls it
---   - inputs: every catalog weapon and made-up ones on each threshold, every pod state, prompt
---     name, key code and input type, health and speed values across and outside their ranges,
---     zero, -0, NaN and inf where a number comes from outside, viewports from 0 to 4K
+--   - golden tables, generated once from the code at a50e99c, pin the functions whose inline
+--     code was a line-for-line copy of the module: Loadout.speedLabel, subtitle and statText,
+--     PromptRules.inputType, HealthBar.colorFor, DriveAxes.lift and EngineEnvelope.lerp (the
+--     last three bit for bit). Inputs sit on each threshold and one ulp either side, with -0, NaN
+--     and inf. Every catalog weapon's statText shows its damage number (or nothing)
+--   - every other function gives the same bits (signed zeros and NaNs included; vectors, colours
+--     and UDim2s component by component) as the inline code it replaced in src/client, copied
+--     below word for word as the reference from f584174 (stand-ins for the instances and services
+--     it read), composed the way each client module now calls it
+--   - inputs: every catalog weapon, every pod state, prompt name, key code and input type, health
+--     and speed values across and outside their ranges, zero, -0, NaN and inf where a number
+--     comes from outside, viewports from 0 to 4K
 --   - the state machines (LobbyUI's loadout, CarInput's resend rule, VehicleSounds' envelopes and
 --     nearest set, MechCamera's shake list, MacPanel's two taps) driven through the same event
 --     sequences on the reference and on the module
@@ -80,44 +85,6 @@ local Reference = {}
 local rgb = Color3.fromRGB
 
 -- LobbyUI.luau ---------------------------------------------------------------------------------
-
-local KIND_LABELS = {
-	melee = "Melee",
-	hitscan = "Gun",
-	projectile = "Launcher",
-	strike = "Spell",
-	heal = "Support",
-	blink = "Mobility",
-	push = "Blast",
-}
-
-local function speedLabel(cooldown: number): string
-	if cooldown <= 0.15 then
-		return "rapid fire"
-	elseif cooldown <= 0.5 then
-		return "fast"
-	elseif cooldown <= 1.2 then
-		return "medium"
-	end
-	return "slow"
-end
-
--- The card's two computed labels.
-function Reference.subtitle(weapon)
-	return string.format(
-		"%s · %s",
-		KIND_LABELS[weapon.kind] or weapon.kind,
-		speedLabel(weapon.cooldown)
-	)
-end
-function Reference.statText(weapon)
-	return if weapon.kind == "heal"
-		then "HEAL " .. weapon.damage
-		elseif weapon.damage > 0 then "DMG " .. weapon.damage .. (if weapon.pellets
-			then "×" .. weapon.pellets
-			else "")
-		else ""
-end
 
 -- `refresh` up to the counter, and each card's availability. `selected` changes in place.
 function Reference.refresh(player, selected)
@@ -234,19 +201,6 @@ function Reference.keyText(prompt, inputType: Enum.ProximityPromptInputType): st
 	return (string.gsub(code.Name, "^Button", ""))
 end
 
-function Reference.promptInputType(inputType: Enum.UserInputType): Enum.ProximityPromptInputType?
-	if inputType == Enum.UserInputType.Touch then
-		return Enum.ProximityPromptInputType.Touch
-	end
-	if string.match(inputType.Name, "^Gamepad") then
-		return Enum.ProximityPromptInputType.Gamepad
-	end
-	if inputType == Enum.UserInputType.Keyboard or string.match(inputType.Name, "^Mouse") then
-		return Enum.ProximityPromptInputType.Keyboard
-	end
-	return nil
-end
-
 -- `layout`'s sort comparator, on cards.
 function Reference.before(a, b)
 	local ka, kb = a.prompt.KeyboardKeyCode.Value, b.prompt.KeyboardKeyCode.Value
@@ -255,21 +209,9 @@ end
 
 -- VehicleHealth.luau ---------------------------------------------------------------------------
 
-local HEALTHY = rgb(70, 210, 90)
-local HURT = rgb(245, 200, 40)
-local CRITICAL = rgb(230, 50, 40)
-
-local function colorFor(share: number): Color3
-	if share >= 0.5 then
-		return HURT:Lerp(HEALTHY, (share - 0.5) * 2)
-	end
-	return CRITICAL:Lerp(HURT, share * 2)
-end
-
-Reference.colorFor = colorFor
-
 -- `refresh`: the fill's scale, colour and the label; `model` a stand-in. The label is nil when
--- string.format fails (the same call fails in both).
+-- string.format fails (the same call fails in both). The colour comes from HealthBar.colorFor,
+-- pinned by its golden table below.
 function Reference.health(model)
 	local health = (model:GetAttribute(Names.Attributes.Health) :: number?) or 0
 	local maxHealth = math.max((model:GetAttribute(Names.Attributes.MaxHealth) :: number?) or 1, 1)
@@ -277,7 +219,7 @@ function Reference.health(model)
 	local ok, text = pcall(function()
 		return string.format("%s  %d / %d", model.Name, math.ceil(health), maxHealth)
 	end)
-	return share, colorFor(share), if ok then text else nil, health
+	return share, HealthBar.colorFor(share), if ok then text else nil, health
 end
 
 -- CarInput.luau --------------------------------------------------------------------------------
@@ -297,10 +239,6 @@ function Reference.readInput(seat, keyAxis, getControls, K)
 		end
 	end
 	return math.clamp(throttle, -1, 1), math.clamp(steer, -1, 1)
-end
-
-function Reference.readLift(keys, touch)
-	return math.clamp(keys + touch, -1, 1)
 end
 
 -- `start`'s Heartbeat: one call per frame; `frame` gives what the frame reads. Returns the
@@ -332,9 +270,8 @@ end
 
 -- VehicleSounds.luau ---------------------------------------------------------------------------
 
-local function lerp(range: { number }, t: number): number
-	return range[1] + (range[2] - range[1]) * t
-end
+-- The inline `lerp` was EngineEnvelope.lerp word for word; the golden table pins it.
+local lerp = EngineEnvelope.lerp
 
 -- engineHandler's `update` after the start logic: `s` holds running, playing, level, smoothed,
 -- bump; `follow` is the rateAlpha. Returns each voice's PlaybackSpeed and Volume, or "stop".
@@ -570,12 +507,6 @@ local Now = luau.load(
 local Now = {}
 
 -- LobbyUI.luau
-function Now.subtitle(weapon)
-	return Loadout.subtitle(weapon)
-end
-function Now.statText(weapon)
-	return Loadout.statText(weapon)
-end
 function Now.refresh(player, selected)
 	local isAdmin = player:GetAttribute(Names.Attributes.IsAdmin) == true
 	local available = Loadout.availableCount(isAdmin)
@@ -639,9 +570,6 @@ end
 function Now.keyText(prompt, inputType)
 	return PromptRules.keyText(inputType, prompt.GamepadKeyCode, prompt.KeyboardKeyCode)
 end
-function Now.promptInputType(inputType)
-	return PromptRules.inputType(inputType)
-end
 function Now.before(a, b)
 	return PromptRules.before(a.prompt, b.prompt)
 end
@@ -672,9 +600,6 @@ function Now.readInput(seat, keyAxis, getControls, K)
 		end
 	end
 	return DriveAxes.clamp(throttle, steer)
-end
-function Now.readLift(keys, touch)
-	return DriveAxes.lift(keys, touch)
 end
 function Now.newSender()
 	local sent = DriveAxes.newSent()
@@ -873,6 +798,27 @@ local function sameAs(got: any, want: any, label: string)
 	check(same(got, want), string.format("%s: got %s, want %s", label, show(got), show(want)))
 end
 
+-- A golden value: the same bits as `want`, except that a NaN in `want` matches any NaN (a NaN
+-- literal's sign bit is the compiler's choice).
+local function matchesGolden(got: any, want: any): boolean
+	if type(want) == "number" and want ~= want then
+		return type(got) == "number" and got ~= got
+	elseif typeof(want) == "Color3" or typeof(got) == "Color3" then
+		return typeof(got) == "Color3"
+			and matchesGolden(got.R, want.R)
+			and matchesGolden(got.G, want.G)
+			and matchesGolden(got.B, want.B)
+	end
+	return same(got, want)
+end
+
+local function sameAsGolden(got: any, want: any, label: string)
+	check(
+		matchesGolden(got, want),
+		string.format("%s: got %s, want %s", label, show(got), show(want))
+	)
+end
+
 -- Deterministic numbers for the random sweeps (Park-Miller).
 local seed = 12345
 local function nextNumber(): number
@@ -901,36 +847,137 @@ end
 -- Loadout -----------------------------------------------------------------------------------------
 
 Check.section("Loadout texts")
-local weapons = table.clone(WeaponCatalog.ALL)
-local kinds = { "melee", "hitscan", "projectile", "strike", "heal", "blink", "push", "mystery" }
-local cooldowns = { -1, -0, 0, 0.1, 0.15, 0.1500001, 0.5, 0.50001, 1.2, 1.2000001, 9, nan, inf }
-local damages = { -5, -0, 0, 0.5, 1, 12, 33.25, 1e9, nan, inf }
-local pelletCounts = { false, 1, 6, 2.5 }
-for _, kind in kinds do
-	for _, cooldown in cooldowns do
-		for _, damage in damages do
-			for _, pellets in pelletCounts do
-				table.insert(weapons, {
-					id = "made-up",
-					kind = kind,
-					cooldown = cooldown,
-					damage = damage,
-					pellets = if pellets then pellets else nil,
-				})
-			end
-		end
-	end
+-- Golden outputs of Loadout.speedLabel (cooldown, label), generated once from the code at a50e99c:
+-- they pin its behaviour. A deliberate change updates this table.
+local SPEED_LABELS = {
+	{ -inf, "rapid fire" },
+	{ -1, "rapid fire" },
+	{ -0, "rapid fire" },
+	{ 0, "rapid fire" },
+	{ 0.1, "rapid fire" },
+	{ 0.14999999999999997, "rapid fire" },
+	{ 0.15, "rapid fire" },
+	{ 0.15000000000000002, "fast" },
+	{ 0.1500001, "fast" },
+	{ 0.49999999999999994, "fast" },
+	{ 0.5, "fast" },
+	{ 0.5000000000000001, "medium" },
+	{ 0.50001, "medium" },
+	{ 1.1999999999999997, "medium" },
+	{ 1.2, "medium" },
+	{ 1.2000000000000002, "slow" },
+	{ 1.2000001, "slow" },
+	{ 9, "slow" },
+	{ inf, "slow" },
+	{ nan, "slow" },
+}
+for _, case in SPEED_LABELS do
+	sameAs(Loadout.speedLabel(case[1]), case[2], "speedLabel " .. show(case[1]))
 end
-for _, weapon in weapons do
-	local label = string.format(
-		"%s %s cd %s dmg %s",
-		weapon.id,
-		weapon.kind,
-		show(weapon.cooldown),
-		show(weapon.damage)
+-- Golden outputs of Loadout.subtitle (kind, cooldown, subtitle), generated once from the code at
+-- a50e99c: they pin its behaviour. A deliberate change updates this table.
+local SUBTITLES = {
+	{ "melee", 0.3, "Melee · fast" },
+	{ "hitscan", 0.3, "Gun · fast" },
+	{ "projectile", 0.3, "Launcher · fast" },
+	{ "strike", 0.3, "Spell · fast" },
+	{ "heal", 0.3, "Support · fast" },
+	{ "blink", 0.3, "Mobility · fast" },
+	{ "push", 0.3, "Blast · fast" },
+	{ "mystery", 0.3, "mystery · fast" },
+	{ "heal", 0.15, "Support · rapid fire" },
+	{ "heal", 1.2, "Support · medium" },
+	{ "heal", 9, "Support · slow" },
+	{ "heal", nan, "Support · slow" },
+}
+for _, case in SUBTITLES do
+	local weapon = { id = "made-up", kind = case[1], cooldown = case[2] }
+	sameAs(Loadout.subtitle(weapon), case[3], "subtitle " .. case[1] .. " " .. show(case[2]))
+end
+-- Golden outputs of Loadout.statText (kind, damage, pellets, text), generated once from the code at
+-- a50e99c: they pin its behaviour. A deliberate change updates this table.
+local STAT_TEXTS = {
+	{ "heal", -5, nil, "HEAL -5" },
+	{ "heal", -0, nil, "HEAL -0" },
+	{ "heal", 0, nil, "HEAL 0" },
+	{ "heal", 0.5, nil, "HEAL 0.5" },
+	{ "heal", 1, nil, "HEAL 1" },
+	{ "heal", 12, nil, "HEAL 12" },
+	{ "heal", 33.25, nil, "HEAL 33.25" },
+	{ "heal", 1000000000, nil, "HEAL 1000000000" },
+	{ "heal", nan, nil, "HEAL nan" },
+	{ "heal", inf, nil, "HEAL inf" },
+	{ "heal", 12, 6, "HEAL 12" },
+	{ "melee", -5, nil, "" },
+	{ "melee", -5, 1, "" },
+	{ "melee", -5, 6, "" },
+	{ "melee", -5, 2.5, "" },
+	{ "melee", -0, nil, "" },
+	{ "melee", -0, 1, "" },
+	{ "melee", -0, 6, "" },
+	{ "melee", -0, 2.5, "" },
+	{ "melee", 0, nil, "" },
+	{ "melee", 0, 1, "" },
+	{ "melee", 0, 6, "" },
+	{ "melee", 0, 2.5, "" },
+	{ "melee", 0.5, nil, "DMG 0.5" },
+	{ "melee", 0.5, 1, "DMG 0.5×1" },
+	{ "melee", 0.5, 6, "DMG 0.5×6" },
+	{ "melee", 0.5, 2.5, "DMG 0.5×2.5" },
+	{ "melee", 1, nil, "DMG 1" },
+	{ "melee", 1, 1, "DMG 1×1" },
+	{ "melee", 1, 6, "DMG 1×6" },
+	{ "melee", 1, 2.5, "DMG 1×2.5" },
+	{ "melee", 12, nil, "DMG 12" },
+	{ "melee", 12, 1, "DMG 12×1" },
+	{ "melee", 12, 6, "DMG 12×6" },
+	{ "melee", 12, 2.5, "DMG 12×2.5" },
+	{ "melee", 33.25, nil, "DMG 33.25" },
+	{ "melee", 33.25, 1, "DMG 33.25×1" },
+	{ "melee", 33.25, 6, "DMG 33.25×6" },
+	{ "melee", 33.25, 2.5, "DMG 33.25×2.5" },
+	{ "melee", 1000000000, nil, "DMG 1000000000" },
+	{ "melee", 1000000000, 1, "DMG 1000000000×1" },
+	{ "melee", 1000000000, 6, "DMG 1000000000×6" },
+	{ "melee", 1000000000, 2.5, "DMG 1000000000×2.5" },
+	{ "melee", nan, nil, "" },
+	{ "melee", nan, 1, "" },
+	{ "melee", nan, 6, "" },
+	{ "melee", nan, 2.5, "" },
+	{ "melee", inf, nil, "DMG inf" },
+	{ "melee", inf, 1, "DMG inf×1" },
+	{ "melee", inf, 6, "DMG inf×6" },
+	{ "melee", inf, 2.5, "DMG inf×2.5" },
+	{ "mystery", -5, nil, "" },
+	{ "mystery", 0, nil, "" },
+	{ "mystery", 12, nil, "DMG 12" },
+}
+for _, case in STAT_TEXTS do
+	local weapon = { id = "made-up", kind = case[1], damage = case[2], pellets = case[3] }
+	sameAs(
+		Loadout.statText(weapon),
+		case[4],
+		string.format("statText %s dmg %s pellets %s", case[1], show(case[2]), show(case[3]))
 	)
-	sameAs(Now.subtitle(weapon), Reference.subtitle(weapon), "subtitle " .. label)
-	sameAs(Now.statText(weapon), Reference.statText(weapon), "statText " .. label)
+end
+-- Every catalog weapon gets a card subtitle of the golden shape (values follow the catalog).
+for _, weapon in WeaponCatalog.ALL do
+	local subtitle = Loadout.subtitle(weapon)
+	local speed = string.match(subtitle, "^.+ · (.+)$")
+	check(
+		speed == "rapid fire" or speed == "fast" or speed == "medium" or speed == "slow",
+		"subtitle " .. weapon.id .. ": " .. subtitle
+	)
+	-- A weapon that heals or deals damage shows its number; one that does neither shows nothing.
+	local text = Loadout.statText(weapon)
+	if weapon.kind == "heal" or weapon.damage > 0 then
+		check(
+			text ~= "" and string.find(text, tostring(weapon.damage), 1, true) ~= nil,
+			"statText " .. weapon.id .. ": " .. text
+		)
+	else
+		equal(text, "", "statText " .. weapon.id)
+	end
 end
 
 Check.section("Loadout refresh and toggle")
@@ -1084,12 +1131,36 @@ for index, code in keyCodes do
 		end
 	end
 end
+-- Golden outputs of PromptRules.inputType by UserInputType name (false for nil), generated once
+-- from the code at a50e99c: they pin its behaviour. A deliberate change updates this table.
+local PROMPT_INPUT_TYPES = {
+	Accelerometer = false,
+	Focus = false,
+	Gamepad1 = "Gamepad",
+	Gamepad2 = "Gamepad",
+	Gamepad3 = "Gamepad",
+	Gamepad4 = "Gamepad",
+	Gamepad5 = "Gamepad",
+	Gamepad6 = "Gamepad",
+	Gamepad7 = "Gamepad",
+	Gamepad8 = "Gamepad",
+	Gyro = false,
+	InputMethod = false,
+	Keyboard = "Keyboard",
+	MouseButton1 = "Keyboard",
+	MouseButton2 = "Keyboard",
+	MouseButton3 = "Keyboard",
+	MouseMovement = "Keyboard",
+	MouseWheel = "Keyboard",
+	None = false,
+	TextInput = false,
+	Touch = "Touch",
+}
 for _, inputType in Enum.UserInputType:GetEnumItems() do
-	sameAs(
-		Now.promptInputType(inputType),
-		Reference.promptInputType(inputType),
-		"inputType " .. inputType.Name
-	)
+	local want = PROMPT_INPUT_TYPES[inputType.Name]
+	check(want ~= nil, "inputType " .. inputType.Name .. " has a golden row")
+	local got = PromptRules.inputType(inputType)
+	equal(if got then got.Name else false, want, "inputType " .. inputType.Name)
 end
 local function card(key, name: string)
 	return {
@@ -1131,9 +1202,31 @@ for healthIndex, healthValue in healthValues do
 		sameAs({ Now.health(model) }, { Reference.health(model) }, label)
 	end
 end
-for step = -20, 1020 do
-	local share = step / 1000
-	sameAs(HealthBar.colorFor(share), Reference.colorFor(share), "colorFor " .. show(share))
+-- Golden outputs of HealthBar.colorFor (share, R, G, B), generated once from the code at a50e99c:
+-- they pin its behaviour. A deliberate change updates this table.
+local HEALTH_COLORS = {
+	{ -inf, nan, nan, nan },
+	{ -0.02, 0.8996078372001648, 0.1725490242242813, 0.1568627506494522 },
+	{ -0, 0.9019607901573181, 0.19607843458652496, 0.1568627506494522 },
+	{ 0, 0.9019607901573181, 0.19607843458652496, 0.1568627506494522 },
+	{ 0.001, 0.9020785093307495, 0.19725491106510162, 0.1568627655506134 },
+	{ 0.25, 0.9313725233078003, 0.4901960790157318, 0.1568627506494522 },
+	{ 0.49999999999999994, 0.9607843160629272, 0.7843137383460999, 0.1568627506494522 },
+	{ 0.5, 0.9607843160629272, 0.7843137383460999, 0.1568627506494522 },
+	{ 0.5000000000000001, 0.9607843160629272, 0.7843137383460999, 0.1568627506494522 },
+	{ 0.75, 0.6176470518112183, 0.8039215803146362, 0.2549019753932953 },
+	{ 0.999, 0.2758823335170746, 0.8234509825706482, 0.3525490462779999 },
+	{ 1, 0.27450981736183167, 0.8235294222831726, 0.3529411852359772 },
+	{ 1.02, 0.24705885350704193, 0.8250980377197266, 0.3607843220233917 },
+	{ inf, nan, nan, nan },
+	{ nan, nan, nan, nan },
+}
+for _, case in HEALTH_COLORS do
+	sameAsGolden(
+		HealthBar.colorFor(case[1]),
+		Color3.new(case[2], case[3], case[4]),
+		"colorFor " .. show(case[1])
+	)
 end
 
 -- DriveAxes ---------------------------------------------------------------------------------------
@@ -1214,14 +1307,32 @@ for mask = 0, 255, 3 do
 		end
 	end
 end
-for _, keys in { -1, 0, 1 } do
-	for _, touch in { -1, 0, 1 } do
-		sameAs(
-			Now.readLift(keys, touch),
-			Reference.readLift(keys, touch),
-			"lift " .. keys .. " " .. touch
-		)
-	end
+-- Golden outputs of DriveAxes.lift (keys, touch, lift), generated once from the code at a50e99c:
+-- they pin its behaviour. A deliberate change updates this table.
+local LIFTS = {
+	{ -1, -1, -1 },
+	{ -1, 0, -1 },
+	{ -1, 1, 0 },
+	{ 0, -1, -1 },
+	{ 0, 0, 0 },
+	{ 0, 1, 1 },
+	{ 1, -1, 0 },
+	{ 1, 0, 1 },
+	{ 1, 1, 1 },
+	{ 0.5, 0.75, 1 },
+	{ -0.5, -0.75, -1 },
+	{ -0, 0, 0 },
+	{ -0, -0, -0 },
+	{ nan, 0, nan },
+	{ inf, 0, 1 },
+	{ 1, -inf, -1 },
+}
+for _, case in LIFTS do
+	sameAsGolden(
+		DriveAxes.lift(case[1], case[2]),
+		case[3],
+		"lift " .. show(case[1]) .. " " .. show(case[2])
+	)
 end
 
 Check.section("DriveAxes resend")
@@ -1253,6 +1364,59 @@ end
 -- EngineEnvelope ----------------------------------------------------------------------------------
 
 Check.section("EngineEnvelope engine")
+Check.section("EngineEnvelope.lerp")
+-- Golden outputs of EngineEnvelope.lerp, generated once from the code at a50e99c: they pin its
+-- behaviour. A deliberate change updates this table. { from, to, t, want }
+local LERPS = {
+	{ 0, 1, -0.5, -0.5 },
+	{ 0, 1, -0, 0 },
+	{ 0, 1, 0, 0 },
+	{ 0, 1, 0.25, 0.25 },
+	{ 0, 1, 0.5, 0.5 },
+	{ 0, 1, 1, 1 },
+	{ 0, 1, 1.5, 1.5 },
+	{ 0, 1, nan, nan },
+	{ 0.80000000000000004, 1.6000000000000001, -0.5, 0.40000000000000002 },
+	{ 0.80000000000000004, 1.6000000000000001, -0, 0.80000000000000004 },
+	{ 0.80000000000000004, 1.6000000000000001, 0, 0.80000000000000004 },
+	{ 0.80000000000000004, 1.6000000000000001, 0.25, 1 },
+	{ 0.80000000000000004, 1.6000000000000001, 0.5, 1.2000000000000002 },
+	{ 0.80000000000000004, 1.6000000000000001, 1, 1.6000000000000001 },
+	{ 0.80000000000000004, 1.6000000000000001, 1.5, 2 },
+	{ 0.80000000000000004, 1.6000000000000001, nan, nan },
+	{ 1, 0, -0.5, 1.5 },
+	{ 1, 0, -0, 1 },
+	{ 1, 0, 0, 1 },
+	{ 1, 0, 0.25, 0.75 },
+	{ 1, 0, 0.5, 0.5 },
+	{ 1, 0, 1, 0 },
+	{ 1, 0, 1.5, -0.5 },
+	{ 1, 0, nan, nan },
+	{ -2, 3, -0.5, -4.5 },
+	{ -2, 3, -0, -2 },
+	{ -2, 3, 0, -2 },
+	{ -2, 3, 0.25, -0.75 },
+	{ -2, 3, 0.5, 0.5 },
+	{ -2, 3, 1, 3 },
+	{ -2, 3, 1.5, 5.5 },
+	{ -2, 3, nan, nan },
+	{ 0.34999999999999998, 0.34999999999999998, -0.5, 0.34999999999999998 },
+	{ 0.34999999999999998, 0.34999999999999998, -0, 0.34999999999999998 },
+	{ 0.34999999999999998, 0.34999999999999998, 0, 0.34999999999999998 },
+	{ 0.34999999999999998, 0.34999999999999998, 0.25, 0.34999999999999998 },
+	{ 0.34999999999999998, 0.34999999999999998, 0.5, 0.34999999999999998 },
+	{ 0.34999999999999998, 0.34999999999999998, 1, 0.34999999999999998 },
+	{ 0.34999999999999998, 0.34999999999999998, 1.5, 0.34999999999999998 },
+	{ 0.34999999999999998, 0.34999999999999998, nan, nan },
+}
+for _, row in LERPS do
+	sameAsGolden(
+		EngineEnvelope.lerp({ row[1], row[2] }, row[3]),
+		row[4],
+		"lerp " .. show(row[1]) .. " " .. show(row[2]) .. " " .. show(row[3])
+	)
+end
+
 local SoundCatalog = Sandbox.require(Shared.SoundCatalog)
 local SETTINGS = SoundCatalog.VEHICLE
 local engineSettings = {

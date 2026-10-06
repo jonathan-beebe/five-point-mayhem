@@ -50,7 +50,7 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "Prompts"
 gui.ResetOnSpawn = false
 gui.DisplayOrder = Theme.DisplayOrder.prompts -- under the MAC and GOD MODE panels
-gui.IgnoreGuiInset = false -- the same space as the right column
+gui.ScreenInsets = RightColumn.SCREEN_INSETS -- the right column's space (IgnoreGuiInset false)
 
 -- Suppression -------------------------------------------------------------------------------------
 

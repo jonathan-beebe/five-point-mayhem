@@ -10,6 +10,7 @@ local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
 local VehicleLayout = require(ReplicatedStorage.Shared.VehicleLayout)
 local PodFlight = require(script.Parent.Parent.PodFlight)
 local Characters = require(script.Parent.Parent.util.Characters)
+local Guard = require(script.Parent.Parent.util.Guard)
 local Builder = require(script.Parent.Builder)
 local Specs = require(script.Parent.Specs)
 
@@ -21,13 +22,17 @@ local build = Builder.build
 type Spot = { id: string, cframe: CFrame, model: Model? }
 local spots: { Spot } = {}
 
+-- A build that fails is warned and leaves the spot empty; the respawn loop tries it again.
 local function park(spot: Spot)
 	if spot.model then
 		spot.model:Destroy()
+		spot.model = nil
 	end
-	local model = build(spot.id, spot.cframe)
-	spot.model = model
-	model:SetAttribute("LastUsed", os.clock())
+	local ok, model = Guard.run("vehicle park " .. spot.id, build, spot.id, spot.cframe)
+	if ok then
+		spot.model = model
+		model:SetAttribute("LastUsed", os.clock())
+	end
 end
 
 -- Someone in a seat, or standing in the cab.
@@ -141,33 +146,33 @@ local function layOut()
 	end
 end
 
--- Parks every catalog vehicle (PodFlight.start first) and starts the respawn loop.
-function Parking.start()
-	PodFlight.start()
-	layOut()
-
-	-- Return cars that were destroyed, or left idle far from home for a minute.
-	task.spawn(function()
-		while true do
-			task.wait(VehicleLayout.RESPAWN_INTERVAL)
-			for _, spot in spots do
-				local model = spot.model
-				local skid = model and model.PrimaryPart
-				if not model or not model.Parent or not skid then
-					park(spot)
-				elseif isOccupied(model) then
-					model:SetAttribute("LastUsed", os.clock())
-				else
-					local distance = (skid.Position - spot.cframe.Position).Magnitude
-					local idleSeconds = os.clock()
-						- ((model:GetAttribute("LastUsed") :: number?) or 0)
-					if VehicleLayout.shouldRepark(distance, idleSeconds, skid.Position.Y) then
-						park(spot)
-					end
-				end
+-- One respawn pass: return cars that were destroyed (or never built), or left idle far from home
+-- for a minute.
+local function respawnPass()
+	for _, spot in spots do
+		local model = spot.model
+		local skid = model and model.PrimaryPart
+		if not model or not model.Parent or not skid then
+			park(spot)
+		elseif isOccupied(model) then
+			model:SetAttribute("LastUsed", os.clock())
+		else
+			local distance = (skid.Position - spot.cframe.Position).Magnitude
+			local idleSeconds = os.clock() - ((model:GetAttribute("LastUsed") :: number?) or 0)
+			if VehicleLayout.shouldRepark(distance, idleSeconds, skid.Position.Y) then
+				park(spot)
 			end
 		end
-	end)
+	end
+end
+
+-- Starts the respawn loop and parks every catalog vehicle (PodFlight.start first). The loop starts
+-- before layOut so a layOut error leaves it running; it waits RESPAWN_INTERVAL before its first
+-- pass, and layOut does not yield, so that pass comes when it did.
+function Parking.start()
+	PodFlight.start()
+	Guard.loop("vehicle respawn", VehicleLayout.RESPAWN_INTERVAL, respawnPass)
+	layOut()
 end
 
 return Parking

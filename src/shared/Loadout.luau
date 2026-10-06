@@ -1,7 +1,7 @@
 --!strict
 -- The lobby armory's loadout rules and weapon card texts (client LobbyUI). A loadout is an array of
 -- up to Config.LOADOUT_SIZE distinct weapon ids; the functions that change one change it in place.
--- The server checks a deployed loadout itself (Session `deploy`).
+-- Session.deploy applies isAvailable to a deployed loadout.
 --
 --   speedLabel(cooldown)          "rapid fire", "fast", "medium" or "slow"
 --   subtitle(weapon)              the card's "<kind label> · <speed label>" line
@@ -58,7 +58,7 @@ function Loadout.statText(weapon: WeaponCatalog.Weapon): string
 		else ""
 end
 
--- The server refuses admin-only weapons for everyone else.
+-- Session.deploy refuses admin-only weapons for everyone else.
 function Loadout.isAvailable(weapon: WeaponCatalog.Weapon, isAdmin: boolean): boolean
 	return not weapon.adminOnly or isAdmin
 end

@@ -8,10 +8,13 @@
 --     buttons, grid and a weapon card
 --   - Theme: every DisplayOrder, colour, font and radius equals the literal it replaced, and every
 --     client ScreenGui takes its DisplayOrder from Theme
---   - RightColumn's constants equal MacPanel's old ones; notifyOpened fires `opened`
---   - Hud: jumpButton, shownIn, edgeY and bottomControls give what the inline lookups gave (the
---     bottom-right guis found by name before, listed with addBottomControls now); jumpWatcher hooks
---     a jump button once and lays out on every call
+--   - RightColumn's constants equal MacPanel's old ones (PANEL_TOP follows the column's new top);
+--     notifyOpened fires `opened`
+--   - Hud: jumpButton and shownIn give the golden results generated once from the code at
+--     a50e99c, over trees with each piece missing, of the wrong class, hidden or disabled; edgeY
+--     and bottomControls give what the inline lookups gave (the bottom-right guis found by name
+--     before, listed with addBottomControls now); jumpWatcher hooks a jump button once and lays
+--     out on every call
 --
 -- Not covered: events and layout (Lune instances have no signals or AbsolutePosition). Hud's
 -- signal hookup is checked against stand-ins.
@@ -112,10 +115,13 @@ local function read(instance: any, property: string): any
 	return if ok then value else "<none>"
 end
 
--- Compares two instance trees: every property, then the children in order.
-local function sameTree(got: any, want: any, label: string)
+-- Compares two instance trees: every property (but the root's in `except`), then the children in
+-- order.
+local function sameTree(got: any, want: any, label: string, except: { [string]: boolean }?)
 	for _, property in PROPERTIES do
-		equal(read(got, property), read(want, property), label .. " " .. property)
+		if not (except and except[property]) then
+			equal(read(got, property), read(want, property), label .. " " .. property)
+		end
 	end
 	local gotChildren, wantChildren = got:GetChildren(), want:GetChildren()
 	equal(#gotChildren, #wantChildren, label .. " children")
@@ -128,8 +134,8 @@ local function sameTree(got: any, want: any, label: string)
 end
 
 -- Compares two roots and their parents' names.
-local function sameWidget(got: any, want: any, label: string)
-	sameTree(got, want, label)
+local function sameWidget(got: any, want: any, label: string, except: { [string]: boolean }?)
+	sameTree(got, want, label, except)
 	equal(got.Parent and got.Parent.Name, want.Parent and want.Parent.Name, label .. " parent")
 end
 
@@ -732,7 +738,7 @@ end
 function Now.adminPanel(gui: any): any
 	local width = RightColumn.PANEL_WIDTH
 	return RightColumn.makePanel("ScrollingFrame", gui, rgb(255, 200, 40), {
-		Size = UDim2.new(0, width, 1, -(RightColumn.PANEL_TOP + RightColumn.MARGIN)),
+		Size = RightColumn.fullHeight(width),
 		BackgroundColor3 = rgb(20, 16, 10),
 		BorderSizePixel = 0,
 		ScrollBarThickness = 6,
@@ -894,22 +900,36 @@ sameWidget(Now.healthBar(holder("A")), Before.healthBar(holder("A")), "health ba
 sameWidget(Now.card(holder("A")), Before.card(holder("A")), "prompt card")
 
 Check.section("right column")
+-- The column's top moved from a guessed 60 below the top bar to MARGIN (12) below it, where the
+-- ScreenGui's CoreUISafeInsets area starts (HudLayout.columnToggle): everything else matches the
+-- code before; the positions and the GOD MODE panel's height are golden values.
 local panelsBefore = #RightColumn.panels
-sameWidget(Now.macToggle(holder("Mac")), Before.macToggle(holder("Mac")), "MAC toggle")
+local PLACED = { Position = true, Size = true }
+local macToggle = Now.macToggle(holder("Mac"))
+sameWidget(macToggle, Before.macToggle(holder("Mac")), "MAC toggle", PLACED)
 local macPanel = Now.macPanel(holder("Mac"))
-sameWidget(macPanel, Before.macPanel(holder("Mac")), "MAC panel")
-sameWidget(Now.adminToggle(holder("Admin")), Before.adminToggle(holder("Admin")), "GOD toggle")
+sameWidget(macPanel, Before.macPanel(holder("Mac")), "MAC panel", PLACED)
+local adminToggle = Now.adminToggle(holder("Admin"))
+sameWidget(adminToggle, Before.adminToggle(holder("Admin")), "GOD toggle", PLACED)
 local adminPanel = Now.adminPanel(holder("Admin"))
-sameWidget(adminPanel, Before.adminPanel(holder("Admin")), "GOD MODE panel")
+sameWidget(adminPanel, Before.adminPanel(holder("Admin")), "GOD MODE panel", PLACED)
+equal(adminToggle.Position, UDim2.new(1, -12, 0, 12), "GOD toggle position")
+equal(macToggle.Position, UDim2.new(1, -12, 0, 58), "MAC toggle position")
+equal(macPanel.Position, UDim2.new(1, -12, 0, 104), "MAC panel position")
+equal(adminPanel.Position, UDim2.new(1, -12, 0, 104), "GOD MODE panel position")
+for _, each in { { macToggle, "MAC toggle" }, { adminToggle, "GOD toggle" } } do
+	equal(each[1].Size, UDim2.fromOffset(130, 40), each[2] .. " size")
+end
+equal(macPanel.Size, UDim2.fromOffset(300, 142), "MAC panel size")
+equal(adminPanel.Size, UDim2.new(0, 300, 1, -116), "GOD MODE panel fills the column")
 equal(#RightColumn.panels, panelsBefore + 2, "makePanel lists each panel")
 check(RightColumn.panels[panelsBefore + 1] == macPanel, "MAC panel listed first")
 check(RightColumn.panels[panelsBefore + 2] == adminPanel, "GOD MODE panel listed second")
 sameTree(Create.corner(Theme.Radius.panel), Before.panelCorner(), "panel corner")
-equal(RightColumn.TOGGLE_TOP, 60, "TOGGLE_TOP")
 equal(RightColumn.TOGGLE_HEIGHT, 40, "TOGGLE_HEIGHT")
 equal(RightColumn.TOGGLE_WIDTH, 130, "TOGGLE_WIDTH")
 equal(RightColumn.GAP, 6, "GAP")
-equal(RightColumn.PANEL_TOP, 152, "PANEL_TOP")
+equal(RightColumn.PANEL_TOP, 104, "PANEL_TOP")
 equal(RightColumn.PANEL_WIDTH, 300, "PANEL_WIDTH")
 equal(RightColumn.MARGIN, 12, "MARGIN")
 equal(RightColumn.opened.name, "opened", "opened is the BindableEvent's Event")
@@ -1009,11 +1029,8 @@ local fakeGame = {
 }
 local Hud = Sandbox.load("src/client/ui/Hud.luau", { game = fakeGame })
 
--- PromptPanel's lookups before the registry, word for word (Names constants inlined).
-local function oldShownIn(object: any): boolean
-	local owner = object:FindFirstAncestorOfClass("ScreenGui")
-	return object.Visible and owner ~= nil and owner.Enabled
-end
+-- PromptPanel's bottom-control lookup before the registry, word for word (Names constants
+-- inlined). Its shownIn was Hud.shownIn word for word; SHOWN_OBJECTS below pins that.
 local function oldBottomControls(): { any }
 	local found = {}
 	local playerGui = player:FindFirstChildOfClass("PlayerGui")
@@ -1023,7 +1040,7 @@ local function oldBottomControls(): { any }
 	local touchGui = playerGui:FindFirstChild("TouchGui")
 	local touchFrame = touchGui and touchGui:FindFirstChild("TouchControlFrame")
 	local jump = touchFrame and touchFrame:FindFirstChild("JumpButton")
-	if jump and jump:IsA("GuiObject") and oldShownIn(jump) then
+	if jump and jump:IsA("GuiObject") and Hud.shownIn(jump) then
 		table.insert(found, jump)
 	end
 	for _, name in { "MechButtons", "PodButtons", "SniperScopeButton" } do
@@ -1037,13 +1054,6 @@ local function oldBottomControls(): { any }
 		end
 	end
 	return found
-end
-local function oldJumpButton(): any
-	local playerGui = player:FindFirstChildOfClass("PlayerGui")
-	local touchGui = playerGui and playerGui:FindFirstChild("TouchGui")
-	local frame = touchGui and touchGui:FindFirstChild("TouchControlFrame")
-	local jump = frame and frame:FindFirstChild("JumpButton")
-	return if jump and jump:IsA("GuiObject") then jump else nil
 end
 
 local function sameSet(got: { any }, want: { any }, label: string)
@@ -1069,6 +1079,172 @@ for _, name in { "MechButtons", "PodButtons", "SniperScopeButton" } do
 	table.insert(bottomGuis, gui)
 end
 
+-- Golden results of Hud.jumpButton and Hud.shownIn, generated once from the code at a50e99c:
+-- they pin their behaviour. A deliberate change updates the third entry of each case.
+local function new(className: string, name: string, parent: any?): any
+	local each = RealInstance.new(className)
+	each.Name = name
+	each.Parent = parent
+	return each
+end
+-- { label, PlayerGui tree (nil: none), the path below PlayerGui jumpButton returns (false: nil) }
+local JUMP_TREES = {
+	{
+		"no PlayerGui",
+		function()
+			return nil
+		end,
+		false,
+	},
+	{
+		"no TouchGui",
+		function()
+			local gui = new("PlayerGui", "PlayerGui")
+			new("ScreenGui", "OtherGui", gui)
+			return gui
+		end,
+		false,
+	},
+	{
+		"no TouchControlFrame",
+		function()
+			local gui = new("PlayerGui", "PlayerGui")
+			new("Frame", "OtherFrame", new("ScreenGui", "TouchGui", gui))
+			return gui
+		end,
+		false,
+	},
+	{
+		"no JumpButton",
+		function()
+			local gui = new("PlayerGui", "PlayerGui")
+			local frame = new("Frame", "TouchControlFrame", new("ScreenGui", "TouchGui", gui))
+			new("ImageButton", "ThumbstickFrame", frame)
+			return gui
+		end,
+		false,
+	},
+	{
+		"JumpButton a Folder",
+		function()
+			local gui = new("PlayerGui", "PlayerGui")
+			local frame = new("Frame", "TouchControlFrame", new("ScreenGui", "TouchGui", gui))
+			new("Folder", "JumpButton", frame)
+			return gui
+		end,
+		false,
+	},
+	{
+		"JumpButton a Frame",
+		function()
+			local gui = new("PlayerGui", "PlayerGui")
+			local frame = new("Frame", "TouchControlFrame", new("ScreenGui", "TouchGui", gui))
+			new("Frame", "JumpButton", frame)
+			return gui
+		end,
+		"TouchGui.TouchControlFrame.JumpButton",
+	},
+	{
+		"JumpButton an ImageButton",
+		function()
+			local gui = new("PlayerGui", "PlayerGui")
+			local frame = new("Frame", "TouchControlFrame", new("ScreenGui", "TouchGui", gui))
+			new("ImageButton", "JumpButton", frame)
+			return gui
+		end,
+		"TouchGui.TouchControlFrame.JumpButton",
+	},
+	{
+		"JumpButton hidden in a disabled TouchGui",
+		function()
+			local gui = new("PlayerGui", "PlayerGui")
+			local touch = new("ScreenGui", "TouchGui", gui)
+			touch.Enabled = false
+			local jump = new("ImageButton", "JumpButton", new("Frame", "TouchControlFrame", touch))
+			jump.Visible = false
+			return gui
+		end,
+		"TouchGui.TouchControlFrame.JumpButton",
+	},
+	{
+		"TouchGui a Folder",
+		function()
+			local gui = new("PlayerGui", "PlayerGui")
+			local frame = new("Frame", "TouchControlFrame", new("Folder", "TouchGui", gui))
+			new("ImageButton", "JumpButton", frame)
+			return gui
+		end,
+		"TouchGui.TouchControlFrame.JumpButton",
+	},
+	{
+		"JumpButton one level deeper",
+		function()
+			local gui = new("PlayerGui", "PlayerGui")
+			local frame = new("Frame", "TouchControlFrame", new("ScreenGui", "TouchGui", gui))
+			new("ImageButton", "JumpButton", new("Frame", "Inner", frame))
+			return gui
+		end,
+		false,
+	},
+}
+for _, case in JUMP_TREES do
+	local label, tree, want = case[1], case[2](), case[3]
+	if tree then
+		tree.Parent = player
+	end
+	local got = Hud.jumpButton()
+	equal(
+		if got then string.gsub(got:GetFullName(), "^Player%.PlayerGui%.", "") else false,
+		want,
+		"jumpButton, " .. label
+	)
+	if tree then
+		tree.Parent = nil
+	end
+end
+
+-- { label, the object asked about, shownIn }
+local SHOWN_OBJECTS = {}
+for _, visible in { true, false } do
+	local function object(parent: any): any
+		local button = new("TextButton", "Button", parent)
+		button.Visible = visible
+		return button
+	end
+	local function disabled(gui: any): any
+		gui.Enabled = false
+		return gui
+	end
+	local shown = if visible then "visible" else "hidden"
+	for _, case in
+		{
+			{ "no ScreenGui", new("Frame", "Holder"), false },
+			{ "enabled ScreenGui", new("ScreenGui", "Gui"), visible },
+			{ "disabled ScreenGui", disabled(new("ScreenGui", "Gui")), false },
+			{
+				"enabled ScreenGui two levels up",
+				new("Frame", "Inner", new("Frame", "Outer", new("ScreenGui", "Gui"))),
+				visible,
+			},
+			{
+				"disabled ScreenGui inside an enabled one",
+				disabled(new("ScreenGui", "Inner", new("ScreenGui", "Outer"))),
+				false,
+			},
+			{
+				"enabled ScreenGui inside a disabled one",
+				new("ScreenGui", "Inner", disabled(new("ScreenGui", "Outer"))),
+				visible,
+			},
+		}
+	do
+		table.insert(SHOWN_OBJECTS, { shown .. ", " .. case[1], object(case[2]), case[3] })
+	end
+end
+for _, case in SHOWN_OBJECTS do
+	equal(Hud.shownIn(case[2]), case[3], "shownIn, " .. case[1])
+end
+
 equal(Hud.jumpButton(), nil, "no PlayerGui: no jump button")
 sameSet(Hud.bottomControls(), oldBottomControls(), "no PlayerGui")
 
@@ -1083,6 +1259,10 @@ local jump = RealInstance.new("ImageButton")
 jump.Name = "JumpButton"
 jump.Parent = touchFrame
 
+-- Golden results per touch state, generated once from the code at a50e99c: whether jumpButton
+-- returns `jump` (else nil) and shownIn(jump).
+local JUMP_BY_TOUCH = { none = false, hidden = true, disabled = true, shown = true }
+local SHOWN_BY_TOUCH = { none = true, hidden = false, disabled = false, shown = true }
 local scenarios = 0
 for _, touch in { "none", "hidden", "disabled", "shown" } do
 	touchGui.Parent = if touch == "none" then nil else playerGui
@@ -1096,9 +1276,9 @@ for _, touch in { "none", "hidden", "disabled", "shown" } do
 			gui.Enabled = bit32.btest(bits, 2)
 		end
 		local label = string.format("touch %s guis %d", touch, mask)
-		equal(Hud.jumpButton(), oldJumpButton(), label .. " jumpButton")
+		equal(Hud.jumpButton(), if JUMP_BY_TOUCH[touch] then jump else nil, label .. " jumpButton")
 		sameSet(Hud.bottomControls(), oldBottomControls(), label)
-		equal(Hud.shownIn(jump), oldShownIn(jump), label .. " shownIn")
+		equal(Hud.shownIn(jump), SHOWN_BY_TOUCH[touch], label .. " shownIn")
 		scenarios += 1
 	end
 end
@@ -1158,13 +1338,25 @@ for _, ownerInset in { true, false, nil } do
 			)
 		end
 	end
-	local gui = { IgnoreGuiInset = "unset" }
-	Hud.matchInset(gui, standIn(ownerInset, 0, 0, 1, 1))
+end
+-- matchInset copies ScreenInsets, which carries every inset mode (the IgnoreGuiInset boolean
+-- covers only two of the four) and sets IgnoreGuiInset to match in Roblox.
+for _, insets in { "none", unpack(Enum.ScreenInsets:GetEnumItems()) } do
+	local object = standIn(false, 0, 0, 1, 1)
+	local owner = object:FindFirstAncestorOfClass("ScreenGui")
+	if insets == "none" then
+		object = standIn(nil, 0, 0, 1, 1)
+	else
+		owner.ScreenInsets = insets
+	end
+	local gui = { ScreenInsets = "unset", IgnoreGuiInset = "unset" }
+	Hud.matchInset(gui, object)
 	equal(
-		gui.IgnoreGuiInset,
-		if ownerInset == nil then "unset" else ownerInset,
-		"matchInset " .. tostring(ownerInset)
+		gui.ScreenInsets,
+		if insets == "none" then "unset" else insets,
+		"matchInset " .. tostring(insets)
 	)
+	equal(gui.IgnoreGuiInset, "unset", "matchInset leaves IgnoreGuiInset to the engine")
 end
 
 -- jumpWatcher: a Hud whose player finds a stand-in jump button with countable signals.

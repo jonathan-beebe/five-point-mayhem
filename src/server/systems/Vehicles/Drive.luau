@@ -1,11 +1,15 @@
 -- Driving. The driver's client sends its stick/keys over the DriveInput remote (`onInput`); each
 -- Heartbeat (`heartbeat`) turns them into targets for the velocity constraints on the skid of
 -- every live car. Without a driver a car settles or holds its parking brake; a shoved car flies
--- free. init.luau connects both.
+-- free. `onInput` applies RemoteGuard: a non-finite axis is 0, and each player's events pass a
+-- token bucket (DRIVE_RATE, DRIVE_BURST); `forget` drops a leaving player's, and events from a
+-- player who left (no Parent) are ignored. init.luau connects
+-- all three.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Names = require(ReplicatedStorage.Shared.Names)
+local RemoteGuard = require(ReplicatedStorage.Shared.RemoteGuard)
 local VehicleDrive = require(ReplicatedStorage.Shared.VehicleDrive)
 local PodFlight = require(script.Parent.Parent.PodFlight)
 local Characters = require(script.Parent.Parent.util.Characters)
@@ -21,6 +25,9 @@ local stopClimb = Climb.stopClimb
 local climbStep = Climb.climbStep
 
 type Car = Registry.Car
+
+-- Each player's DriveInput token bucket.
+local limiters: { [Player]: RemoteGuard.Limiter } = {}
 
 local function drive(car: Car, dt: number)
 	local legsDriver = legsDriverSeat(car)
@@ -96,7 +103,24 @@ local function heartbeat(dt: number)
 	end
 end
 
+-- Drops a leaving player's DriveInput limiter.
+local function forget(player: Player)
+	limiters[player] = nil
+end
+
 local function onInput(player: Player, throttle, steer, lift)
+	if not player.Parent then
+		return -- left the game: `forget` has run, so make no limiter
+	end
+	local now = os.clock()
+	local limiter = limiters[player]
+	if not limiter then
+		limiter = RemoteGuard.newLimiter(RemoteGuard.DRIVE_RATE, RemoteGuard.DRIVE_BURST, now)
+		limiters[player] = limiter
+	end
+	if not RemoteGuard.allow(limiter, now) then
+		return
+	end
 	if typeof(throttle) ~= "number" or typeof(steer) ~= "number" then
 		return
 	end
@@ -110,15 +134,16 @@ local function onInput(player: Player, throttle, steer, lift)
 	if not car or (car.seat ~= seat and car.legsSeat ~= seat) then
 		return
 	end
-	throttle, steer = math.clamp(throttle, -1, 1), math.clamp(steer, -1, 1)
+	throttle, steer = RemoteGuard.axis(throttle), RemoteGuard.axis(steer)
 	if car.pod and seat == car.seat then
-		PodFlight.input(car.pod, throttle, steer, math.clamp(lift, -1, 1))
+		PodFlight.input(car.pod, throttle, steer, RemoteGuard.axis(lift))
 	end
 	if seat == legsDriverSeat(car) then
 		car.throttle, car.steer = throttle, steer
 	end
 end
 
+Drive.forget = forget
 Drive.heartbeat = heartbeat
 Drive.onInput = onInput
 

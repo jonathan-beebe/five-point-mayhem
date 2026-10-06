@@ -17,7 +17,7 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Combat = require(script.Parent.Combat)
 local CreatureModel = require(script.Parent.CreatureModel)
 local Characters = require(script.Parent.util.Characters)
-local Parts = require(script.Parent.util.Parts)
+local Guard = require(script.Parent.util.Guard)
 
 local creatureModels = script.Parent.Parent.creatureModels
 
@@ -59,14 +59,33 @@ local MAX_ACTIVE = 170
 
 -- Model building ----------------------------------------------------------------------------
 
+-- A model file that fails to load is warned and its kind skipped: it never spawns (roaming,
+-- themed, lair or horde) and the other kinds carry on.
 local models: { [string]: CreatureModel.Model } = {}
 for kindId in KINDS do
-	models[kindId] = CreatureModel.define(require(creatureModels[kindId]) :: any)
+	local ok, spec = Guard.run("creature model creatureModels/" .. kindId, function()
+		return CreatureModel.define(require(creatureModels[kindId]) :: any)
+	end)
+	if ok then
+		models[kindId] = spec
+	end
 end
 
-local function build(kindId: string, position: Vector3): Creature
+-- The admin horde's draw, without the kinds that failed to load.
+local hordeKinds: { string } = {}
+for _, kindId in CreatureCatalog.HORDE_KINDS do
+	if models[kindId] then
+		table.insert(hordeKinds, kindId)
+	end
+end
+
+-- Nil for a kind whose model failed to load.
+local function build(kindId: string, position: Vector3): Creature?
 	local kind = KINDS[kindId]
 	local spec = models[kindId]
+	if not spec then
+		return nil
+	end
 	local model = Instance.new("Model")
 	model.Name = kind.name
 	local root = Instance.new("Part")
@@ -77,15 +96,7 @@ local function build(kindId: string, position: Vector3): Creature
 	root.Parent = model
 	model.PrimaryPart = root
 
-	-- Pieces are authored in creature space (origin on the ground); weld them relative to the root.
-	local fromRoot = CreatureModel.rootCenter(spec):Inverse()
-	for _, piece in spec.pieces do
-		local part = Parts.fromPiece(piece, "Part")
-		part.Massless = true
-		part.TopSurface = Enum.SurfaceType.Smooth
-		part.BottomSurface = Enum.SurfaceType.Smooth
-		Parts.weldTo(root, part, fromRoot * piece.offset, model)
-	end
+	CreatureModel.addPieces(model, root, spec)
 
 	local humanoid = Instance.new("Humanoid")
 	humanoid.RequiresNeck = false
@@ -136,7 +147,13 @@ local function track(creature: Creature, kindId: string, respawn: boolean)
 		untrack(creature)
 		Debris:AddItem(creature.model, 3)
 		if respawn then
-			task.delay(CreatureCatalog.RESPAWN_SECONDS, spawnOne, kindId)
+			task.delay(
+				CreatureCatalog.RESPAWN_SECONDS,
+				Guard.run,
+				"creatures respawn " .. kindId,
+				spawnOne,
+				kindId
+			)
 		end
 	end)
 end
@@ -156,12 +173,18 @@ spawnOne = function(kindId: string, near: Vector3?)
 			then CreatureBrain.groundPoint(random, Config.regionCenter(regionKind), 110, 220)
 			else CreatureBrain.groundPoint(random, Vector3.zero, 150, Config.WORLD_RADIUS - 50)
 	end
-	track(build(kindId, position), kindId, near == nil)
+	local creature = build(kindId, position)
+	if creature then
+		track(creature, kindId, near == nil)
+	end
 end
 
 -- Summons a temporary horde around a point (admin command). These do not respawn.
 function Creatures.horde(center: Vector3, count: number)
-	local ids = CreatureCatalog.HORDE_KINDS
+	local ids = hordeKinds
+	if #ids == 0 then
+		return
+	end
 	for _ = 1, count do
 		local kindId = ids[random:NextInteger(1, #ids)]
 		local angle = random:NextNumber(0, math.pi * 2)
@@ -314,38 +337,45 @@ local function releaseHorde(index: number, size: number)
 		local outside = frame * Vector3.new(x + random:NextNumber(-12, 12), 0, lair.outside)
 		local kindId = CreatureBrain.lairKind(count)
 		local creature = build(kindId, inside)
-		creature.lair = region.id
-		creature.exit = outside
-		creature.exitUntil = os.clock() + 5
-		track(creature, kindId, false)
+		if creature then
+			creature.lair = region.id
+			creature.exit = outside
+			creature.exitUntil = os.clock() + 5
+			track(creature, kindId, false)
+		end
 		task.wait(0.2)
 	end
 end
 
+-- One pass of the lair watch (every second, Guard.loop).
 local function watchLairs()
-	while true do
-		task.wait(1)
-		local now = os.clock()
-		for index, region in Config.REGIONS do
-			local nearby =
-				playersNear(Config.regionCenter(index), CreatureCatalog.LAIR_TRIGGER_RADIUS)
-			if
-				CreatureBrain.lairOpens(
-					nearby,
-					now,
-					lairCooldown[region.id],
-					liveFromLair(region.id)
-				)
-			then
-				lairCooldown[region.id] = now + CreatureCatalog.LAIR_COOLDOWN
-				task.spawn(releaseHorde, index, CreatureBrain.hordeSize(nearby))
-			end
+	local now = os.clock()
+	for index, region in Config.REGIONS do
+		local nearby = playersNear(Config.regionCenter(index), CreatureCatalog.LAIR_TRIGGER_RADIUS)
+		if
+			CreatureBrain.lairOpens(nearby, now, lairCooldown[region.id], liveFromLair(region.id))
+		then
+			lairCooldown[region.id] = now + CreatureCatalog.LAIR_COOLDOWN
+			task.spawn(releaseHorde, index, CreatureBrain.hordeSize(nearby))
 		end
 	end
 end
 
+-- One pass of the brains (every THINK_INTERVAL, Guard.loop).
+local function thinkAll()
+	local now = os.clock()
+	for _, creature in table.clone(active) do
+		if creature.humanoid.Health > 0 and creature.model.Parent then
+			think(creature, now)
+		end
+	end
+end
+
+-- The loops start first so a spawn error leaves them running; each waits its interval before its
+-- first pass, and the spawns do not yield, so the first passes come when they did.
 function Creatures.start()
-	task.spawn(watchLairs)
+	Guard.loop("creatures lairs", 1, watchLairs)
+	Guard.loop("creatures think", CreatureCatalog.THINK_INTERVAL, thinkAll)
 	local mix = table.clone(CreatureCatalog.ROAMING)
 	for _, region in Config.REGIONS do
 		mix[REGION_KIND[region.id]] = CreatureCatalog.THEMED_COUNT
@@ -355,17 +385,6 @@ function Creatures.start()
 			spawnOne(kindId)
 		end
 	end
-	task.spawn(function()
-		while true do
-			task.wait(CreatureCatalog.THINK_INTERVAL)
-			local now = os.clock()
-			for _, creature in table.clone(active) do
-				if creature.humanoid.Health > 0 and creature.model.Parent then
-					think(creature, now)
-				end
-			end
-		end
-	end)
 end
 
 function Creatures.killAll()

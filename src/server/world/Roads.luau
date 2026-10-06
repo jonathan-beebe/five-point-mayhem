@@ -69,7 +69,7 @@ function Roads.build(parent: Instance)
 			22,
 			0.7
 		)
-		local between = angle + math.rad(36)
+		local between = Config.betweenRegions(index)
 		segment(
 			model,
 			Config.pointAt(between, Config.INNER_ROAD_RADIUS),

@@ -59,15 +59,8 @@ local function addPrompts(
 		reach = spec.prompt.reach
 	end
 
-	-- `name` defaults to `<action>Prompt`; PromptPanel finds the Drive prompt by its name.
 	local function prompt(action: string, key: Enum.KeyCode, name: string?): ProximityPrompt
-		return Prompts.make({
-			name = name or action .. "Prompt",
-			action = action,
-			object = spec.name,
-			key = key,
-			reach = reach,
-		}, anchor)
+		return Prompts.seat(anchor, spec.name, reach, action, key, name)
 	end
 
 	-- Drive takes the driver seat, or while a pod is away (flying or landed) the legs seat.
@@ -170,15 +163,8 @@ local function addCab(
 	anchor.Parent = volume
 	local reach = VehicleSizing.cabReach(cab.size)
 
-	-- `name` defaults to `<action>Prompt`; PromptPanel finds the Drive prompt by its name.
 	local function prompt(action: string, key: Enum.KeyCode, name: string?): ProximityPrompt
-		return Prompts.make({
-			name = name or action .. "Prompt",
-			action = action,
-			object = spec.name,
-			key = key,
-			reach = reach,
-		}, anchor)
+		return Prompts.seat(anchor, spec.name, reach, action, key, name)
 	end
 
 	local drivePrompt = prompt("Drive", Enum.KeyCode.E, Names.Instances.DrivePrompt)

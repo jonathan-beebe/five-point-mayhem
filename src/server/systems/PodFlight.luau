@@ -393,21 +393,9 @@ function PodFlight.new(setup: Setup): Pod
 	anchor.CFrame = setup.button
 	anchor.Parent = root
 	-- ActionText comes with the state (setState).
-	local prompt = Prompts.make({
-		name = Names.Instances.PodPrompt,
-		object = setup.model.Name .. " pod",
-		key = Enum.KeyCode.F,
-		reach = 6,
-	}, anchor)
+	local prompt = Prompts.pod(anchor, setup.model.Name)
 
-	local board = Prompts.make({
-		name = "BoardPrompt",
-		action = "Board",
-		object = setup.model.Name .. " pod",
-		key = Enum.KeyCode.E,
-		reach = BOARD_REACH,
-		enabled = false,
-	}, root)
+	local board = Prompts.board(root, setup.model.Name, BOARD_REACH)
 
 	local pod: Pod = {
 		model = setup.model,

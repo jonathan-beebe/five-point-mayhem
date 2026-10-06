@@ -32,6 +32,8 @@ export type Model = {
 	pieces: { PieceSpec }, -- one piece named "Head"
 }
 
+local Parts = require(script.Parent.util.Parts)
+
 local CreatureModel = {}
 
 CreatureModel.MAX_PIECES = 200
@@ -66,6 +68,20 @@ end
 -- The root's center in creature space.
 function CreatureModel.rootCenter(model: Model): CFrame
 	return CFrame.new(0, model.hipHeight + model.rootSize.Y / 2, 0)
+end
+
+-- Builds the model's pieces (authored in creature space, origin on the ground) and welds each to
+-- `root` relative to the root's center. tools/tests/server_helpers.luau builds every creature
+-- model's pieces through it.
+function CreatureModel.addPieces(model: Instance, root: BasePart, spec: Model)
+	local fromRoot = CreatureModel.rootCenter(spec):Inverse()
+	for _, piece in spec.pieces do
+		local part = Parts.fromPiece(piece, "Part")
+		part.Massless = true
+		part.TopSurface = Enum.SurfaceType.Smooth
+		part.BottomSurface = Enum.SurfaceType.Smooth
+		Parts.weldTo(root, part, fromRoot * piece.offset, model)
+	end
 end
 
 return CreatureModel

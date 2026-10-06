@@ -4,7 +4,7 @@
 --   jumpButton()                   the default touch jump button, if the touch controls exist
 --   jumpWatcher(layout)            a function that hooks `layout` to the jump button's position and
 --                                  size changes (once per jump button), then calls `layout`
---   matchInset(gui, object)        gives `gui` the IgnoreGuiInset of `object`'s ScreenGui, so
+--   matchInset(gui, object)        gives `gui` the ScreenInsets of `object`'s ScreenGui, so
 --                                  offsets measured on `object` mean the same in `gui`
 --   edgeY(object, bottom, space)   `object`'s top or bottom edge in the space of ScreenGui `space`
 --   shownIn(object)                `object` is Visible and its ScreenGui Enabled
@@ -46,7 +46,7 @@ end
 function Hud.matchInset(gui: ScreenGui, object: GuiObject)
 	local owner = object:FindFirstAncestorOfClass("ScreenGui")
 	if owner then
-		gui.IgnoreGuiInset = owner.IgnoreGuiInset
+		gui.ScreenInsets = owner.ScreenInsets
 	end
 end
 

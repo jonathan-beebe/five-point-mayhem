@@ -27,6 +27,7 @@ local AdminCommands = require(ReplicatedStorage.Shared.AdminCommands)
 local Config = require(ReplicatedStorage.Shared.Config)
 local Names = require(ReplicatedStorage.Shared.Names)
 local RemoteActions = require(ReplicatedStorage.Shared.RemoteActions)
+local RemoteGuard = require(ReplicatedStorage.Shared.RemoteGuard)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
@@ -364,7 +365,7 @@ local function horde(caller: Player, who: string?)
 	else
 		for index = 1, #Config.REGIONS do
 			Creatures.horde(
-				Config.pointAt(Config.regionAngle(index) + math.rad(36), 300),
+				Config.pointAt(Config.betweenRegions(index), 300),
 				TUNING.HORDE_PER_REGION
 			)
 		end
@@ -429,33 +430,46 @@ function Admin.run(caller: Player, command: string, first: string?, second: stri
 	end
 end
 
--- The MAC's buttons. Anyone with the MAC may use them.
-local function macCommand(caller: Player, action: any)
+-- The AdminCommand remote: the command and up to three arguments, as chat passes them
+-- (`/give <who> mac permanent`); a non-string argument is nil. Calls Admin.run through the table
+-- (tools/tests/remote_handlers replaces it).
+function Admin.onCommand(
+	player: Player,
+	command: unknown,
+	first: unknown,
+	second: unknown,
+	third: unknown
+)
+	if type(command) ~= "string" then
+		return
+	end
+	Admin.run(
+		player,
+		command,
+		RemoteGuard.optionalString(first),
+		RemoteGuard.optionalString(second),
+		RemoteGuard.optionalString(third)
+	)
+end
+
+-- The MacCommand remote: the MAC's buttons. Anyone with the MAC may use them. SNIPER gives a
+-- sniper only to a player whose backpack and character hold none, so spamming it makes no Tools.
+function Admin.macCommand(caller: Player, action: unknown)
 	if not MacAccess.has(caller) then
 		return
 	end
 	if action == RemoteActions.MacCommand.SNIPER then
-		Weapons.give(caller, "sniper")
+		if not Weapons.holds(caller, "sniper") then
+			Weapons.give(caller, "sniper")
+		end
 	elseif action == RemoteActions.MacCommand.NUKE then
 		task.spawn(nuke, caller)
 	end
 end
 
 function Admin.start()
-	Remotes.MacCommand.OnServerEvent:Connect(macCommand)
-	-- The panel sends at most a target and an item, so the remote forwards two arguments: a third
-	-- (`/give <who> mac permanent`) works from chat only. Known gap, kept as is.
-	Remotes.AdminCommand.OnServerEvent:Connect(function(player, command, first, second)
-		if typeof(command) ~= "string" then
-			return
-		end
-		Admin.run(
-			player,
-			command,
-			if typeof(first) == "string" then first else nil,
-			if typeof(second) == "string" then second else nil
-		)
-	end)
+	Remotes.MacCommand.OnServerEvent:Connect(Admin.macCommand)
+	Remotes.AdminCommand.OnServerEvent:Connect(Admin.onCommand)
 
 	local commands = Instance.new("Folder")
 	commands.Name = "MayhemCommands"

@@ -2,6 +2,7 @@
 -- it, and the panel each opens below both, one open at a time. PromptPanel measures the MAC button
 -- and the open panels to stack its cards under and beside them.
 --
+--   fullHeight(width)                            the Size of a panel that fills the column
 --   makeToggle(gui, slot, properties)            a toggle in slot 0 (top) or 1, parented to `gui`
 --   makePanel(className, gui, accent, properties, children?)
 --                                                a hidden panel under the toggles, outlined in
@@ -10,21 +11,33 @@
 --   panels      every panel in the column, open or not
 --   opened      fires when the MAC panel opens (notifyOpened), so GOD MODE's closes
 --
--- Debt (CLAUDE.md UI rules): TOGGLE_TOP and MARGIN are fixed pixel offsets, kept as they were in
--- MacPanel. They should come from measured on-screen elements.
+-- Placement: the column hangs from the top-right corner of its ScreenGui's area, which must be
+-- ScreenInsets CoreUISafeInsets (SCREEN_INSETS): the engine measures the top bar and the device's
+-- cutouts and keeps that area below and inside them. MARGIN is the gap to that area's edges. The
+-- arithmetic is HudLayout.columnToggle / columnPanelTop / columnPanelSize.
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local HudLayout = require(ReplicatedStorage.Shared.HudLayout)
 local Create = require(script.Parent.Create)
 local Theme = require(script.Parent.Theme)
 
 local RightColumn = {}
 
-RightColumn.TOGGLE_TOP = 60 -- debt: a guessed offset clear of the top bar
-RightColumn.MARGIN = 12 -- debt: gap between the column and the screen's right (and bottom) edge
+RightColumn.SCREEN_INSETS = Enum.ScreenInsets.CoreUISafeInsets -- the column's ScreenGuis
+RightColumn.MARGIN = 12 -- gap between the column and its area's top, right and bottom edges
 RightColumn.TOGGLE_WIDTH = 130
 RightColumn.TOGGLE_HEIGHT = 40
 RightColumn.GAP = 6
-RightColumn.PANEL_TOP = RightColumn.TOGGLE_TOP + 2 * (RightColumn.TOGGLE_HEIGHT + RightColumn.GAP)
 RightColumn.PANEL_WIDTH = 300
+
+local SPEC: HudLayout.ColumnSpec = {
+	margin = RightColumn.MARGIN,
+	toggleHeight = RightColumn.TOGGLE_HEIGHT,
+	gap = RightColumn.GAP,
+	toggles = 2, -- GOD MODE, MAC
+}
+RightColumn.PANEL_TOP = HudLayout.columnPanelTop(SPEC)
 
 RightColumn.toggle = nil :: GuiObject?
 RightColumn.panels = {} :: { GuiObject }
@@ -44,12 +57,7 @@ function RightColumn.makeToggle(
 ): TextButton
 	local all: { [string]: any } = {
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(
-			1,
-			-RightColumn.MARGIN,
-			0,
-			RightColumn.TOGGLE_TOP + slot * (RightColumn.TOGGLE_HEIGHT + RightColumn.GAP)
-		),
+		Position = HudLayout.columnToggle(SPEC, slot),
 		Size = UDim2.fromOffset(RightColumn.TOGGLE_WIDTH, RightColumn.TOGGLE_HEIGHT),
 		TextSize = 16,
 		Font = Theme.Fonts.title,
@@ -60,6 +68,11 @@ function RightColumn.makeToggle(
 	local toggle = Create.create("TextButton", all, { Create.corner(Theme.Radius.panel) })
 	toggle.Parent = gui
 	return toggle
+end
+
+-- A panel that fills the column from PANEL_TOP down to MARGIN above the bottom, `width` wide.
+function RightColumn.fullHeight(width: number): UDim2
+	return HudLayout.columnPanelSize(SPEC, width)
 end
 
 -- `properties` adds to (or overrides) the shell: right-anchored at PANEL_TOP, 0.1 transparent,

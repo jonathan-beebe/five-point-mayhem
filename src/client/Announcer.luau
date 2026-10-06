@@ -1,6 +1,6 @@
 -- Big banner text across the top of the screen, plus a red flash for alarms and MAYHEM.
 -- The overlay and banner are hidden between announcements, and a new announcement cancels the
--- previous one's fade.
+-- previous one's fade. The gui is built by start() or the first show(), whichever comes first.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -12,33 +12,46 @@ local Theme = require(script.Parent.ui.Theme)
 
 local Announcer = {}
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "MayhemAnnouncer"
-gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true
-gui.DisplayOrder = Theme.DisplayOrder.announcer
-gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+local overlay: Frame, banner: TextLabel
 
-local overlay = Instance.new("Frame")
-overlay.Size = UDim2.fromScale(1, 1)
-overlay.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-overlay.BackgroundTransparency = 1
-overlay.BorderSizePixel = 0
-overlay.Visible = false
-overlay.Parent = gui
+-- Builds the gui on first use: from start(), or from show() when a module announces before start
+-- (LobbyUI does). Requiring this module builds nothing.
+local function build()
+	if banner then
+		return
+	end
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "MayhemAnnouncer"
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	gui.DisplayOrder = Theme.DisplayOrder.announcer
 
-local banner = Instance.new("TextLabel")
-banner.AnchorPoint = Vector2.new(0.5, 0)
-banner.Position = UDim2.fromScale(0.5, 0.12)
-banner.Size = UDim2.fromScale(0.8, 0.1)
-banner.BackgroundTransparency = 1
-banner.Font = Theme.Fonts.title
-banner.TextScaled = true
-banner.TextStrokeTransparency = 0
-banner.TextTransparency = 1
-banner.TextStrokeColor3 = Color3.new(0, 0, 0)
-banner.Visible = false
-banner.Parent = gui
+	local flash = Instance.new("Frame")
+	flash.Size = UDim2.fromScale(1, 1)
+	flash.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+	flash.BackgroundTransparency = 1
+	flash.BorderSizePixel = 0
+	flash.Visible = false
+	flash.Parent = gui
+
+	local text = Instance.new("TextLabel")
+	text.AnchorPoint = Vector2.new(0.5, 0)
+	text.Position = UDim2.fromScale(0.5, 0.12)
+	text.Size = UDim2.fromScale(0.8, 0.1)
+	text.BackgroundTransparency = 1
+	text.Font = Theme.Fonts.title
+	text.TextScaled = true
+	text.TextStrokeTransparency = 0
+	text.TextTransparency = 1
+	text.TextStrokeColor3 = Color3.new(0, 0, 0)
+	text.Visible = false
+	text.Parent = gui
+
+	overlay, banner = flash, text
+
+	-- Last: WaitForChild can yield, and a show() arriving meanwhile finds the banner built.
+	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+end
 
 local showId = 0
 
@@ -68,6 +81,7 @@ local function fadeOut(object: GuiObject, info: TweenInfo, goal: { [string]: any
 end
 
 function Announcer.show(text: string, color: Color3?, seconds: number?, style: string?)
+	build()
 	showId += 1
 	local id = showId
 	stopFade(banner)
@@ -102,6 +116,7 @@ function Announcer.show(text: string, color: Color3?, seconds: number?, style: s
 end
 
 function Announcer.start()
+	build()
 	overlay.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
 	Remotes.Announce.OnClientEvent:Connect(function(text, color, seconds, style)
 		if style ~= RemoteActions.AnnounceStyle.MAYHEM then

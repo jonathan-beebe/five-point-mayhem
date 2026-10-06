@@ -24,11 +24,11 @@ local CollisionGroups = require(Systems.CollisionGroups)
 local Combat = require(Systems.Combat)
 local Creatures = require(Systems.Creatures)
 local DayNight = require(Systems.DayNight)
+local Guard = require(Systems.util.Guard)
 local MacAccess = require(Systems.MacAccess)
 local Session = require(Systems.Session)
 local Vehicles = require(Systems.Vehicles)
 local Weapons = require(Systems.Weapons)
-local WalkerProbe = require(Systems.WalkerProbe) -- TEMPORARY
 
 -- Each landmark's building module (Regions.BUILDINGS), by region id, required in region order.
 local BUILDINGS = {}
@@ -91,16 +91,16 @@ clearTemplate()
 CollisionGroups.register(PhysicsService)
 Combat.setBarrelFactory(Landscape.explosiveBarrel)
 atmosphere()
-DayNight.start()
+Guard.run("start DayNight", DayNight.start)
 workspace.Gravity = Config.NORMAL_GRAVITY
 buildWorld()
 
-Session.start()
-Creatures.start()
-task.spawn(WalkerProbe.start) -- TEMPORARY
-Vehicles.start()
-Admin.start()
-MacAccess.start()
+-- Each start is guarded: one that throws is warned and the rest still start, in this order.
+Guard.run("start Session", Session.start)
+Guard.run("start Creatures", Creatures.start)
+Guard.run("start Vehicles", Vehicles.start)
+Guard.run("start Admin", Admin.start)
+Guard.run("start MacAccess", MacAccess.start)
 
 Players.CharacterAutoLoads = true
 for _, player in Players:GetPlayers() do

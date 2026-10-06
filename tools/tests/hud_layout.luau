@@ -3,9 +3,11 @@
 --
 --   - every function gives the same bits as the inline code it replaced (copied below as the
 --     reference, compiled with luau.load as Sandbox compiles HudLayout), composed the way each
---     caller composes it now: MechCamera's VIEW/STAND column, PodControls' four buttons,
---     SniperScope's SCOPE button (from a jump button and without one), PromptPanel's card stack
---     (column, every card's frame, badge and text box)
+--     caller composes it now: MechCamera's VIEW/STAND column from a jump button, SniperScope's
+--     SCOPE button (from a jump button and without one), PromptPanel's card stack (column, every
+--     card's frame, badge and text box)
+--   - golden values where the layout changed on purpose: the right column, PodControls' buttons
+--     and MechCamera's fallback column (moved to keep persistent HUD off the screen centre)
 --   - inputs: jump button sizes and positions (zero, fractional, phone to tablet), viewports
 --     (zero, odd, 4K), and card stacks with and without the MAC toggle, open panels and controls
 --     under, beside and clear of the column, 1 to 7 cards, screens too short to fit them
@@ -18,7 +20,7 @@ local Check = require("../lib/Check")
 local Sandbox = require("../lib/Sandbox")
 
 local check, equal = Check.check, Check.equal
-local Vector2, UDim2 = roblox.Vector2, roblox.UDim2
+local Vector2, UDim, UDim2 = roblox.Vector2, roblox.UDim, roblox.UDim2
 
 local HudLayout = Sandbox.load("src/shared/HudLayout.luau")
 
@@ -40,33 +42,13 @@ function Reference.mech(jump, viewport)
 			jump.AbsolutePosition.X - gap,
 			jump.AbsolutePosition.Y + jump.AbsoluteSize.Y
 		)
-	else
-		size = math.floor(math.min(viewport.X, viewport.Y) * 0.14)
-		gap = math.floor(size * 0.2)
-		corner = UDim2.fromScale(0.8, 0.95)
-	end
+	end -- the fallback (no jump button) moved since: golden values in "pod buttons"
 	return {
 		viewSize = UDim2.fromOffset(size, size),
 		viewPosition = corner,
 		standSize = UDim2.fromOffset(size, size),
 		standPosition = corner - UDim2.fromOffset(0, size + gap),
 		layout = { size = size, gap = gap, corner = corner },
-	}
-end
-
--- PodControls.luau `layout`.
-function Reference.pod(measured)
-	local step = measured.size + measured.gap
-	local podSize = UDim2.fromOffset(measured.size * 2 + measured.gap, measured.size)
-	return {
-		podSize = podSize,
-		podPosition = measured.corner - UDim2.fromOffset(0, step * 2),
-		landSize = podSize,
-		landPosition = measured.corner - UDim2.fromOffset(step * 2, step * 2),
-		upSize = UDim2.fromOffset(measured.size, measured.size),
-		upPosition = measured.corner - UDim2.fromOffset(step, step),
-		downSize = UDim2.fromOffset(measured.size, measured.size),
-		downPosition = measured.corner - UDim2.fromOffset(step, 0),
 	}
 end
 
@@ -133,17 +115,12 @@ return Reference
 	{ debugName = "HudLayout reference", environment = { UDim2 = UDim2, math = math } }
 )()
 
--- The callers' code now, copied (MechCamera and SniperScope `layoutButton`, PodControls `layout`,
--- PromptPanel `layout`), with the same inputs and outputs as Reference.
+-- The callers' code now, copied (MechCamera and SniperScope `layoutButton`, PromptPanel
+-- `layout`), with the same inputs and outputs as Reference.
 local Now = {}
 
-function Now.mech(jump, viewport)
-	local column
-	if jump then
-		column = HudLayout.mechColumn(jump.AbsolutePosition, jump.AbsoluteSize)
-	else
-		column = HudLayout.mechColumnFallback(viewport)
-	end
+function Now.mech(jump)
+	local column = HudLayout.mechColumn(jump.AbsolutePosition, jump.AbsoluteSize)
 	local size, gap, corner = column.size, column.gap, column.corner
 	return {
 		viewSize = UDim2.fromOffset(size, size),
@@ -151,20 +128,6 @@ function Now.mech(jump, viewport)
 		standSize = UDim2.fromOffset(size, size),
 		standPosition = HudLayout.standPosition(column),
 		layout = { size = size, gap = gap, corner = corner },
-	}
-end
-
-function Now.pod(measured)
-	local placed = HudLayout.podButtons(measured)
-	return {
-		podSize = placed.pod.size,
-		podPosition = placed.pod.position,
-		landSize = placed.land.size,
-		landPosition = placed.land.position,
-		upSize = placed.up.size,
-		upPosition = placed.up.position,
-		downSize = placed.down.size,
-		downPosition = placed.down.position,
 	}
 end
 
@@ -319,20 +282,9 @@ local function describe(jump): string
 	)
 end
 
-Check.section("mech column and pod buttons")
+Check.section("mech column")
 for _, jump in jumps do
-	local want = Reference.mech(jump, nil)
-	sameResult(Now.mech(jump, nil), want, "mech " .. describe(jump))
-	sameResult(Now.pod(want.layout), Reference.pod(want.layout), "pod " .. describe(jump))
-end
-for _, viewport in VIEWPORTS do
-	local want = Reference.mech(nil, viewport)
-	sameResult(Now.mech(nil, viewport), want, "mech viewport " .. tostring(viewport))
-	sameResult(
-		Now.pod(want.layout),
-		Reference.pod(want.layout),
-		"pod viewport " .. tostring(viewport)
-	)
+	sameResult(Now.mech(jump), Reference.mech(jump, nil), "mech " .. describe(jump))
 end
 
 Check.section("scope button")
@@ -455,5 +407,194 @@ local insides = HudLayout.cardInsides(48, 220)
 equal(insides.margin, 7, "card margin")
 equal(insides.side, 34, "badge side")
 equal(insides.textWidth, 220 - 48 - 7, "text width")
+
+-- The right column hangs from the top-right corner of its ScreenGui, whose CoreUISafeInsets area
+-- the engine keeps below the top bar and inside the device's safe area: nothing to guess about the
+-- top bar. Golden values for RightColumn's spec, then the rule on other specs.
+Check.section("right column")
+local COLUMN = { margin = 12, toggleHeight = 40, gap = 6, toggles = 2 }
+equal(HudLayout.columnToggle(COLUMN, 0), UDim2.new(1, -12, 0, 12), "GOD MODE toggle")
+equal(HudLayout.columnToggle(COLUMN, 1), UDim2.new(1, -12, 0, 58), "MAC toggle")
+equal(HudLayout.columnPanelTop(COLUMN), 104, "panels start a gap under the MAC toggle")
+equal(
+	HudLayout.columnPanelSize(COLUMN, 300),
+	UDim2.new(0, 300, 1, -116),
+	"a full-height panel stops a margin above the bottom"
+)
+for _, spec in
+	{
+		{ margin = 0, toggleHeight = 40, gap = 6, toggles = 2 },
+		{ margin = 8, toggleHeight = 33, gap = 0, toggles = 1 },
+		{ margin = 20, toggleHeight = 50, gap = 10, toggles = 3 },
+	}
+do
+	local label = string.format("margin %s gap %s toggles %d", spec.margin, spec.gap, spec.toggles)
+	local first = HudLayout.columnToggle(spec, 0)
+	equal(first.Y.Offset, spec.margin, label .. ": first toggle a margin below the safe top")
+	equal(first.X, UDim.new(1, -spec.margin), label .. ": a margin in from the safe right edge")
+	equal(first.Y.Scale, 0, label .. ": hangs from the top, whatever the screen height")
+	local last = HudLayout.columnToggle(spec, spec.toggles - 1)
+	equal(
+		HudLayout.columnPanelTop(spec),
+		last.Y.Offset + spec.toggleHeight + spec.gap,
+		label .. ": panels a gap under the last toggle"
+	)
+end
+
+-- LAND shares STAND's slot: whenever PodButtons shows LAND (or ▲ and ▼), the pod is in flight,
+-- and MechCamera hides STAND in flight (its seatsLocked is PodState.inFlight).
+Check.section("pod buttons")
+local Shared = Sandbox.game:GetService("ReplicatedStorage").Shared
+local PodButtons = Sandbox.require(Shared.PodButtons)
+local PodState = Sandbox.require(Shared.PodState)
+for _, state in { "docked", "flying", "returning", "landed", "wrecked" } do
+	for _, aboard in { true, false } do
+		for _, canLand in { true, false } do
+			for _, touch in { true, false } do
+				local view = PodButtons.view(state, aboard, canLand, touch)
+				local label = string.format(
+					"%s aboard %s canLand %s touch %s",
+					state,
+					tostring(aboard),
+					tostring(canLand),
+					tostring(touch)
+				)
+				check(
+					not (view.landVisible or view.liftVisible) or PodState.inFlight(state),
+					label .. ": LAND and lift only in flight"
+				)
+			end
+		end
+	end
+end
+local golden = HudLayout.podButtons({ size = 50, gap = 10, corner = UDim2.fromOffset(700, 400) })
+equal(golden.pod.size, UDim2.fromOffset(110, 50), "pod button two slots wide")
+equal(golden.pod.position, UDim2.fromOffset(640, 340), "pod button left of STAND")
+equal(golden.land.size, UDim2.fromOffset(50, 50), "LAND one slot")
+equal(golden.land.position, UDim2.fromOffset(700, 340), "LAND in STAND's slot")
+equal(golden.up.position, UDim2.fromOffset(580, 400), "▲ left of ▼")
+equal(golden.down.position, UDim2.fromOffset(640, 400), "▼ left of VIEW")
+-- Without a jump button: sides 14% of the short side, gaps 20% of a side, VIEW's corner at 85%
+-- across (80% before the two-row pod buttons) and 95% down.
+for _, case in
+	{
+		{ viewport = Vector2.new(1000, 800), size = 112, gap = 22 },
+		{ viewport = Vector2.new(844, 390), size = 54, gap = 10 },
+		{ viewport = Vector2.new(0, 0), size = 0, gap = 0 },
+	}
+do
+	local column = HudLayout.mechColumnFallback(case.viewport)
+	local label = "fallback column " .. tostring(case.viewport)
+	equal(column.size, case.size, label .. " size")
+	equal(column.gap, case.gap, label .. " gap")
+	equal(column.corner, UDim2.fromScale(0.85, 0.95), label .. " VIEW corner")
+	equal(
+		HudLayout.standPosition(column),
+		UDim2.new(0.85, 0, 0.95, -(case.size + case.gap)),
+		label .. " STAND above VIEW"
+	)
+end
+
+-- Persistent HUD never sits at the screen centre (CLAUDE.md UI rules). Every touch button
+-- (SCOPE, VIEW, STAND, and PodControls' pod, LAND, ▲ and ▼) stays inside its gui, clear of the
+-- screen's centre point, in the right half and in the lower half of the screen, laid out two ways:
+--   - measured from the jump button where Roblox's PlayerModule puts it (ControlModule/TouchJump
+--     `ResizeJumpButton`, in ControlModule's TouchControlFrame, which fills TouchGui: a ScreenGui
+--     with the default ScreenInsets, CoreUISafeInsets)
+--   - the fallback without a jump button (desktop; a touch screen before its TouchGui exists):
+--     fractions of the button gui, sized from the camera's ViewportSize (the whole screen)
+-- Every gui here keeps the default insets (the buttons copy TouchGui's), so its area is the screen
+-- less the top bar: 36 pixels (the old top bar) or 58 (the current one, GuiService:GetGuiInset()).
+-- The device's side cutouts are not modelled. Screens are landscape: StarterGui.ScreenOrientation
+-- is left at Roblox's default (LandscapeSensor), so phones never run this game in portrait.
+Check.section("touch buttons stay off the centre")
+local TOP_BARS = { 36, 58 }
+
+-- A gui's area and the screen's centre point in the gui's coordinates.
+type Space = { area: any, centre: any }
+
+local function rect(placed: { size: any, position: any }, anchor: any, space: Space)
+	local width, height = placed.size.X.Offset, placed.size.Y.Offset
+	local area = space.area
+	local x = placed.position.X.Scale * area.X + placed.position.X.Offset - anchor.X * width
+	local y = placed.position.Y.Scale * area.Y + placed.position.Y.Offset - anchor.Y * height
+	return { left = x, top = y, right = x + width, bottom = y + height }
+end
+local function offCentre(box, space: Space, label: string)
+	local area, centre = space.area, space.centre
+	check(
+		box.left >= 0 and box.top >= 0 and box.right <= area.X and box.bottom <= area.Y,
+		label .. " inside its gui"
+	)
+	check((box.top + box.bottom) / 2 > centre.Y, label .. " in the lower half")
+	check(
+		not (box.left <= centre.X and centre.X <= box.right)
+			or not (box.top <= centre.Y and centre.Y <= box.bottom),
+		label .. " clear of the centre point"
+	)
+	check((box.left + box.right) / 2 > centre.X, label .. " in the right half")
+end
+
+-- TouchJump's jump button (`ResizeJumpButton`, the branch without avatar abilities): size, then
+-- top-left corner, in a TouchControlFrame of `frame` pixels. The other branch applies only when
+-- AvatarAbilitiesInterface.isEnabled(): an AbilityManagerActor exists and the Humanoid's
+-- EvaluateStateMachine is off. This game uses neither.
+local function jumpButton(frame): (any, any)
+	local small = math.min(frame.X, frame.Y) <= 500
+	local side = if small then 70 else 120
+	local offset = if small
+		then Vector2.new(-(side * 1.5 - 10), -side - 20)
+		else Vector2.new(-(side * 1.5 - 10), -side * 1.75)
+	return Vector2.new(side, side), frame + offset
+end
+
+-- `touch`: a size a touch screen has, so the measured layout applies too.
+local SCREEN_SIZES = {
+	{ size = Vector2.new(844, 390), touch = true }, -- phone
+	{ size = Vector2.new(667, 375), touch = true }, -- small phone
+	{ size = Vector2.new(1024, 768), touch = true }, -- tablet
+	{ size = Vector2.new(1366, 1024), touch = true }, -- large tablet
+	{ size = Vector2.new(1920, 1080), touch = true }, -- desktop, touch monitor
+	{ size = Vector2.new(3840, 2160), touch = false }, -- 4K
+	{ size = Vector2.new(320, 240), touch = false }, -- tiny desktop window
+}
+local BOTTOM_RIGHT = Vector2.new(1, 1)
+local function columnButtons(column, space: Space, label: string)
+	local square = UDim2.fromOffset(column.size, column.size)
+	offCentre(
+		rect({ size = square, position = column.corner }, BOTTOM_RIGHT, space),
+		space,
+		"VIEW " .. label
+	)
+	local stand = { size = square, position = HudLayout.standPosition(column) }
+	offCentre(rect(stand, BOTTOM_RIGHT, space), space, "STAND " .. label)
+	for name, placed in HudLayout.podButtons(column) do
+		offCentre(rect(placed, BOTTOM_RIGHT, space), space, name .. " " .. label)
+	end
+end
+local layouts = 0
+for _, each in SCREEN_SIZES do
+	for _, topBar in TOP_BARS do
+		local screen = each.size
+		local space = {
+			area = screen - Vector2.new(0, topBar),
+			centre = screen / 2 - Vector2.new(0, topBar),
+		}
+		local label = string.format("%s top bar %d", tostring(screen), topBar)
+		local scope = HudLayout.scopeButtonFallback(screen)
+		offCentre(rect(scope, Vector2.new(0.5, 1), space), space, "SCOPE fallback " .. label)
+		columnButtons(HudLayout.mechColumnFallback(screen), space, "fallback " .. label)
+		layouts += 1
+		if each.touch then
+			local size, position = jumpButton(space.area)
+			local where = "jump button " .. label
+			local placed = HudLayout.scopeButton(position, size)
+			offCentre(rect(placed, Vector2.new(0.5, 1), space), space, "SCOPE " .. where)
+			columnButtons(HudLayout.mechColumn(position, size), space, where)
+			layouts += 1
+		end
+	end
+end
+equal(layouts, 24, "layouts checked: 7 fallback, 5 measured, two top bars each")
 
 Check.finish()

@@ -11,11 +11,16 @@
 --     Vehicles, Debris and Instance)
 --   - the panel's power buttons, the chat command list, the gifts, the power-ups and the tuning
 --     equal the literals Admin.luau and AdminPanel.luau had at 3c65531
---   - resolveTargets, giftLabel, chatArguments and meteorSeconds return what the inline code they
---     replaced in Admin.luau returned, copied below word for word as the reference
+--   - resolveTargets, giftLabel and meteorSeconds return what the inline code they replaced in
+--     Admin.luau returned, copied below word for word as the reference; chatArguments (whose
+--     inline code was the module's code word for word) returns the golden outputs generated once
+--     from the code at a50e99c
+--   - `/horde` with no target sends one horde per region, half a region step past each: the same
+--     points as at f35d32f for five regions, and 30 degrees past each with a sixth
 --
 -- Admin's requires build Instances, so HANDLERS and POWER_UP come from Admin run alone
--- (Sandbox.loadIsolated), and `gift` from Admin run with fakes for its requires and services.
+-- (Sandbox.loadIsolated), and `gift` and `horde` from Admin run with fakes for its requires and
+-- services.
 
 local luau = require("@lune/luau")
 local roblox = require("@lune/roblox")
@@ -248,11 +253,6 @@ function Reference.giftLabel(query)
 		else nil
 	return label
 end
--- Admin.start's TextChatCommand handler: the arguments it passed to Admin.run.
-function Reference.chatArguments(text)
-	local words = string.split(text, " ")
-	return words[2], words[3], words[4]
-end
 -- Admin.run's meteors branch.
 function Reference.meteorSeconds(first)
 	return math.clamp(tonumber(first) or 30, 5, 120)
@@ -336,22 +336,28 @@ for _, query in items do
 end
 
 Check.section("AdminCommands.chatArguments")
-local texts = {
-	"/give me rocket",
-	"/give all mac permanent",
-	"/give all mac permanent extra words",
-	"/give",
-	"/give ",
-	"",
-	" ",
-	"/give  me  rocket",
-	" /give me",
-	"/meteors 60",
-	"/horde\tsam",
+-- Golden outputs of AdminCommands.chatArguments (text -> the three arguments), generated once from
+-- the code at a50e99c: they pin its behaviour. A deliberate change updates this table.
+-- A tab is no separator; doubled spaces give empty arguments; case passes through.
+local CHAT_ARGUMENTS = {
+	{ "/give me rocket", "me", "rocket", nil },
+	{ "/give all mac permanent", "all", "mac", "permanent" },
+	{ "/give all mac permanent extra words", "all", "mac", "permanent" },
+	{ "/give", nil, nil, nil },
+	{ "/give ", "", nil, nil },
+	{ "", nil, nil, nil },
+	{ " ", "", nil, nil },
+	{ "/give  me  rocket", "", "me", "" },
+	{ " /give me", "/give", "me", nil },
+	{ "/meteors 60", "60", nil, nil },
+	{ "/horde\tsam", nil, nil, nil },
+	{ "/GIVE Sam ROCKET Permanent", "Sam", "ROCKET", "Permanent" },
+	{ "/Give ALL Mac", "ALL", "Mac", nil },
 }
-for _, text in texts do
+for _, row in CHAT_ARGUMENTS do
+	local text = row[1]
 	check(
-		same({ AdminCommands.chatArguments(text) }, { Reference.chatArguments(text) }),
+		same({ AdminCommands.chatArguments(text) }, { row[2], row[3], row[4] }),
 		"chatArguments " .. show(text)
 	)
 	equal(select("#", AdminCommands.chatArguments(text)), 3, "chatArguments returns 3 values")
@@ -441,7 +447,13 @@ local REAL = {
 	VehicleCatalog = true,
 	WeaponCatalog = true,
 }
-local FAKES = { Characters = Characters, Weapons = Weapons, Vehicles = Vehicles }
+local Creatures = {
+	horde = function(position, count)
+		record("Creatures.horde", position, count)
+	end,
+}
+local FAKES =
+	{ Characters = Characters, Weapons = Weapons, Vehicles = Vehicles, Creatures = Creatures }
 local stub = setmetatable({}, {
 	__index = function(self)
 		return self
@@ -607,6 +619,53 @@ for _, item in giftItems do
 				)
 			)
 		end
+	end
+end
+
+Check.section("Admin horde: one horde between each pair of regions")
+-- At main (f35d32f): `Config.pointAt(Config.regionAngle(index) + math.rad(36), 300)`, the angle
+-- written out (regionAngle was `math.rad(-90 + (index - 1) * 72)`). Compiled with luau.load, as
+-- Sandbox.load compiles Admin.
+local hordeAt = luau.load(
+	[[
+local pointAt, step = ...
+return function(index: number): Vector3
+	return pointAt(math.rad(-90 + (index - 1) * step) + math.rad(step / 2), 300)
+end
+]],
+	{ debugName = "horde reference" }
+)
+local Config = Sandbox.require(Shared.Config)
+for _, regions in { 5, 6 } do
+	local added = regions - #Config.REGIONS
+	for index = 1, added do
+		table.insert(Config.REGIONS, { id = "extra" .. index, name = "Extra", country = "None" })
+	end
+	log = {}
+	loaded.HANDLERS.horde({ Name = "caller" }, nil)
+	local hordes = {}
+	for _, entry in log do
+		if entry[1] == "Creatures.horde" then
+			table.insert(hordes, entry)
+		end
+	end
+	equal(#hordes, regions, regions .. " regions: hordes")
+	local hordeReference = hordeAt(Config.pointAt, 360 / regions)
+	for index, entry in hordes do
+		local want = hordeReference(index)
+		check(
+			if regions == 5 then entry[2] == want else (entry[2] - want).Magnitude < 1e-9,
+			("%d regions, horde %d: got %s, want %s"):format(
+				regions,
+				index,
+				tostring(entry[2]),
+				tostring(want)
+			)
+		)
+		equal(entry[3], AdminCommands.TUNING.HORDE_PER_REGION, "horde size")
+	end
+	for _ = 1, added do
+		table.remove(Config.REGIONS)
 	end
 end
 

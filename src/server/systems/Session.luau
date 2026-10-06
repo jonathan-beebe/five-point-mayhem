@@ -1,19 +1,21 @@
---!nolint DeprecatedApi
--- TODO: GetRankInGroup is deprecated; moving to GetRankInGroupAsync changes behaviour, so it waits.
 -- Player lifecycle: teams, leaderstats, admin flag, collision groups, and deploying from the
 -- lobby with a loadout of up to three weapons. Every respawn returns the player to the lobby.
+-- tools/tests/session.luau runs isAdmin, forget and deploy with fakes.
 
+local GroupService = game:GetService("GroupService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Teams = game:GetService("Teams")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Loadout = require(ReplicatedStorage.Shared.Loadout)
 local Names = require(ReplicatedStorage.Shared.Names)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 local Weapons = require(script.Parent.Weapons)
 local Characters = require(script.Parent.util.Characters)
+local Guard = require(script.Parent.util.Guard)
 
 local Session = {}
 
@@ -34,6 +36,58 @@ local function setCollisionGroup(character: Model, group: string)
 	end
 end
 
+-- Each player's highest rank in the owning group: GetRolesInGroupAsync yields and does not
+-- cache. The first isAdmin call (onPlayer, on join) pays the wait; a call made while a lookup is
+-- in flight waits for its answer. An answer (not a member, or malformed: rank 0) is cached for
+-- the session; a failed lookup is rank 0 uncached, so the next call retries. Dropped on
+-- PlayerRemoving (Session.forget); a player who left during the lookup is not cached.
+local groupRanks: { [Player]: number } = {}
+local lookups: { [Player]: { thread } } = {}
+
+local function highestRank(result: any): number
+	local highest = 0
+	if type(result) == "table" and result.IsMember == true and type(result.Roles) == "table" then
+		for _, role in result.Roles do
+			if type(role) == "table" and type(role.Rank) == "number" then
+				highest = math.max(highest, role.Rank)
+			end
+		end
+	end
+	return highest
+end
+
+local function groupRank(player: Player): number
+	local cached = groupRanks[player]
+	if cached then
+		return cached
+	end
+	local waiting = lookups[player]
+	if waiting then
+		table.insert(waiting, coroutine.running())
+		return coroutine.yield()
+	end
+	waiting = {}
+	lookups[player] = waiting
+	local ok, result =
+		pcall(GroupService.GetRolesInGroupAsync, GroupService, player.UserId, game.CreatorId)
+	lookups[player] = nil
+	local rank = if ok then highestRank(result) else 0
+	if ok and player.Parent then
+		groupRanks[player] = rank
+	end
+	for _, thread in waiting do
+		task.spawn(thread, rank)
+	end
+	return rank
+end
+
+function Session.forget(player: Player)
+	groupRanks[player] = nil
+end
+
+-- Studio: everyone. Live: Config.ADMIN_USER_IDS, the owner of a user-owned place, or rank 255 in
+-- the owning group. May yield (a group rank lookup). A lookup that failed at join left IsAdmin
+-- false; the first later call that finds rank 255 sets it true.
 function Session.isAdmin(player: Player): boolean
 	if RunService:IsStudio() then
 		return true
@@ -44,8 +98,11 @@ function Session.isAdmin(player: Player): boolean
 	if game.CreatorType == Enum.CreatorType.User then
 		return player.UserId == game.CreatorId
 	end
-	local ok, rank = pcall(player.GetRankInGroup, player, game.CreatorId)
-	return ok and rank == 255
+	local admin = groupRank(player) == 255
+	if admin and player:GetAttribute(Names.Attributes.IsAdmin) == false then
+		player:SetAttribute(Names.Attributes.IsAdmin, true)
+	end
+	return admin
 end
 
 local function createTeams()
@@ -100,8 +157,9 @@ local function onPlayer(player: Player)
 	end
 end
 
--- The loadout is an array of 0 to LOADOUT_SIZE distinct weapon ids. Anything else is refused.
-local function deploy(player: Player, ids: any)
+-- The Deploy remote. The loadout is an array of 0 to LOADOUT_SIZE distinct weapon ids, each
+-- available to the player (Loadout.isAvailable). Anything else is refused.
+function Session.deploy(player: Player, ids: any)
 	if typeof(ids) ~= "table" or player:GetAttribute(Names.Attributes.Deployed) then
 		return
 	end
@@ -116,7 +174,7 @@ local function deploy(player: Player, ids: any)
 			or count > Config.LOADOUT_SIZE
 			or not weapon
 			or seen[id]
-			or (weapon.adminOnly and not isAdmin)
+			or not Loadout.isAvailable(weapon, isAdmin)
 		then
 			return
 		end
@@ -141,7 +199,6 @@ local function deploy(player: Player, ids: any)
 		Weapons.give(player, id)
 	end
 	player:SetAttribute(Names.Attributes.Deployed, true)
-	player:SetAttribute("Loadout", table.concat(ids, ","))
 	setCollisionGroup(character, Names.CollisionGroups.DeployedPlayers)
 end
 
@@ -195,17 +252,13 @@ end
 
 function Session.start()
 	createTeams()
-	task.spawn(function()
-		while true do
-			task.wait(LOCKOUT_CHECK_INTERVAL)
-			enforceLockout()
-		end
-	end)
+	Guard.loop("session lockout", LOCKOUT_CHECK_INTERVAL, enforceLockout)
 	Players.PlayerAdded:Connect(onPlayer)
+	Players.PlayerRemoving:Connect(Session.forget)
 	for _, player in Players:GetPlayers() do
 		task.spawn(onPlayer, player)
 	end
-	Remotes.Deploy.OnServerEvent:Connect(deploy)
+	Remotes.Deploy.OnServerEvent:Connect(Session.deploy)
 	Remotes.ChooseTeam.OnServerEvent:Connect(chooseTeam)
 end
 

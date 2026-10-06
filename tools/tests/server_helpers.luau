@@ -2,10 +2,11 @@
 -- Usage: lune run tools/tests/server_helpers.luau
 --
 --   - Parts: every piece of every vehicle, creature and weapon model file, built and welded the
---     way each caller did inline before Parts existed (copied below as the reference), and the way
---     it does now (Parts plus the caller's own extras, copied from the caller), gives the same
---     part and weld, property by property
---   - Prompts: every prompt Vehicles and PodFlight build matches the inline code it replaced
+--     way each caller did inline before Parts existed (copied below as the reference, frozen), and
+--     by the code the callers run now (Vehicles/Placement.addPieces, CreatureModel.addPieces,
+--     Weapons/Pieces), gives the same part and weld, property by property
+--   - Prompts: Prompts.seat, pod and board (the prompts Vehicles/Boarding and PodFlight build)
+--     match the inline code they replaced
 --   - Characters: parts, living, humanoidOf, rootOf and isInside return what the inline lookups
 --     returned, for each missing piece and for health 100, 0, -5 and NaN
 --   - Seats.unseat destroys the SeatWeld and clears Sit, with or without a weld or a seat
@@ -25,9 +26,10 @@ local M = Enum.Material
 
 Check.printLimit = 10
 
-local withInstance = { Instance = Instance }
-local Parts = Sandbox.load("src/server/systems/util/Parts.luau", withInstance)
-local Prompts = Sandbox.load("src/server/systems/util/Prompts.luau", withInstance)
+-- The modules these load (and the ones they require) build Instances.
+Sandbox.globals.Instance = Instance
+local Parts = Sandbox.load("src/server/systems/util/Parts.luau")
+local Prompts = Sandbox.load("src/server/systems/util/Prompts.luau")
 local Characters = Sandbox.load("src/server/systems/util/Characters.luau")
 local Seats = Sandbox.load("src/server/systems/util/Seats.luau")
 local MathUtil = Sandbox.load("src/shared/MathUtil.luau")
@@ -79,9 +81,16 @@ local function read(instance: any, property: string): any
 	return if ok then value else "<none>"
 end
 
+-- The FAIL message is built only on a mismatch: formatting every check's message took most of the
+-- run.
 local function sameProperties(got: any, want: any, properties: { string }, label: string)
 	for _, property in properties do
-		equal(read(got, property), read(want, property), label .. " " .. property)
+		local gotValue, wantValue = read(got, property), read(want, property)
+		if gotValue == wantValue then
+			check(true, "")
+		else
+			equal(gotValue, wantValue, label .. " " .. property)
+		end
 	end
 end
 
@@ -279,90 +288,21 @@ function Before.boardPrompt(root: any, modelName: string, reach: number): any
 	return board
 end
 
--- After: the callers' code now, word for word ----------------------------------------------------
+-- Now: the callers' code in src -------------------------------------------------------------------
 
-local After = {}
-
-function After.vehicleAttach(model: any, skid: any, part: any, offset: CFrame)
-	part.Anchored = false
-	part.Massless = true
-	Parts.weldTo(skid, part, SKID_TO_GROUND * offset, model)
-end
-function After.vehicleAttachTo(model: any, skid: any, bone: any, part: any, offset: CFrame)
-	if not bone then
-		After.vehicleAttach(model, skid, part, offset)
-		return
-	end
-	part.Anchored = false
-	part.Massless = true
-	Parts.weldTo(bone.part, part, CFrame.new(bone.pivot):Inverse() * offset, model)
-end
-function After.vehiclePiece(model: any, skid: any, bone: any, piece: any)
-	local part = Parts.fromPiece(piece, "Piece")
-	part.CastShadow = part.Transparency < 0.5
-	if piece.hideInCockpit then
-		part:SetAttribute("HideInCockpit", true) -- MechCamera
-	end
-	After.vehicleAttachTo(model, skid, bone, part, piece.offset)
-	return part
-end
-
-function After.creaturePiece(model: any, root: any, fromRoot: CFrame, piece: any)
-	local part = Parts.fromPiece(piece, "Part")
-	part.Massless = true
-	part.TopSurface = Enum.SurfaceType.Smooth
-	part.BottomSurface = Enum.SurfaceType.Smooth
-	Parts.weldTo(root, part, fromRoot * piece.offset, model)
-	return part
-end
-
-function After.weaponCreatePart(spec: any, scale: number?): any
-	local part = Parts.fromPiece(spec, nil, scale)
-	part.CanQuery = false
-	part.Massless = true
-	return part
-end
-function After.weaponAttach(handle: any, spec: any, parent: any): any
-	local part = After.weaponCreatePart(spec)
-	Parts.weldTo(handle, part, spec.offset, parent)
-	return part
-end
-
-function After.vehiclePrompt(
-	anchor: any,
-	objectText: string,
-	reach: number,
-	action: string,
-	key: any,
-	name: string?
-): any
-	return Prompts.make({
-		name = name or action .. "Prompt",
-		action = action,
-		object = objectText,
-		key = key,
-		reach = reach,
-	}, anchor)
-end
-
-function After.podPrompt(anchor: any, modelName: string): any
-	return Prompts.make({
-		name = "PodPrompt",
-		object = modelName .. " pod",
-		key = Enum.KeyCode.F,
-		reach = 6,
-	}, anchor)
-end
-function After.boardPrompt(root: any, modelName: string, reach: number): any
-	return Prompts.make({
-		name = "BoardPrompt",
-		action = "Board",
-		object = modelName .. " pod",
-		key = Enum.KeyCode.E,
-		reach = reach,
-		enabled = false,
-	}, root)
-end
+-- Vehicles/Placement (addPieces), CreatureModel (addPieces), Weapons/Pieces and util/Prompts
+-- (seat, pod, board) hold the code each caller runs, and load under Lune.
+local Placement = Sandbox.load("src/server/systems/Vehicles/Placement.luau", {
+	-- Its terrain raycast setup, run at require time.
+	RaycastParams = {
+		new = function()
+			return {}
+		end,
+	},
+	workspace = { Terrain = {} },
+})
+local Pieces = Sandbox.load("src/server/systems/Weapons/Pieces.luau")
+check(Placement.SKID_TO_GROUND == SKID_TO_GROUND, "Placement.SKID_TO_GROUND")
 
 -- Parts -------------------------------------------------------------------------------------------
 
@@ -372,32 +312,36 @@ Check.section("parts: vehicle pieces")
 local vehiclePieces = 0
 for _, loaded in Sandbox.loadVehicleModels() do
 	local spec = VehicleModel.define(loaded.spec)
-	-- One stand-in bone per bone name, pivoted where the model says, so pieces on bones weld to a
+	-- One stand-in bone part per bone, pivoted where the model says, so pieces on bones weld to a
 	-- bone part as in the game.
-	local pivots = {}
-	for _, bone in spec.bones or {} do
-		pivots[bone.name] = bone.pivot
-	end
-	for index, piece in spec.pieces do
-		local label = loaded.id .. " piece " .. index
-		local function bone(base: any)
-			local pivot = piece.bone and pivots[piece.bone]
-			if not pivot then
-				return nil
-			end
-			local part = newBase(base.CFrame * SKID_TO_GROUND * CFrame.new(pivot))
-			return { part = part, pivot = pivot }
+	local function bones(skid: any)
+		local each = {}
+		for _, bone in spec.bones or {} do
+			each[bone.name] = {
+				part = newBase(skid.CFrame * SKID_TO_GROUND * CFrame.new(bone.pivot)),
+				pivot = bone.pivot,
+			}
 		end
-		local wantSkid, gotSkid = newBase(BASE_AT), newBase(BASE_AT)
-		local wantBone, gotBone = bone(wantSkid), bone(gotSkid)
-		local want = Before.vehiclePiece(newModel(), wantSkid, wantBone, piece)
-		local got = After.vehiclePiece(newModel(), gotSkid, gotBone, piece)
+		return each
+	end
+	local wantSkid, gotSkid = newBase(BASE_AT), newBase(BASE_AT)
+	local wantBones, gotBones = bones(wantSkid), bones(gotSkid)
+	local wantModel, gotModel = newModel(), newModel()
+	for _, piece in spec.pieces do
+		Before.vehiclePiece(wantModel, wantSkid, piece.bone and wantBones[piece.bone], piece)
+	end
+	Placement.addPieces(gotModel, gotSkid, gotBones, spec.pieces)
+	local wants, gots = wantModel:GetChildren(), gotModel:GetChildren()
+	equal(#gots, #wants, loaded.id .. " pieces")
+	for index, piece in spec.pieces do
+		local bone = piece.bone and gotBones[piece.bone]
+		local wantBone = piece.bone and wantBones[piece.bone]
 		samePart(
-			got,
-			want,
-			if gotBone then gotBone.part else gotSkid,
+			gots[index],
+			wants[index],
+			if bone then bone.part else gotSkid,
 			if wantBone then wantBone.part else wantSkid,
-			label
+			loaded.id .. " piece " .. index
 		)
 		vehiclePieces += 1
 	end
@@ -409,7 +353,7 @@ for _, offset in { CFrame.identity, CFrame.new(1, 2, 3) * CFrame.Angles(0, 1, 0)
 	local wantSkid, gotSkid = newBase(BASE_AT), newBase(BASE_AT)
 	local want, got = Instance.new("Part"), Instance.new("Part")
 	Before.vehicleAttach(newModel(), wantSkid, want, offset)
-	After.vehicleAttach(newModel(), gotSkid, got, offset)
+	Placement.attach(newModel(), gotSkid, got, offset)
 	samePart(got, want, gotSkid, wantSkid, "attach " .. tostring(offset))
 	-- The ramps: a WedgePart welded to the skid at `relative`, no Anchored/Massless change.
 	local wantWedge, gotWedge = Instance.new("WedgePart"), Instance.new("WedgePart")
@@ -429,11 +373,16 @@ local creaturePieces = 0
 for _, loaded in Sandbox.loadCreatureModels() do
 	local spec = CreatureModel.define(loaded.spec)
 	local fromRoot = CreatureModel.rootCenter(spec):Inverse()
-	for index, piece in spec.pieces do
-		local wantRoot, gotRoot = newBase(BASE_AT), newBase(BASE_AT)
-		local want = Before.creaturePiece(newModel(), wantRoot, fromRoot, piece)
-		local got = After.creaturePiece(newModel(), gotRoot, fromRoot, piece)
-		samePart(got, want, gotRoot, wantRoot, loaded.id .. " piece " .. index)
+	local wantRoot, gotRoot = newBase(BASE_AT), newBase(BASE_AT)
+	local wantModel, gotModel = newModel(), newModel()
+	for _, piece in spec.pieces do
+		Before.creaturePiece(wantModel, wantRoot, fromRoot, piece)
+	end
+	CreatureModel.addPieces(gotModel, gotRoot, spec)
+	local wants, gots = wantModel:GetChildren(), gotModel:GetChildren()
+	equal(#gots, #wants, loaded.id .. " pieces")
+	for index in spec.pieces do
+		samePart(gots[index], wants[index], gotRoot, wantRoot, loaded.id .. " piece " .. index)
 		creaturePieces += 1
 	end
 end
@@ -446,11 +395,13 @@ for _, loaded in Sandbox.loadWeaponModels() do
 		local label = loaded.id .. " piece " .. index
 		local wantHandle, gotHandle = newBase(BASE_AT), newBase(BASE_AT)
 		local want = Before.weaponAttach(wantHandle, piece, newModel())
-		local got = After.weaponAttach(gotHandle, piece, newModel())
+		local gotModel = newModel()
+		Pieces.attach(gotHandle, piece, gotModel)
+		local got = gotModel:GetChildren()[1]
 		samePart(got, want, gotHandle, wantHandle, label)
 		-- Weapons.displayModel: scaled 1.6, no weld.
 		local wantShown = Before.weaponCreatePart(piece, 1.6)
-		local gotShown = After.weaponCreatePart(piece, 1.6)
+		local gotShown = Pieces.createPart(piece, 1.6)
 		samePart(gotShown, wantShown, nil, nil, label .. " on display")
 		weaponPieces += 1
 	end
@@ -482,15 +433,17 @@ for _, class in { "Part", "WedgePart", "CornerWedgePart" } do
 	do
 		local label = class .. " " .. (piece.name or "unnamed")
 		samePart(
-			After.weaponCreatePart(piece),
+			Pieces.createPart(piece),
 			Before.weaponCreatePart(piece, 1),
 			nil,
 			nil,
 			label .. " (weapon)"
 		)
 		local wantSkid, gotSkid = newBase(BASE_AT), newBase(BASE_AT)
+		local gotModel = newModel()
+		Placement.addPieces(gotModel, gotSkid, {}, { piece })
 		samePart(
-			After.vehiclePiece(newModel(), gotSkid, nil, piece),
+			gotModel:GetChildren()[1],
 			Before.vehiclePiece(newModel(), wantSkid, nil, piece),
 			gotSkid,
 			wantSkid,
@@ -507,8 +460,15 @@ for _, shape in { Enum.PartType.Ball, Enum.PartType.Cylinder, Enum.PartType.Bloc
 		offset = CFrame.identity,
 	}
 	local wantRoot, gotRoot = newBase(BASE_AT), newBase(BASE_AT)
+	local gotModel = newModel()
+	-- hipHeight 0 and rootSize 0: the root's center is the creature-space origin.
+	CreatureModel.addPieces(
+		gotModel,
+		gotRoot,
+		{ pieces = { piece }, hipHeight = 0, rootSize = Vector3.zero } :: any
+	)
 	samePart(
-		After.creaturePiece(newModel(), gotRoot, CFrame.identity, piece),
+		gotModel:GetChildren()[1],
 		Before.creaturePiece(newModel(), wantRoot, CFrame.identity, piece),
 		gotRoot,
 		wantRoot,
@@ -547,19 +507,19 @@ do
 		promptPair(action .. " " .. reach, function(anchor)
 			return Before.vehiclePrompt(anchor, "Jeep", reach, action, key, name)
 		end, function(anchor)
-			return After.vehiclePrompt(anchor, "Jeep", reach, action, key, name)
+			return Prompts.seat(anchor, "Jeep", reach, action, key, name)
 		end)
 	end
 end
 promptPair("PodPrompt", function(anchor)
 	return Before.podPrompt(anchor, "OG")
 end, function(anchor)
-	return After.podPrompt(anchor, "OG")
+	return Prompts.pod(anchor, "OG")
 end)
 promptPair("BoardPrompt", function(anchor)
 	return Before.boardPrompt(anchor, "OG", 12)
 end, function(anchor)
-	return After.boardPrompt(anchor, "OG", 12)
+	return Prompts.board(anchor, "OG", 12)
 end)
 
 -- Characters --------------------------------------------------------------------------------------

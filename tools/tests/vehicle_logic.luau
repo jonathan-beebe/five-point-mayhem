@@ -7,6 +7,11 @@
 --     for word as the reference, over a sweep of inputs: every vehicle model file (and the grey
 --     placeholder) where an input comes from a spec, plus zero, -0, negatives, values on each
 --     threshold and a hair either side, NaN
+--   - touches, shoveVelocity, driveSeat, clearsLobby, climbForce, isHeavy, smokes and burns (whose
+--     inline code was the module's code word for word) return the golden outputs generated once
+--     from the code at a50e99c, on edge inputs: each threshold and either side of it, zero, -0,
+--     NaN; touches also holds for every vehicle's reach box (points inside touch, points a stud
+--     past a face do not)
 --   - randomSpot makes the same calls, in the same order with the same arguments, on the Random
 --     it is given (a recording fake) as the inline code made on its own Random
 --   - a few plain values (constants, worked examples)
@@ -46,10 +51,6 @@ local BASE_MASS = 8 * 14 * 4
 local BASE_SPAN = 8 ^ 2 + 14 ^ 2
 local SETTLING = 45 -- studs/s^2 an empty vehicle slows by, frictionless skid and all
 local SPIN_SETTLING = 4 -- rad/s^2 an empty vehicle's yaw spin slows by
-local CLIMB_LIFT = 60 -- studs/s^2 the climber can accelerate a walker by, beyond gravity
-local HEAVY_CRASH = 0.25 -- share of MaxHealth from which a crash sounds heavy
-local SMOKE_SHARE = 0.5 -- health share at and below which the vehicle smokes
-local FIRE_SHARE = 0.25 -- and burns
 local HIT_MARGIN = 1.5 -- studs past the footprint that count as touching
 local RAM_MIN_SPEED = 12 -- studs/s; slower cars nudge
 local RAM_DAMAGE = 0.6 -- per stud/s of speed, times weight: 48 at 80 for the base car
@@ -64,7 +65,6 @@ local RAM_TRANSFER = 1.1 -- above 1, a struck vehicle of equal mass clears the r
 local RAM_MIN_RATIO = 0.15
 local RAM_MAX_RATIO = 3
 local MAX_SHOVE = 140 -- studs/s
-local SHOVE_LIFT = 0.25 -- upward share of a shove
 local TREE_BREAK = 25
 local TREE_PUSH = 0.4 -- share of pace x weight the felled tree's crown takes on
 local MAX_TREE_PUSH = 40 -- studs/s
@@ -113,10 +113,6 @@ function Reference.settle(car, velocity, spin, mass, size, dt)
 		plane = plane,
 		angular = angular,
 	}
-end
--- climbStep
-function Reference.climbForce(mass, gravity)
-	return mass * (gravity + CLIMB_LIFT)
 end
 -- build: strengths.
 function Reference.strength(spec)
@@ -217,10 +213,7 @@ function Reference.cabReach(cab)
 	return reach
 end
 
--- crashFeedback, sampleCrash, onHealth.
-function Reference.isHeavy(amount, maxHealth)
-	return amount >= HEAVY_CRASH * maxHealth
-end
+-- crashFeedback.
 function Reference.crashPoint(position, tracker, lossH, lossV, length)
 	local at = position
 	local before = Vector3.new(tracker.startX, 0, tracker.startZ)
@@ -229,36 +222,14 @@ function Reference.crashPoint(position, tracker, lossH, lossV, length)
 	end
 	return at
 end
-function Reference.smokes(share)
-	return share <= SMOKE_SHARE
-end
-function Reference.burns(share)
-	return share <= FIRE_SHARE
-end
 
 -- Contact damage and ramming.
-function Reference.touches(car, ground, position)
-	local at = ground:PointToObjectSpace(position)
-	return math.abs(at.X) <= car.reach.X
-		and math.abs(at.Z) <= car.reach.Z
-		and at.Y >= -2
-		and at.Y <= car.reach.Y
-end
 function Reference.ramTransfer(car, mass)
 	return RAM_TRANSFER * math.clamp(car.mass / mass, RAM_MIN_RATIO, RAM_MAX_RATIO) * car.ram
 end
 function Reference.shoveSpeed(car, pace, closing, transfer)
 	local speed = math.min(VehicleDamage.shovePace(pace, closing, car.stomps) * transfer, MAX_SHOVE)
 	return speed
-end
-function Reference.shoveVelocity(current, direction, speed)
-	local velocity = current
-		+ direction * speed
-		+ Vector3.new(0, speed * SHOVE_LIFT, 0)
-	if velocity.Magnitude > MAX_SHOVE then
-		velocity = velocity.Unit * MAX_SHOVE
-	end
-	return velocity
 end
 function Reference.pace(car, speed, dt)
 	car.pace = math.max(speed, car.pace - PACE_DECAY * dt)
@@ -332,13 +303,6 @@ function Reference.canSit(podState, legsAttribute)
 	end
 	return true
 end
--- addPrompts' driveSeat.
-function Reference.driveSeat(podState, driver, legsSeat)
-	if podState == PodState.DOCKED then
-		return driver
-	end
-	return if legsSeat and PodState.legsFree(podState) then legsSeat else nil
-end
 
 -- Parking.
 function Reference.spawnFrame(position, facing, spec)
@@ -347,18 +311,7 @@ function Reference.spawnFrame(position, facing, spec)
 	local center = position + look * (spec.footprint.Y / 2) + Vector3.new(0, 1, 0)
 	return CFrame.lookAt(center, center + look)
 end
--- isClear: the lobby test (false: too close), and the box it checks for parts.
-function Reference.clearsLobby(ground, W, L)
-	for _, x in { -1, 1 } do
-		for _, z in { -1, 1 } do
-			local corner = ground * Vector3.new(x * W / 2, 0, z * L / 2)
-			if Vector2.new(corner.X, corner.Z).Magnitude < Config.LOBBY_RADIUS + LOBBY_MARGIN then
-				return false
-			end
-		end
-	end
-	return true
-end
+-- isClear: the box it checks for parts.
 function Reference.clearBox(ground, W, L, height)
 	local size = Vector3.new(W + CLEARANCE * 2, height, L + CLEARANCE * 2)
 	local box = ground * CFrame.new(0, 0.1 + height / 2, 0)
@@ -454,6 +407,17 @@ local function show(...: any): string
 		)
 	end
 	return table.concat(parts, ", ")
+end
+
+-- Same bits as a golden value, vectors component by component; a NaN matches any NaN (the sign of
+-- a literal's NaN is the platform's).
+local function matches(got: any, want: any): boolean
+	if typeof(got) == "Vector3" and typeof(want) == "Vector3" then
+		return matches(got.X, want.X) and matches(got.Y, want.Y) and matches(got.Z, want.Z)
+	elseif type(got) == "number" and type(want) == "number" and want ~= want then
+		return got ~= got
+	end
+	return same(got, want)
 end
 
 local nan = 0 / 0
@@ -644,13 +608,46 @@ for _, entry in specs do
 end
 
 Check.section("VehicleDrive.climbForce")
-for _, mass in { 0, 1, 448, 1873.25, 9000.5, nan } do
-	for _, gravity in { 0, 50, 196.2, 400, -10 } do
-		check(
-			same(VehicleDrive.climbForce(mass, gravity), Reference.climbForce(mass, gravity)),
-			"climbForce " .. show(mass, gravity)
-		)
-	end
+-- Golden outputs of VehicleDrive.climbForce, generated once from the code at a50e99c: they pin its
+-- behaviour. A deliberate change updates this table. { mass, gravity, want }
+local CLIMB_FORCE = {
+	{ 0, 0, 0 },
+	{ 0, 50, 0 },
+	{ 0, 196.19999999999999, 0 },
+	{ 0, 400, 0 },
+	{ 0, -10, 0 },
+	{ 1, 0, 60 },
+	{ 1, 50, 110 },
+	{ 1, 196.19999999999999, 256.19999999999999 },
+	{ 1, 400, 460 },
+	{ 1, -10, 50 },
+	{ 448, 0, 26880 },
+	{ 448, 50, 49280 },
+	{ 448, 196.19999999999999, 114777.59999999999 },
+	{ 448, 400, 206080 },
+	{ 448, -10, 22400 },
+	{ 1873.25, 0, 112395 },
+	{ 1873.25, 50, 206057.5 },
+	{ 1873.25, 196.19999999999999, 479926.64999999997 },
+	{ 1873.25, 400, 861695 },
+	{ 1873.25, -10, 93662.5 },
+	{ 9000.5, 0, 540030 },
+	{ 9000.5, 50, 990055 },
+	{ 9000.5, 196.19999999999999, 2305928.1000000001 },
+	{ 9000.5, 400, 4140230 },
+	{ 9000.5, -10, 450025 },
+	{ nan, 0, nan },
+	{ nan, 50, nan },
+	{ nan, 196.19999999999999, nan },
+	{ nan, 400, nan },
+	{ nan, -10, nan },
+}
+for _, row in CLIMB_FORCE do
+	local mass, gravity, want = row[1], row[2], row[3]
+	check(
+		matches(VehicleDrive.climbForce(mass, gravity), want),
+		"climbForce " .. show(mass, gravity)
+	)
 end
 
 Check.section("VehicleDrive.strength / VehicleRam.weight")
@@ -736,18 +733,45 @@ check(
 -- VehicleDamage additions -------------------------------------------------------------------------
 
 Check.section("VehicleDamage crash feedback")
-local AMOUNTS = { 0, 1, 24.999999, 25, 25.000001, 60, 300, nan }
-for _, amount in AMOUNTS do
-	for _, maxHealth in { 1, 100, 141, 266 } do
-		check(
-			VehicleDamage.isHeavy(amount, maxHealth) == Reference.isHeavy(amount, maxHealth),
-			"isHeavy " .. show(amount, maxHealth)
+-- Golden outputs of VehicleDamage.isHeavy, smokes and burns, generated once from the code at
+-- a50e99c: they pin their behaviour. A deliberate change updates these tables.
+-- { amount, isHeavy for maxHealth 1, 100, 141, 266 as T/F }
+local HEAVY_MAX_HEALTHS = { 1, 100, 141, 266 }
+local IS_HEAVY = {
+	{ 0, "FFFF" },
+	{ 1, "TFFF" },
+	{ 24.999998999999999, "TFFF" },
+	{ 25, "TTFF" },
+	{ 25.000001000000001, "TTFF" },
+	{ 60, "TTTF" },
+	{ 300, "TTTT" },
+	{ nan, "FFFF" },
+}
+for _, row in IS_HEAVY do
+	for index, maxHealth in HEAVY_MAX_HEALTHS do
+		equal(
+			VehicleDamage.isHeavy(row[1], maxHealth),
+			string.sub(row[2], index, index) == "T",
+			"isHeavy " .. show(row[1], maxHealth)
 		)
 	end
 end
-for _, share in { -0.5, 0, 0.1, 0.25, 0.2500001, 0.4999999, 0.5, 0.5000001, 1, nan } do
-	check(VehicleDamage.smokes(share) == Reference.smokes(share), "smokes " .. show(share))
-	check(VehicleDamage.burns(share) == Reference.burns(share), "burns " .. show(share))
+-- { share, smokes, burns }
+local SMOKES_BURNS = {
+	{ -0.5, true, true },
+	{ 0, true, true },
+	{ 0.10000000000000001, true, true },
+	{ 0.25, true, true },
+	{ 0.2500001, true, false },
+	{ 0.4999999, true, false },
+	{ 0.5, true, false },
+	{ 0.50000009999999995, false, false },
+	{ 1, false, false },
+	{ nan, false, false },
+}
+for _, row in SMOKES_BURNS do
+	equal(VehicleDamage.smokes(row[1]), row[2], "smokes " .. show(row[1]))
+	equal(VehicleDamage.burns(row[1]), row[3], "burns " .. show(row[1]))
 end
 local STARTS = { { 0, 0 }, { 0.05, 0.05 }, { 0.1, 0 }, { 0.1000001, 0 }, { -30, 40 }, { 0, -90 } }
 for _, start in STARTS do
@@ -825,18 +849,56 @@ local DIRECTIONS = {
 	Vector3.new(0.6, 0, -0.8),
 	Vector3.new(-0.7071067811865476, 0, 0.7071067811865476),
 }
-for _, current in { Vector3.zero, Vector3.new(10, -3, 4), Vector3.new(-100, 50, 120) } do
-	for _, direction in DIRECTIONS do
-		for _, speed in { 0, 0.999, 1, 30, 111.9, 112, 140, nan } do
-			check(
-				same(
-					VehicleRam.shoveVelocity(current, direction, speed),
-					Reference.shoveVelocity(current, direction, speed)
-				),
-				"shoveVelocity " .. show(current, direction, speed)
-			)
-		end
-	end
+local EAST, SLANTED, DIAGONAL = DIRECTIONS[1], DIRECTIONS[2], DIRECTIONS[3]
+local STILL, DRIFTING, FAST = Vector3.zero, Vector3.new(10, -3, 4), Vector3.new(-100, 50, 120)
+-- Golden outputs of VehicleRam.shoveVelocity (current, direction, speed -> velocity), generated
+-- once from the code at a50e99c: they pin its behaviour. A deliberate change updates this table.
+-- Speeds: zero, -0, either side of a 1 stud/s throw, either side of MAX_SHOVE (140) after the
+-- lift, NaN.
+local SHOVE_VELOCITIES = {
+	{ STILL, SLANTED, 0, Vector3.new(0, 0, 0) },
+	{ STILL, SLANTED, -0, Vector3.new(0, 0, 0) },
+	{ STILL, SLANTED, 0.999, Vector3.new(0.59940004, 0.24975, -0.7992) },
+	{ STILL, SLANTED, 1, Vector3.new(0.6, 0.25, -0.8) },
+	{ STILL, SLANTED, 30, Vector3.new(18, 7.5, -24) },
+	{ STILL, SLANTED, 111.9, Vector3.new(67.14001, 27.975, -89.520004) },
+	{ STILL, SLANTED, 112, Vector3.new(67.200005, 28, -89.6) },
+	{ STILL, SLANTED, 140, Vector3.new(81.49197, 33.954987, -108.65596) },
+	{ STILL, SLANTED, nan, Vector3.new(nan, nan, nan) },
+	{ DRIFTING, SLANTED, 0, Vector3.new(10, -3, 4) },
+	{ DRIFTING, SLANTED, -0, Vector3.new(10, -3, 4) },
+	{ DRIFTING, SLANTED, 0.999, Vector3.new(10.5994, -2.75025, 3.2008) },
+	{ DRIFTING, SLANTED, 1, Vector3.new(10.6, -2.75, 3.2) },
+	{ DRIFTING, SLANTED, 30, Vector3.new(28, 4.5, -20) },
+	{ DRIFTING, SLANTED, 111.9, Vector3.new(77.14001, 24.975, -85.520004) },
+	{ DRIFTING, SLANTED, 112, Vector3.new(77.200005, 25, -85.6) },
+	{ DRIFTING, SLANTED, 140, Vector3.new(89.7004, 30.536306, -103.060036) },
+	{ DRIFTING, SLANTED, nan, Vector3.new(nan, nan, nan) },
+	{ FAST, SLANTED, 0, Vector3.new(-85.359505, 42.679752, 102.43141) },
+	{ FAST, SLANTED, -0, Vector3.new(-85.359505, 42.679752, 102.43141) },
+	{ FAST, SLANTED, 0.999, Vector3.new(-85.30199, 43.122513, 102.29379) },
+	{ FAST, SLANTED, 1, Vector3.new(-85.301926, 43.122955, 102.293655) },
+	{ FAST, SLANTED, 30, Vector3.new(-82, 57.5, 96) },
+	{ FAST, SLANTED, 111.9, Vector3.new(-32.859993, 77.975, 30.479996) },
+	{ FAST, SLANTED, 112, Vector3.new(-32.799995, 78, 30.400002) },
+	{ FAST, SLANTED, 140, Vector3.new(-16, 85, 8) },
+	{ FAST, SLANTED, nan, Vector3.new(nan, nan, nan) },
+	{ STILL, EAST, 30, Vector3.new(30, 7.5, 0) },
+	{ STILL, EAST, 112, Vector3.new(112, 28, 0) },
+	{ STILL, EAST, 140, Vector3.new(135.81995, 33.954987, 0) },
+	{ STILL, EAST, nan, Vector3.new(nan, nan, nan) },
+	{ STILL, DIAGONAL, 30, Vector3.new(-21.213203, 7.5, 21.213203) },
+	{ STILL, DIAGONAL, 112, Vector3.new(-79.19596, 28, 79.19596) },
+	{ STILL, DIAGONAL, 140, Vector3.new(-96.03921, 33.954987, 96.03921) },
+	{ STILL, DIAGONAL, nan, Vector3.new(nan, nan, nan) },
+}
+for _, row in SHOVE_VELOCITIES do
+	local current, direction, speed, want = row[1], row[2], row[3], row[4]
+	local got = VehicleRam.shoveVelocity(current, direction, speed)
+	check(
+		matches(got, want),
+		"shoveVelocity " .. show(current, direction, speed, got) .. " want " .. tostring(want)
+	)
 end
 equal(VehicleRam.MIN_SHOVE, 1, "MIN_SHOVE")
 equal(VehicleRam.STUN_TIME, 0.6, "STUN_TIME")
@@ -927,25 +989,116 @@ for _, stomps in { false, true } do
 end
 
 Check.section("VehicleRam.touches")
+-- Golden outputs of VehicleRam.touches for a 5 x 6 x 8 reach (FRAMES index, point in the ground's
+-- space -> touches), generated once from the code at a50e99c: they pin its behaviour. A
+-- deliberate change updates this table.
+-- FRAMES[1] puts points on each face and one float32 step past it; the turned frames 1e-4 inside
+-- and outside.
+local TOUCH_REACH = Vector3.new(5, 6, 8)
+local TOUCHES = {
+	{ 1, Vector3.new(0, 0, 0), true },
+	{ 1, Vector3.new(5, 0, 0), true },
+	{ 1, Vector3.new(5.000001, 0, 0), false },
+	{ 1, Vector3.new(-5, 0, 0), true },
+	{ 1, Vector3.new(-5.000001, 0, 0), false },
+	{ 1, Vector3.new(0, -2, 0), true },
+	{ 1, Vector3.new(0, -2.000001, 0), false },
+	{ 1, Vector3.new(0, 6, 0), true },
+	{ 1, Vector3.new(0, 6.000001, 0), false },
+	{ 1, Vector3.new(0, 0, 8), true },
+	{ 1, Vector3.new(0, 0, 8.000001), false },
+	{ 1, Vector3.new(0, 0, -8), true },
+	{ 1, Vector3.new(0, 0, -8.000001), false },
+	{ 1, Vector3.new(5, 6, 8), true },
+	{ 1, Vector3.new(-5, -2, -8), true },
+	{ 1, Vector3.new(5.000001, 6, 8), false },
+	{ 1, Vector3.new(nan, 0, 0), false },
+	{ 3, Vector3.new(0, 0, 0), true },
+	{ 3, Vector3.new(4.9999, 0, 0), true },
+	{ 3, Vector3.new(5.0001, 0, 0), false },
+	{ 3, Vector3.new(-4.9999, 0, 0), true },
+	{ 3, Vector3.new(-5.0001, 0, 0), false },
+	{ 3, Vector3.new(0, -1.9999, 0), true },
+	{ 3, Vector3.new(0, -2.0001, 0), false },
+	{ 3, Vector3.new(0, 5.9999, 0), true },
+	{ 3, Vector3.new(0, 6.0001, 0), false },
+	{ 3, Vector3.new(0, 0, 7.9999), true },
+	{ 3, Vector3.new(0, 0, 8.0001), false },
+	{ 3, Vector3.new(0, 0, -7.9999), true },
+	{ 3, Vector3.new(0, 0, -8.0001), false },
+	{ 3, Vector3.new(4.9999, 5.9999, 7.9999), true },
+	{ 3, Vector3.new(5.0001, 5.9999, 7.9999), false },
+	{ 3, Vector3.new(nan, 0, 0), false },
+	{ 4, Vector3.new(0, 0, 0), true },
+	{ 4, Vector3.new(4.9999, 0, 0), true },
+	{ 4, Vector3.new(5.0001, 0, 0), false },
+	{ 4, Vector3.new(-4.9999, 0, 0), true },
+	{ 4, Vector3.new(-5.0001, 0, 0), false },
+	{ 4, Vector3.new(0, -1.9999, 0), true },
+	{ 4, Vector3.new(0, -2.0001, 0), false },
+	{ 4, Vector3.new(0, 5.9999, 0), true },
+	{ 4, Vector3.new(0, 6.0001, 0), false },
+	{ 4, Vector3.new(0, 0, 7.9999), true },
+	{ 4, Vector3.new(0, 0, 8.0001), false },
+	{ 4, Vector3.new(0, 0, -7.9999), true },
+	{ 4, Vector3.new(0, 0, -8.0001), false },
+	{ 4, Vector3.new(4.9999, 5.9999, 7.9999), true },
+	{ 4, Vector3.new(5.0001, 5.9999, 7.9999), false },
+	{ 4, Vector3.new(nan, 0, 0), false },
+}
+for _, row in TOUCHES do
+	local ground = FRAMES[row[1]]
+	equal(
+		VehicleRam.touches(TOUCH_REACH, ground, ground * row[2]),
+		row[3],
+		"touches " .. row[1] .. " " .. tostring(row[2])
+	)
+end
+-- A zero reach: the ground point and the floor 2 below touch; a point beside them does not.
+equal(VehicleRam.touches(Vector3.zero, FRAMES[1], Vector3.zero), true, "touches zero reach")
+equal(
+	VehicleRam.touches(Vector3.zero, FRAMES[1], Vector3.new(0, -2, 0)),
+	true,
+	"touches zero reach, floor"
+)
+equal(
+	VehicleRam.touches(Vector3.zero, FRAMES[1], Vector3.new(1e-6, 0, 0)),
+	false,
+	"touches zero reach, beside"
+)
+-- Every vehicle's reach box, in every frame: points inside touch; a point a stud past any face
+-- does not.
 for _, entry in specs do
-	local car = ramCar(entry.spec)
-	local reach = car.reach
-	-- Points on and around the reach box's faces.
-	local xs = { 0, reach.X, reach.X + 1e-6, -reach.X, -reach.X - 1e-6 }
-	local ys = { -2, -2.0000001, 0, reach.Y, reach.Y + 1e-6 }
-	local zs = { 0, reach.Z, reach.Z + 1e-6, -reach.Z, -reach.Z - 1e-6 }
-	for _, ground in FRAMES do
-		for _, x in xs do
-			for _, y in ys do
-				for _, z in zs do
-					local position = ground * Vector3.new(x, y, z)
-					check(
-						VehicleRam.touches(reach, ground, position)
-							== Reference.touches(car, ground, position),
-						"touches " .. entry.id .. " " .. show(ground, x, y, z)
-					)
-				end
+	local reach = ramCar(entry.spec).reach
+	local inside, outside = {}, {}
+	for _, x in { 0, 0.99, -0.99 } do
+		for _, y in { -1.99, 0, 0.99 } do
+			for _, z in { 0, 0.99, -0.99 } do
+				table.insert(
+					inside,
+					Vector3.new(x * reach.X, if y == -1.99 then y else y * reach.Y, z * reach.Z)
+				)
 			end
+		end
+	end
+	for _, sign in { 1, -1 } do
+		table.insert(outside, Vector3.new(sign * (reach.X + 1), 0, 0))
+		table.insert(outside, Vector3.new(0, 0, sign * (reach.Z + 1)))
+	end
+	table.insert(outside, Vector3.new(0, -3, 0))
+	table.insert(outside, Vector3.new(0, reach.Y + 1, 0))
+	for index, ground in FRAMES do
+		for _, point in inside do
+			check(
+				VehicleRam.touches(reach, ground, ground * point),
+				"touches " .. entry.id .. " frame " .. index .. " inside " .. tostring(point)
+			)
+		end
+		for _, point in outside do
+			check(
+				not VehicleRam.touches(reach, ground, ground * point),
+				"touches " .. entry.id .. " frame " .. index .. " outside " .. tostring(point)
+			)
 		end
 	end
 end
@@ -1005,13 +1158,31 @@ for _, raw in { false, "docked", "flying", "returning", "landed", "wrecked" } do
 			"canSit " .. tostring(raw) .. " " .. tostring(attribute)
 		)
 	end
-	for _, legs in { false, legsSeat } do
-		equal(
-			PodState.driveSeat(state, driver, legs or nil),
-			Reference.driveSeat(state, driver, legs or nil),
-			"driveSeat " .. tostring(raw) .. " " .. tostring(legs)
-		)
-	end
+end
+-- Golden outputs of PodState.driveSeat (raw state attribute -> the seat taken without a legs seat,
+-- and with one), generated once from the code at a50e99c: they pin its behaviour. A deliberate
+-- change updates this table.
+local DRIVE_SEATS = {
+	{ false, "driver", "driver" },
+	{ "docked", "driver", "driver" },
+	{ "flying", nil, "legs" },
+	{ "returning", nil, nil },
+	{ "landed", nil, "legs" },
+	{ "wrecked", nil, nil },
+}
+local seatNamed = { driver = driver, legs = legsSeat }
+for _, row in DRIVE_SEATS do
+	local state = PodState.of(row[1] or nil)
+	equal(
+		PodState.driveSeat(state, driver, nil),
+		row[2] and seatNamed[row[2]],
+		"driveSeat " .. tostring(row[1]) .. " without legs"
+	)
+	equal(
+		PodState.driveSeat(state, driver, legsSeat),
+		row[3] and seatNamed[row[3]],
+		"driveSeat " .. tostring(row[1]) .. " with legs"
+	)
 end
 
 -- VehicleLayout -----------------------------------------------------------------------------------
@@ -1054,25 +1225,59 @@ for radius = 0, 140, 7 do
 		end
 	end
 end
--- Corners exactly on the margin: a 2 x 2 footprint whose corner sits at LOBBY_RADIUS + 10.
-local onMargin = (Config.LOBBY_RADIUS + 10) / math.sqrt(2) - 1
-table.insert(grounds, CFrame.new(onMargin, 0, onMargin))
 for _, entry in specs do
 	local W, L = entry.spec.footprint.X, entry.spec.footprint.Y
 	local height = VehicleLayout.clearHeight(entry.spec)
 	for _, ground in grounds do
-		check(
-			VehicleLayout.clearsLobby(ground, W, L) == Reference.clearsLobby(ground, W, L),
-			"clearsLobby " .. entry.id .. " " .. show(ground)
-		)
 		local wantBox, wantSize = Reference.clearBox(ground, W, L, height)
 		local gotBox, gotSize = VehicleLayout.clearBox(ground, W, L, height)
 		check(same(gotBox, wantBox) and same(gotSize, wantSize), "clearBox " .. entry.id)
 	end
 end
+-- Golden outputs of VehicleLayout.clearsLobby, generated once from the code at a50e99c: they pin
+-- its behaviour. A deliberate change updates this table. Each row: the ground's angle around the
+-- lobby, its distance past Config.LOBBY_RADIUS, its heading, W, L -> clears. The lobby test's
+-- margin is 10: at angle 0 and heading 0 a corner's distance past the radius is the distance
+-- minus W / 2.
+local CLEARS_LOBBY = {
+	{ 0, 0, 0, 0, 0, false },
+	{ 0, -50, 0, 0, 0, false },
+	{ 0, 9.9999, 0, 0, 0, false },
+	{ 0, 10, 0, 0, 0, true },
+	{ 0, 10.0001, 0, 0, 0, true },
+	{ 0, 200, 0, 0, 0, true },
+	{ 0, 12, 0, 4, 0, true },
+	{ 0, 12, 0, 4.001, 0, false },
+	{ 0, 12, 0, 0, 4, true },
+	{ 0, 12, 0, 4, 4, true },
+	{ 0, 12, 1.5707963267948966, 0, 4, true },
+	{ 0, 12, 1.5707963267948966, 0, 4.001, false },
+	{ 0, 12, 1.5707963267948966, 4.001, 0, true },
+	{ 0.7, 13, 1.1, 4, 4, true },
+	{ 0.7, 13, 1.1, 2, 6, false },
+	{ 0.7, 13, 2, 6, 2, false },
+	{ 0.7, 30, 2, 40, 10, false },
+	{ 0.7, 30, 0.5, 10, 40, false },
+	{ 0, -0, 0, 0, 0, false },
+	{ 0, nan, 0, 0, 0, true },
+	{ 0, 10, 0, nan, 4, true },
+}
+for _, row in CLEARS_LOBBY do
+	local angle, past, heading, W, L, want = row[1], row[2], row[3], row[4], row[5], row[6]
+	local ground = CFrame.new(Config.pointAt(angle, Config.LOBBY_RADIUS + past, 0.2))
+		* CFrame.Angles(0, heading, 0)
+	equal(
+		VehicleLayout.clearsLobby(ground, W, L),
+		want,
+		"clearsLobby " .. show(angle, past, heading, W, L)
+	)
+end
+-- A 2 x 2 footprint whose corner sits at LOBBY_RADIUS + 10 in exact arithmetic: float rounding
+-- puts it inside.
+local onMargin = (Config.LOBBY_RADIUS + 10) / math.sqrt(2) - 1
 equal(
 	VehicleLayout.clearsLobby(CFrame.new(onMargin, 0, onMargin), 2, 2),
-	Reference.clearsLobby(CFrame.new(onMargin, 0, onMargin), 2, 2),
+	false,
 	"clearsLobby on the margin"
 )
 

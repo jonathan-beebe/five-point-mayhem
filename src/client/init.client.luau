@@ -14,11 +14,9 @@ local PromptPanel = require(script.PromptPanel)
 local VehicleSounds = require(script.VehicleSounds)
 local VehicleHealth = require(script.VehicleHealth)
 local NukeStrike = require(script.NukeStrike)
-local SoundProbe = require(script.SoundProbe) -- TEMPORARY
 
 for _, feature in
 	{
-		SoundProbe, -- TEMPORARY
 		Announcer,
 		LobbyUI,
 		WeaponInput,

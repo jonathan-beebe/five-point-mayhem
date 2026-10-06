@@ -30,6 +30,7 @@ runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is
 | `src/shared/Names.luau` | Attribute, tag, collision group and instance names shared between modules and with the client |
 | `src/shared/PodState.luau` | A flying pod's states and the rules read from them (server and client) |
 | `src/shared/RemoteActions.luau` | The action strings remotes carry: pod and MAC commands, announcement styles |
+| `src/shared/RemoteGuard.luau` | What the server accepts from a client over a remote: finite drive axes, finite aim points, string arguments, and the per-player DriveInput rate limit |
 | `src/shared/MathUtil.luau` | Small math helpers shared by server and client (move toward, angle wrap, yaw, inside a box, clamp to range, follow rates) |
 | `src/shared/WeaponMath.luau` | Weapon math the server applies (spread, cooldown, melee reach, push cone, projectile step and size, display centering) |
 | `src/shared/VehicleDrive.luau` | Drive math the server applies (target speed, yaw rate, settling, constraint strengths) |
@@ -44,7 +45,7 @@ runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is
 | `src/server/creatureModels` | One part-built model per monster (format: `src/server/systems/CreatureModel.luau`) |
 | `tools/check.luau` | Runs every check: format, line length, lint, types, tests (`lune run tools/check [--fast]`) |
 | `tools/test.luau` | Runs every test (`lune run tools/test [filter]`) |
-| `tools/tests` | 17 tests, run under Lune. Data: `data_integrity` (catalogs, model files, sounds, regions), `names` (shared names' values), `collision_groups` (the collision matrix). Shared logic: `math_util`, `day_night`, `mech_gait`, `mech_climb`, `vehicle_damage`, `vehicle_logic`, `pod_pilot`, `weapon_math`, `creature_brain`, `admin_commands` (every command has a handler), `hud_layout`, `client_logic`. Server and client helpers: `server_helpers` (`systems/util`), `ui_kit` (`src/client/ui`). `vehicle_logic`, `pod_pilot`, `weapon_math`, `creature_brain`, `admin_commands`, `client_logic`, `server_helpers` and `ui_kit` also compare each module with the code it replaced |
+| `tools/tests` | 18 tests, run under Lune. Data: `data_integrity` (catalogs, model files, sounds, regions), `names` (shared names' values), `collision_groups` (the collision matrix). Shared logic: `math_util`, `day_night`, `mech_gait`, `mech_climb`, `vehicle_damage`, `vehicle_logic`, `pod_pilot`, `weapon_math`, `creature_brain`, `admin_commands` (every command has a handler), `hud_layout`, `client_logic`. Server and client helpers: `server_helpers` (`systems/util`), `ui_kit` (`src/client/ui`). Client lifecycle: `client_lifecycle` (LobbyUI and Announcer build nothing when required). `vehicle_logic`, `pod_pilot`, `weapon_math`, `creature_brain`, `admin_commands`, `client_logic`, `server_helpers` and `ui_kit` also compare each module with the code it replaced |
 | `tools/lib` | Lune harness: `Sandbox` loads game files outside Roblox, `Check` tallies assertions, `ModelChecks` validates model files |
 | `tools/preview` | Renders a vehicle, weapon or creature model file to a PNG of orthographic views |
 | `tools/audition.luau` | Plays every weapon and vehicle sound; paste into the Studio Command Bar during Play |
@@ -52,7 +53,7 @@ runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is
 | `src/server/systems` | Combat, weapons, players/teams, creatures, vehicles, admin powers, collision groups (`CollisionGroups.luau`: every group and pair) |
 | `src/server/systems/Vehicles` | Vehicles, one module per job behind `init.luau`: `Registry` (live cars), `Specs` (model files), `Placement`, `Climb`, `Drive`, `Health` (crashes, wrecks), `Trees`, `Contact` (rams), `Boarding` (prompts, cab), `Builder`, `Parking` (spots, respawn) |
 | `src/server/systems/Weapons` | Weapons, one module per job behind `init.luau`: `Tools` (tools, display stands), `FallbackModels` (models by catalog shape), `Effects` (beams, flashes, lightning), `Aim` (the shot record, spread, raycast), `Projectiles`, `Firing` (the FireWeapon remote, cooldowns), `kinds/` (one module per weapon kind) |
-| `src/client` | Feature modules started by `init.client.luau`: `LobbyUI` (armory), `WeaponInput`, `SniperScope`, `CarInput`, `VehicleHealth`, `VehicleSounds`, `MechMotion` (walker animation), `MechCamera`, `PodControls`, `PromptPanel` (prompt cards), `AdminPanel` (GOD MODE), `MacPanel`, `NukeStrike`, `Announcer`; `SoundProbe` is a TEMPORARY diagnostic |
+| `src/client` | Feature modules started by `init.client.luau`: `LobbyUI` (armory), `WeaponInput`, `SniperScope`, `CarInput`, `VehicleHealth`, `VehicleSounds`, `MechMotion` (walker animation), `MechCamera`, `PodControls`, `PromptPanel` (prompt cards), `AdminPanel` (GOD MODE), `MacPanel`, `NukeStrike`, `Announcer` |
 | `src/client/ui` | Client UI kit: `Create` (instance builders), `Theme` (fonts, shared colours, every ScreenGui's DisplayOrder), `TouchButton`, `Hud` (jump button lookup, inset matching, bottom-right controls list), `RightColumn` (GOD MODE and MAC toggles and panels) |
 
 ## UI conventions
@@ -62,8 +63,14 @@ runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is
   cards that come and go are exempt, as are the sniper scope's lens and reticle (they are the aim
   point) and full-screen flashes (MAYHEM, alarms).
 - Positions are measured from on-screen elements (the MAC button, the touch jump button), never
-  guessed pixel offsets. Client UI is built with the kit in `src/client/ui`; layout math is in
-  `src/shared/HudLayout.luau`.
+  guessed pixel offsets. The GOD MODE / MAC column hangs from the top-right corner of the area
+  Roblox keeps clear of the top bar and the device's notch (`ScreenInsets` `CoreUISafeInsets`).
+  Without a touch jump button to measure (desktop), SCOPE, VIEW and STAND fall back to fractions of
+  the screen, in the lower right. Client UI is built with the kit in `src/client/ui`; layout math
+  is in `src/shared/HudLayout.luau`.
+- `LobbyUI` and `Announcer` build their UI in `start()` (Announcer also on its first
+  announcement), never when required: `init.client.luau` requires every module before starting
+  each in its own thread, so an error building either screen cannot stop the client from loading.
 - Every ProximityPrompt is drawn as a card at the right edge, under the MAC button (left of an
   open MAC or GOD MODE panel), above the bottom-right touch buttons: key (TAP on touch), object,
   action. Tap or click a card to use it. `src/client/PromptPanel.luau`.
@@ -100,7 +107,8 @@ by respawning.
 
 ### The panel
 
-Admins see a **👑 GOD MODE** button in the top-right corner. It opens the panel:
+Admins see a **👑 GOD MODE** button in the top-right corner, just under the Roblox top bar. It
+opens the panel:
 
 ```
 ┌──────────────────────────────────┐
@@ -340,17 +348,17 @@ three: the pilot up front and two passengers behind (**F**, **Ride**, while it i
 Passengers look out in first person like the pilot.
 
 - **Launch**: in the pilot's seat, press **F** at the glowing button in the middle of the console,
-  or tap **LAUNCH** (above **STAND**). The pod lifts off and the legs park where they stand.
+  or tap **LAUNCH** (left of **STAND**). The pod lifts off and the legs park where they stand.
 - **Fly**: WASD/arrows, thumbstick or gamepad fly forward and turn. **E** climbs and **Q**
-  descends (touch: **▲** and **▼** beside the buttons). With neither, the pod holds its height. It
+  descends (touch: **▲** and **▼** left of **VIEW**). With neither, the pod holds its height. It
   never goes lower than 4 studs over the ground.
 - **Return home**: **F** at the console button again, or tap **RETURN HOME**. The autopilot
   climbs, flies back over the legs, turns to their heading and settles onto them.
 - **Land**: within 15 studs of the ground a **LAND** button (or **L**) appears beside
-  **RETURN HOME**. The pod settles to hover just over the ground and everyone aboard gets out
-  behind it. Walk up and press **E** (**Board**) to get back in: the first to board takes the
-  pilot's seat, the next two the passenger seats. The pod waits until the pilot presses
-  **LAUNCH** (or **F**).
+  **RETURN HOME**, where **STAND** is when docked. The pod settles to hover just over the ground
+  and everyone aboard gets out behind it. Walk up and press **E** (**Board**) to get back in: the
+  first to board takes the pilot's seat, the next two the passenger seats. The pod waits until the
+  pilot presses **LAUNCH** (or **F**).
 - While the pod flies the seats are locked: **STAND** is hidden and jumping does nothing. If the
   pilot dies or leaves the game, the pod flies home on its own, passengers and all.
 - **Drive the legs**: while the pod is away, walk up to the legs and press **E** (**Drive**) to

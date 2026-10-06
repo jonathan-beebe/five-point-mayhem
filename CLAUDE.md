@@ -21,8 +21,9 @@ placement on phone/tablet/desktop, network ownership, sounds by ear (`tools/audi
 ```
 src/shared/   ReplicatedStorage.Shared. Every file --!strict. Loads under Lune.
   *Catalog    data only: WeaponCatalog, VehicleCatalog, CreatureCatalog, SoundCatalog
-  pure logic  DayNight, MathUtil, MechGait, MechClimb, VehicleDefaults, and the modules in the
-              Conventions table (applied by a server or client module); tested in tools/tests
+  pure logic  DayNight, MathUtil, MechGait, MechClimb, VehicleDefaults, RemoteGuard, and the
+              modules in the Conventions table (applied by a server or client module); tested
+              in tools/tests
   registry    AdminCommands: admin command ids, chat list, panel buttons, gifts, power tuning
   Config      world layout, REGIONS, teams, admin ids;  Remotes: every RemoteEvent, typed record
   contracts   Names (attributes, tags, collision groups, instance names), PodState, RemoteActions
@@ -32,30 +33,33 @@ src/server/   ServerScriptService.Server. init.server.luau boots in this order:
   2. buildWorld(): Lobby, Roads, one building per Config.REGIONS entry (in order), Landscape
   3. Session, Creatures, Vehicles (PodFlight.start, then layOut), Admin, MacAccess .start()
   (Requiring Systems.Vehicles, first from Admin, creates the workspace Vehicles folder and
-  connects its Heartbeats, DriveInput and the Tree tag listener; requiring Systems.Weapons, first
-  from Session, creates the WeaponEffects folder and connects its Heartbeat, PlayerRemoving and
-  FireWeapon: see Hazards.)
+  connects its Heartbeats, DriveInput, PlayerRemoving and the Tree tag listener; requiring
+  Systems.Weapons, first from Session, creates the WeaponEffects folder and connects its
+  Heartbeat, PlayerRemoving and FireWeapon: see Hazards.)
   4. CharacterAutoLoads back on: nobody spawns before the lobby exists
   world/      Build helpers, Lobby, Roads, Landscape, Regions (per-landmark data), buildings/
   systems/    Combat, Weapons, WeaponSounds, Session, Creatures, Vehicles, PodFlight, Admin,
-              MacAccess, DayNight, CollisionGroups, WalkerProbe (TEMPORARY), and the model formats
+              MacAccess, DayNight, CollisionGroups, and the model formats
               VehicleModel, WeaponModel, CreatureModel
     Vehicles/ init.luau is the facade (damage, spawnNear, start) and wires the system. Modules:
               Registry (folder, `cars`, Car/Crash), Specs (model files, placeholder), Placement
               (vehicle space, welds, onTerrain), Climb, Drive, Health (crashes, wrecks), Trees,
               Contact (rams, contact damage), Boarding (prompts, cab), Builder, Parking (spots,
               respawn loop). init.luau's header lists the require graph.
-    Weapons/  init.luau is the facade (createTool, displayModel, give) and wires the system.
+    Weapons/  init.luau is the facade (createTool, displayModel, give, holds) and wires it.
               Modules: FallbackModels (models by catalog shape, loads under Lune), Effects
               (WeaponEffects folder, the shared Random, beam/flash/lightning), Aim (Shot, spread,
-              raycast), Tools (model files, tools, display models), Projectiles (flight, IMPACTS),
-              Firing (FireWeapon remote, cooldowns), kinds/ (one module per kind; kinds/init.luau
-              is the FIRE table). init.luau's header lists the require graph.
+              raycast), Pieces (piece parts, loads under Lune), Tools (model files, tools, display
+              models), Projectiles (flight, IMPACTS), Firing (FireWeapon remote, cooldowns), kinds/
+              (one module per kind; kinds/init.luau is the FIRE table). init.luau's header lists
+              the require graph.
     util/     Instance helpers the systems share: Characters, Seats, Prompts, Parts, Ownership
-              (tested in tools/tests/server_helpers.luau)
+              (tested in tools/tests/server_helpers.luau); Guard (tools/tests/guard.luau)
   vehicleModels/ weaponModels/ creatureModels/   one model file per catalog id
 src/client/   StarterPlayerScripts.Client. Feature modules with start(), each task.spawned by
-              init.client.luau so one failure cannot stop the rest.
+              init.client.luau so one failure cannot stop the rest. init.client requires every
+              module first, outside that isolation: LobbyUI and Announcer build nothing at require
+              time (tools/tests/client_lifecycle); a new screen builds in start().
   ui/         the UI kit (no start()): Create, Theme, TouchButton, Hud, RightColumn
 tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau, preview/
 ```
@@ -68,7 +72,9 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   `systems/CreatureModel.luau`. Weapon model files require `WeaponModel` and return
   `WeaponModel.define({...})`.
 - A broken vehicle file becomes a grey placeholder (`pcall` in `Vehicles/Specs`). A broken creature
-  file stops server boot (`Creatures` requires every one at load, no `pcall`).
+  file is warned and its kind never spawns (`Guard.run` per file in `Creatures`; roaming, themed,
+  lair and horde spawns skip it). A vehicle whose build throws leaves its spot empty (warned);
+  the respawn loop retries it.
 - `workspace.Creatures` (`Names.Instances.Creatures`) is created by `Creatures` when first
   required; `Combat` and `Vehicles/Trees` find it by name at call time.
 
@@ -105,8 +111,14 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   `tools/tests/collision_groups.luau`.
 - Pure logic lives in `src/shared`; the server or client module applies it to Instances; a Lune
   test in `tools/tests/<name>.luau` (`tools/lib/Check`: `check`, `equal`, `isNear`, `section`,
-  `finish`) compares logic moved out of a module with the code it replaced. A deliberate tuning
-  change updates that reference too. Raycasts, the clock, render steps, camera writes and every
+  `finish`) checks it in one of two ways. A reference: the inline code it replaced, frozen in the
+  test, run beside the module on the same inputs. A golden table: inputs and the outputs the code
+  gave at a named commit, generated once by a script and pasted in; a reference that is a copy of
+  the current code becomes a golden table. A deliberate tuning change updates the reference, or
+  regenerates the golden table from the new code. A test runs src code by loading its module
+  (`Sandbox.load`, `Sandbox.loadIsolated`), never by running lines cut out of a source file: code
+  a test needs from a module that does not load moves to one that does. Raycasts, the clock,
+  render steps, camera writes and every
   Instance write stay in the applying module (PodFlight also keeps the seat locks; PromptPanel the
   `MaxActivationDistance` save/restore). Lune cannot load `src/client`, so client rules and math
   go in `src/shared` too. Small math several modules share (`moveToward`, `wrapAngle`, `yawOf`,
@@ -117,10 +129,13 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   VehicleDrive VehicleSizing VehicleRam    Vehicles       vehicle_logic
     VehicleLayout VehicleDamage PodState
   WeaponMath (COOLDOWN_SLACK 0.85)         Weapons        weapon_math
+  RemoteGuard                              Drive Firing   remote_guard, remote_handlers
+                                             Admin
   PodPilot                                 PodFlight      pod_pilot
   CreatureBrain                            Creatures      creature_brain (+ CreatureCatalog)
   AdminCommands                            Admin          admin_commands
-  Loadout                                  LobbyUI        client_logic
+  Loadout                                  LobbyUI        client_logic, session
+                                             Session
   PodButtons                               PodControls    client_logic
   PromptRules                              PromptPanel    client_logic
   HealthBar                                VehicleHealth  client_logic
@@ -132,6 +147,17 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   ConfirmTap                               MacPanel       client_logic
   HudLayout                                client HUD     hud_layout
   ```
+- Remote handlers trust nothing a client sends: any value, NaN and ±inf included (`math.clamp`
+  passes NaN through). Check each argument with `src/shared/RemoteGuard` before use: numbers with
+  `isFinite`/`axis`, positions with `isFiniteVector`, strings with `optionalString`, and a
+  per-player `newLimiter`/`allow` bucket (fed `os.clock()`, dropped on PlayerRemoving) for a
+  remote sent every frame. A handler that keeps per-player state ignores a player who left
+  (`not player.Parent`) so an event queued behind PlayerRemoving makes none. A remote that
+  creates Instances (MAC SNIPER: `Weapons.holds`) is bounded by what the player already has.
+  A wrong type drops the event. A non-finite drive axis becomes 0 (neutral), as a missing lift
+  already did. A new handler is a named function on its module so
+  `tools/tests/remote_handlers.luau` can call it with recording fakes; a limit is set from the
+  client's real send rate with margin (RemoteGuard's header has DriveInput's numbers).
 - Server systems use `systems/util/` instead of writing these inline:
   - `Characters`: `parts(player)` (character, Humanoid, root; no health check), `living(player)`
     (all three and `Health > 0`, else nils), `humanoidOf`, `rootOf`, `isInside(player, box)`,
@@ -144,16 +170,35 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
     Weapons CanQuery false/Massless). `Parts.weldTo(base, part, offset, parent)` places, welds, and
     parents last.
   - `Ownership.set(part, player?)` (pcall'd SetNetworkOwner), `Ownership.isServerSimulated(part)`.
+  - `Guard.run(tag, fn, ...)`, `Guard.loop(tag, interval, pass)`,
+    `Guard.warn(tag, message, detail?)`: see Robustness.
   `tools/tests/server_helpers.luau` compares each helper with the inline code it replaced.
+- Robustness: one failure in server work warns and the rest carries on. A background loop is
+  `Guard.loop(tag, interval, pass)` (wait, then the pass in `xpcall`); no endless loop
+  (`while true`, `while task.wait`, `until false`) in `src/server` outside Guard
+  (`tools/tests/robustness.luau` fails on one). Per-item boot work (a
+  model file, a parking spot, each system's `start()` in `init.server.luau`) runs each item through
+  `Guard.run` and skips the item on failure; CharacterAutoLoads comes back on after a failed start.
+  A system starts its loops before its per-item work (Guard.loop waits first, so timing holds).
+  Guard warns `[Mayhem <tag>] <error's first line>` plus the traceback, at most once per
+  `REPEAT_SECONDS` (30) per tag and first line; past `MAX_TRACKED` keys it drops stale ones. A
+  catalog kind with no handler (`FIRE[kind]` nil) warns once and ignores the shot.
+  Heartbeat and event handlers need no guard: Roblox keeps the connection after an error.
+  `tools/tests/robustness.luau` runs Creatures, Parking, Firing and the boot with a failing piece.
 - Every file opens with a header comment saying what it is; match the surrounding comment density.
 
 ## UI rules
 
 - Never guess pixel offsets. Derive positions from measured on-screen elements
-  (`AbsolutePosition`/`AbsoluteSize` of the MAC button, the touch jump button, the thumbstick),
-  re-layout on resize, and fall back to fractions of the screen. Existing fixed offsets
-  (`RightColumn.TOGGLE_TOP` and `MARGIN`, `VehicleHealth` `BAR_BOTTOM`, LobbyUI's `-110`) are
-  debts, not precedent.
+  (`AbsolutePosition`/`AbsoluteSize` of the MAC button, the touch jump button, the thumbstick) or
+  from the engine's safe areas (a ScreenGui's `ScreenInsets`: `CoreUISafeInsets`, the default,
+  starts below the top bar and inside the device's cutouts; `GuiService.TopbarInset` is the free
+  strip inside the top bar), re-layout on resize, and fall back to fractions of the screen where
+  nothing is measurable (`HudLayout.*Fallback`: no jump button on desktop). A gap from a measured
+  edge (`RightColumn.MARGIN`, `GAP`) is a spacing value, not a guess. Fixed offsets the user
+  accepted: `VehicleHealth` `BAR_BOTTOM`, LobbyUI's CHOOSE WEAPONS `-110`. Not precedent.
+- On desktop the GOD MODE/MAC column overlaps Roblox's PlayerList (CoreGui, not measurable). The
+  user accepted the overlap; do not offset the column or disable the PlayerList for it.
 - Build client UI with `src/client/ui` (each header lists its functions):
   - `Create`: `create(className, properties, children?)`, `corner(radius)`,
     `stroke(color, thickness?, mode?)`, `padding(horizontal, vertical)`, `label(...)` (LobbyUI's)
@@ -163,8 +208,8 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   - `TouchButton.new(options)`: the round bottom-right touch button
   - `Hud`: `jumpButton`, `jumpWatcher`, `matchInset`, `edgeY`, `shownIn`, and the list of
     bottom-right control guis PromptPanel's cards stay above (`addBottomControls`)
-  - `RightColumn`: the GOD MODE/MAC column's constants, `makeToggle`, `makePanel`, `toggle`,
-    `panels`, `opened`
+  - `RightColumn`: the GOD MODE/MAC column's constants (`SCREEN_INSETS` for its ScreenGuis and
+    PromptPanel's), `makeToggle`, `makePanel`, `fullHeight`, `toggle`, `panels`, `opened`
   Layout arithmetic goes in `src/shared/HudLayout.luau` with a case in
   `tools/tests/hud_layout.luau`. `tools/tests/ui_kit.luau` compares each widget with the inline
   code it replaced.
@@ -231,8 +276,7 @@ and before the vehicle and weapon matches: `WeaponCatalog.find` matches by prefi
 `start()` listed in `init.client.luau`. 4) README God mode: panel, chat table, power.
 5) `tools/tests/admin_commands.luau`: add the new id, button, gift or tuning value to its pinned
 lists. `HANDLERS`, `POWER_UP` and `gift` are exposed on `Admin` for that test only. The
-`AdminCommand` remote forwards two arguments (`first`, `second`): a third works from chat only
-(known gap).
+`AdminCommand` remote (`Admin.onCommand`) forwards up to three string arguments, as chat does.
 Enforced: every id has a handler and every handler an id, unique lower-case ids, panel slots
 1..n, `POWER_UP` (plus `arsenal`, `car`) equals `POWER_UPS`, every panel gift is a power-up or a
 weapon id, `gift`'s branches and effects match the code before the admin registry refactor (run
@@ -249,7 +293,8 @@ time so prompt cards stay above them. 5) Name what needs a human in Studio: plac
 tablet and desktop.
 
 **Landmark / region.** 1) Append to `Config.REGIONS` (`id`, `name`, `country`).
-`Config.regionAngle` spaces regions 72° apart (five); a sixth needs that changed.
+`Config.regionAngle` spaces regions 360° / #REGIONS apart; `Config.betweenRegions` is half a step
+on (cross roads, lobby showcase, admin hordes).
 2) `src/server/world/Regions.luau`: `BUILDINGS` (module name), `GROUND` (`Enum.Material`),
 `TREES` (styles from Landscape's `TREE_BUILDERS`). 3) `world/buildings/<Name>.luau` exporting
 `build(parent: Instance, base: CFrame): Model`; local -Z of `base` faces the lobby.
@@ -266,9 +311,7 @@ After one failed guess at a bug only Studio shows, ship a probe and ask the user
 - Every wiring line ends in `-- TEMPORARY`; output lines start with a tag (`[WalkerProbe] ...`).
   `tools/check` lists every `TEMPORARY` line as a warning. Remove a probe once the user confirms
   the cause is known.
-- Two probes predate this branch and await the user: `src/server/systems/WalkerProbe.luau`
-  (walker skids under the ground) and `src/client/SoundProbe.luau` (which sound plays at game
-  start).
+- No probes are live.
 
 ## Hazards
 
@@ -284,9 +327,10 @@ Move these word for word; do not "simplify" them.
   - `Builder.build`'s `watchDriver`: the server takes the skid's network ownership when a driver
     sits and hands the leaving driver's character back in a `task.defer`.
   - `init.luau` wires everything at require time, in this order: Heartbeat `Drive.heartbeat`,
-    DriveInput `Drive.onInput`, the Tree tag listener (`Contact.addGrove`), Heartbeat
-    `Contact.heartbeat` (crash, then contact). Registry creates the Vehicles folder when first
-    required, before any of them. Keep new require-time work in init.luau, in that order.
+    DriveInput `Drive.onInput`, PlayerRemoving `Drive.forget`, the Tree tag listener
+    (`Contact.addGrove`), Heartbeat `Contact.heartbeat` (crash, then contact). Registry creates
+    the Vehicles folder when first required, before any of them. Keep new require-time work in
+    init.luau, in that order.
   - `Parking.start` (`Vehicles.start`) calls `PodFlight.start()` before `layOut()`.
   - Requires inside the folder stay acyclic: a module requires only modules above it in the
     table in init.luau's header. Two modules that need each other share a lower module or an
