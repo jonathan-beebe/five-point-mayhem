@@ -551,6 +551,7 @@ type Crash = {
 	height: number, -- solid height: smoke and fire rise from half of it
 	podBulk: number, -- the flying pod's, from its own hull boxes
 	podLength: number,
+	podMass: number, -- the pod's footprint mass, for rams into it while it is away
 	tracker: VehicleDamage.Tracker, -- the skid
 	podTracker: VehicleDamage.Tracker, -- the pod's root while it is away
 	podState: string, -- last seen; any change clears both trackers
@@ -591,6 +592,7 @@ local function newCrash(id: string, spec: VehicleModel.Model): Crash
 		height = height,
 		podBulk = VehicleDamage.bulk(pod.X, pod.Z, pod.Y),
 		podLength = pod.Z,
+		podMass = pod.X * pod.Z * 4,
 		tracker = VehicleDamage.newTracker(),
 		podTracker = VehicleDamage.newTracker(),
 		podState = "docked",
@@ -700,16 +702,18 @@ local function trackCrash(model: Model, car: Car, dt: number)
 	end
 end
 
--- A ram hits the struck vehicle like a crash that lost `loss` studs/s (VehicleDamage.ramLoss).
--- The shove sets the velocity, so the tracker starts over.
-local function rammed(other: Car, loss: number)
+-- A ram hits the struck vehicle like a crash that lost `loss` studs/s (VehicleDamage.ramLoss):
+-- its legs (the skid), or with `pod` its pod away from them. A shove sets the velocity, so the
+-- tracker starts over.
+local function rammed(other: Car, loss: number, pod: boolean?)
 	local crash = other.crash
-	VehicleDamage.clear(crash.tracker)
-	local amount = VehicleDamage.damage(crash.bulk, loss, 0)
+	local part = if pod and other.pod then other.pod.root else other.skid
+	VehicleDamage.clear(if pod then crash.podTracker else crash.tracker)
+	local amount = VehicleDamage.damage(if pod then crash.podBulk else crash.bulk, loss, 0)
 	local model = other.skid.Parent
 	if amount > 0 and model and model:IsA("Model") then
-		crashFeedback(model, other.skid.Position, amount)
-		crash.lastHit = other.skid
+		crashFeedback(model, part.Position, amount)
+		crash.lastHit = part
 		Vehicles.damage(model, amount)
 	end
 end
@@ -746,12 +750,23 @@ local function wreck(model: Model, car: Car)
 	model:SetAttribute("Wrecked", true)
 	model:SetAttribute("Health", 0)
 	cars[model] = nil
-	-- The skid is frictionless: the drive constraints, held at zero, are the hulk's brake.
-	setLimits(car, car.driveForce, car.driveTorque)
-	car.mover.PlaneVelocity = Vector2.zero
-	car.turner.AngularVelocity = Vector3.zero
-	car.mover.Enabled = true
-	car.turner.Enabled = true
+	-- The skid is frictionless: the drive constraints, held at zero, are the hulk's brake. A
+	-- rammed wreck flies its throw out first (the rest of STUN_TIME), then brakes.
+	local function brake()
+		setLimits(car, car.driveForce, car.driveTorque)
+		car.mover.PlaneVelocity = Vector2.zero
+		car.turner.AngularVelocity = Vector3.zero
+		car.mover.Enabled = true
+		car.turner.Enabled = true
+	end
+	local stun = car.stunnedUntil - os.clock()
+	if stun > 0 then
+		car.mover.Enabled = false
+		car.turner.Enabled = false
+		task.delay(stun, brake)
+	else
+		brake()
+	end
 	-- A walker wrecked mid-climb lets go and falls.
 	stopClimb(car)
 	if car.pod then
@@ -986,6 +1001,12 @@ local function fell(tree: Model, direction: Vector3, pace: number, weight: numbe
 	task.delay(TREE_REGROW, regrow, sapling, grove, box, extent)
 end
 
+-- The share of the rammer's speed a struck body of `mass` takes on: RAM_TRANSFER x their mass
+-- ratio (clamped) x ram.
+local function ramTransfer(car: Car, mass: number): number
+	return RAM_TRANSFER * math.clamp(car.mass / mass, RAM_MIN_RATIO, RAM_MAX_RATIO) * car.ram
+end
+
 -- Throws a struck vehicle along `direction`, scaled by the rammer's pace, ram and the two masses,
 -- and frees it from its drive constraints for STUN_TIME so the throw carries. Its damage comes
 -- from `closing`, the rammer's real speed toward it.
@@ -998,9 +1019,10 @@ local function shove(
 	now: number
 )
 	local skid = other.skid
-	local ratio = math.clamp(car.mass / other.mass, RAM_MIN_RATIO, RAM_MAX_RATIO)
-	local transfer = RAM_TRANSFER * ratio * car.ram
-	local speed = math.min(pace * transfer, MAX_SHOVE)
+	local transfer = ramTransfer(car, other.mass)
+	local speed = math.min(VehicleDamage.shovePace(pace, closing, car.stomps) * transfer, MAX_SHOVE)
+	-- Stunned first: a ram that wrecks it lets the throw fly before the wreck brakes (wreck).
+	other.stunnedUntil = now + STUN_TIME
 	rammed(other, VehicleDamage.ramLoss(closing, transfer, car.stomps))
 	-- The server must own the struck vehicle for the throw to take. A driven one it already owns;
 	-- an empty one it takes here. One carrying only passengers stays with their client, which
@@ -1019,7 +1041,6 @@ local function shove(
 		velocity = velocity.Unit * MAX_SHOVE
 	end
 	skid.AssemblyLinearVelocity = velocity
-	other.stunnedUntil = now + STUN_TIME
 end
 
 -- Vehicles and trees are checked every frame with a box that reaches one frame ahead, so the hit
@@ -1074,7 +1095,29 @@ local function hurtTouching(model: Model, car: Car, dt: number, checkTargets: bo
 			continue
 		end
 		local other = cars[victim :: Model]
-		if other then
+		local pod = other and other.pod
+		if
+			other
+			and pod
+			and not PodFlight.isDocked(pod)
+			and part.AssemblyRootPart == pod.root.AssemblyRootPart
+		then
+			-- Its pod, away from the legs: damage only. The pod's own mover holds its course; the
+			-- legs are not touched.
+			car.struck[victim :: Model] = now
+			local struck = pod.root.AssemblyLinearVelocity
+			local outward = away(pod.root.Position)
+			local closing = VehicleDamage.closingSpeed(
+				velocity.X,
+				velocity.Z,
+				struck.X,
+				struck.Z,
+				outward.X,
+				outward.Z
+			)
+			local transfer = ramTransfer(car, other.crash.podMass)
+			rammed(other, VehicleDamage.ramLoss(closing, transfer, car.stomps), true)
+		elseif other then
 			car.struck[victim :: Model] = now
 			local outward = away(other.skid.Position)
 			local direction = if car.stomps then outward else heading + outward * 0.5

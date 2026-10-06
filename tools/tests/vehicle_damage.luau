@@ -7,7 +7,7 @@
 --   - walkers land a 12-stud drop and a 14.4-stud MechClimb step-off free and feel a 24-stud one
 --   - crashes worth less than 1 health cost nothing
 --   - rams: damage from the rammer's real closing speed; walkers stomp at walking pace, not
---     creeping or turning in place
+--     creeping or turning in place, and throw a car they creep or turn into only that slowly
 --   - damage, damage as a share of health, and health grow with bulk; bulk clamps
 --   - the tracker: crashes, landings and shoves count once; driving, braking, ramps, pods turning
 --     round and cleared jumps do not
@@ -226,6 +226,33 @@ check(
 	ramDamage(og, jeep, 3) < VehicleDamage.maxHealth(jeep.bulk),
 	"OG at 3 studs/s does not wreck a jeep"
 )
+
+-- Mirrors Vehicles.shove's throw speed: a walker's pace is at least STOMP_PACE (25), capped at
+-- MAX_SHOVE (140).
+local function throw(rammer, struck, closing: number): number
+	local pace = if rammer.stomps then 25 else closing
+	return math.min(
+		VehicleDamage.shovePace(pace, closing, rammer.stomps) * transfer(rammer, struck),
+		140
+	)
+end
+
+do
+	local free = VehicleDamage.thresholds(jeep.bulk)
+	for id, walker in vehicles do
+		if walker.stomps then
+			check(throw(walker, jeep, 0) == 0, id .. ": turning in place throws a jeep at 0")
+			local creep = throw(walker, jeep, 1.9)
+			check(
+				creep < free,
+				id .. ": creeping throws a pinned jeep at " .. creep .. ", want < " .. free
+			)
+			local walk = throw(walker, jeep, walker.speed)
+			check(walk >= free, id .. " walking throws a jeep at " .. walk .. ", want >= " .. free)
+		end
+	end
+	check(VehicleDamage.shovePace(60, 1, false) == 60, "a car's throw keeps its pace")
+end
 
 -- Tracker --------------------------------------------------------------------------------------
 

@@ -39,7 +39,8 @@ local MIN_DAMAGE = 1 -- less is no crash: no sound, no sparks, no health lost
 -- A ram hits the struck vehicle like a crash at the rammer's closing speed (its velocity toward
 -- the struck one, less the struck one's) x the shove's transfer (mass ratio x ram), up to
 -- RAM_MAX_LOSS. A walker's legs come down on it: STOMP_SCALE times that, nothing below
--- STOMP_MIN_CLOSING (creeping, turning in place).
+-- STOMP_MIN_CLOSING (creeping, turning in place), and below it only a throw at that closing speed
+-- (shovePace).
 local RAM_MAX_LOSS = 140
 local STOMP_SCALE = 1.5
 local STOMP_MIN_CLOSING = 2
@@ -114,6 +115,16 @@ function VehicleDamage.ramLoss(closing: number, transfer: number, walker: boolea
 		transfer *= STOMP_SCALE
 	end
 	return math.min(closing * transfer, RAM_MAX_LOSS)
+end
+
+-- The pace a rammer throws the vehicle it hits with: its remembered `pace`, but a walker creeping
+-- or turning in place (closing under STOMP_MIN_CLOSING) throws only at `closing`, so a car pinned
+-- against a wall is not thrown into it.
+function VehicleDamage.shovePace(pace: number, closing: number, walker: boolean?): number
+	if walker and closing < STOMP_MIN_CLOSING then
+		return closing
+	end
+	return pace
 end
 
 function VehicleDamage.wreckRadius(bulk: number): number
