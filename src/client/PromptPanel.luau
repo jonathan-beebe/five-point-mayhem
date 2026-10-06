@@ -23,6 +23,7 @@ local GuiService = game:GetService("GuiService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local MacPanel = require(script.Parent.MacPanel)
@@ -105,6 +106,8 @@ local function applyAll()
 	end
 end
 
+local removeCard: (ProximityPrompt) -> () -- Cards, below
+
 local function track(prompt: ProximityPrompt)
 	if prompts[prompt] then
 		return
@@ -114,6 +117,7 @@ local function track(prompt: ProximityPrompt)
 	prompt.Destroying:Connect(function()
 		prompts[prompt] = nil
 		serverReach[prompt] = nil
+		removeCard(prompt) -- a destroyed prompt is not always hidden first
 	end)
 	apply(prompt)
 end
@@ -127,6 +131,7 @@ type Card = {
 	object: TextLabel,
 	action: TextLabel,
 	progress: Frame,
+	tween: Tween?, -- the running hold progress fill
 	holding: boolean,
 	connections: { RBXScriptConnection },
 }
@@ -170,6 +175,16 @@ local function release(card: Card)
 		card.holding = false
 		card.prompt:InputHoldEnd()
 	end
+end
+
+-- Cancels the hold progress fill and empties the bar.
+local function stopFill(card: Card)
+	local tween = card.tween
+	if tween then
+		card.tween = nil
+		tween:Cancel()
+	end
+	card.progress.Size = UDim2.fromOffset(0, 3)
 end
 
 local function makeCard(prompt: ProximityPrompt, inputType: Enum.ProximityPromptInputType): Card
@@ -230,6 +245,7 @@ local function makeCard(prompt: ProximityPrompt, inputType: Enum.ProximityPrompt
 		object = object,
 		action = action,
 		progress = progress,
+		tween = nil,
 		holding = false,
 		connections = {},
 	}
@@ -247,17 +263,19 @@ local function makeCard(prompt: ProximityPrompt, inputType: Enum.ProximityPrompt
 	connect(prompt:GetPropertyChangedSignal("ActionText"):Connect(refreshText))
 	connect(prompt:GetPropertyChangedSignal("ObjectText"):Connect(refreshText))
 	connect(prompt.PromptButtonHoldBegan:Connect(function()
+		stopFill(card)
 		if prompt.HoldDuration > 0 then
-			progress.Size = UDim2.fromOffset(0, 3)
-			TweenService:Create(
+			local tween = TweenService:Create(
 				progress,
 				TweenInfo.new(prompt.HoldDuration, Enum.EasingStyle.Linear),
 				{ Size = UDim2.new(1, 0, 0, 3) }
-			):Play()
+			)
+			card.tween = tween
+			tween:Play()
 		end
 	end))
 	connect(prompt.PromptButtonHoldEnded:Connect(function()
-		progress.Size = UDim2.fromOffset(0, 3)
+		stopFill(card)
 	end))
 	-- Touch, and mouse clicks: the card is the button.
 	connect(frame.InputBegan:Connect(function(input)
@@ -280,17 +298,44 @@ local function makeCard(prompt: ProximityPrompt, inputType: Enum.ProximityPrompt
 	return card
 end
 
-local function removeCard(prompt: ProximityPrompt)
+function removeCard(prompt: ProximityPrompt)
 	local card = cards[prompt]
 	if not card then
 		return
 	end
 	cards[prompt] = nil
 	release(card)
+	stopFill(card)
 	for _, connection in card.connections do
 		connection:Disconnect()
 	end
 	card.frame:Destroy()
+end
+
+-- The prompt input type matching a last input type, or nil for one that says nothing (focus,
+-- text input).
+local function promptInputType(inputType: Enum.UserInputType): Enum.ProximityPromptInputType?
+	if inputType == Enum.UserInputType.Touch then
+		return Enum.ProximityPromptInputType.Touch
+	end
+	if string.match(inputType.Name, "^Gamepad") then
+		return Enum.ProximityPromptInputType.Gamepad
+	end
+	if inputType == Enum.UserInputType.Keyboard or string.match(inputType.Name, "^Mouse") then
+		return Enum.ProximityPromptInputType.Keyboard
+	end
+	return nil
+end
+
+-- Redraws every shown card's key for a new input type (TAP on touch, the gamepad or keyboard key).
+local function refreshKeys(inputType: Enum.UserInputType)
+	local promptType = promptInputType(inputType)
+	if not promptType then
+		return
+	end
+	for prompt, card in cards do
+		card.key.Text = keyText(prompt, promptType)
+	end
 end
 
 -- Layout ------------------------------------------------------------------------------------------
@@ -413,6 +458,7 @@ function PromptPanel.start()
 		layout()
 	end)
 	ProximityPromptService.PromptHidden:Connect(removeCard)
+	UserInputService.LastInputTypeChanged:Connect(refreshKeys)
 
 	Workspace.DescendantAdded:Connect(function(descendant)
 		if descendant:IsA("ProximityPrompt") then

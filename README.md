@@ -27,9 +27,10 @@ lune run tools/tests/day_night.luau   # day/night clock math, no Studio needed
 
 ## UI conventions
 
-- Nothing goes in the center of the screen. Overlays, prompts and buttons sit at the edges.
-  Exempt: the sniper scope's lens and reticle (they are the aim point), the lobby armory (a
-  full-screen menu), and full-screen flashes (MAYHEM, alarms).
+- Nothing in the persistent HUD goes in the center of the screen. Overlays and buttons sit at the
+  edges. UI the player opens and closes (the MAC and GOD MODE panels, the lobby armory) and prompt
+  cards that come and go are exempt, as are the sniper scope's lens and reticle (they are the aim
+  point) and full-screen flashes (MAYHEM, alarms).
 - Positions are measured from on-screen elements (the MAC button, the touch jump button), never
   guessed pixel offsets.
 - Every ProximityPrompt is drawn as a card at the right edge, under the MAC button (left of an
