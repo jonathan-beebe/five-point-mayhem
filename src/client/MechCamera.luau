@@ -16,10 +16,13 @@
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
+local Names = require(ReplicatedStorage.Shared.Names)
+local PodState = require(ReplicatedStorage.Shared.PodState)
 local MechMotion = require(script.Parent.MechMotion)
 
 local MechCamera = {}
@@ -67,7 +70,7 @@ local applied = CFrame.identity -- the shake added to the camera last frame
 -- Buttons ---------------------------------------------------------------------------------------
 
 local buttonGui = Instance.new("ScreenGui")
-buttonGui.Name = "MechButtons"
+buttonGui.Name = Names.Instances.MechButtons
 buttonGui.ResetOnSpawn = false
 buttonGui.DisplayOrder = 6
 buttonGui.Enabled = false
@@ -158,26 +161,25 @@ end
 
 -- Whether the model's flying pod is away from its legs.
 local function airborne(model: Model): boolean
-	return (model:GetAttribute("PodState") or "docked") ~= "docked"
+	return PodState.of(model:GetAttribute(Names.Attributes.PodState)) ~= PodState.DOCKED
 end
 
 -- Whether the model's flying pod locks its seats (in the air; a landed pod lets riders out).
 local function seatsLocked(model: Model): boolean
-	local state = model:GetAttribute("PodState")
-	return state == "flying" or state == "returning"
+	return PodState.inFlight(PodState.of(model:GetAttribute(Names.Attributes.PodState)))
 end
 
 -- Pieces the pilot looks through from inside (Vehicles sets HideInCockpit); local to this client.
 local function hideCockpitPieces(model: Model, hidden: boolean)
 	for _, part in model:GetDescendants() do
-		if part:IsA("BasePart") and part:GetAttribute("HideInCockpit") then
+		if part:IsA("BasePart") and part:GetAttribute(Names.Attributes.HideInCockpit) then
 			part.LocalTransparencyModifier = if hidden then 1 else 0
 		end
 	end
 end
 
 local function focusPart(current: Session): BasePart?
-	local focus = current.model:FindFirstChild("CameraFocus")
+	local focus = current.model:FindFirstChild(Names.Instances.CameraFocus)
 	return if focus and focus:IsA("BasePart") then focus else nil
 end
 
@@ -220,8 +222,10 @@ end
 local function heading(current: Session): number?
 	local root = current.model.PrimaryPart
 	if airborne(current.model) then
-		local pod =
-			current.model:FindFirstChild("Bone_" .. tostring(current.model:GetAttribute("PodBone")))
+		local pod = current.model:FindFirstChild(
+			Names.Instances.BonePrefix
+				.. tostring(current.model:GetAttribute(Names.Attributes.PodBone))
+		)
 		root = if pod and pod:IsA("BasePart") then pod else root
 	end
 	if not root then
@@ -339,7 +343,7 @@ local function enter(humanoid: Humanoid, model: Model, seat: BasePart?)
 	)
 	table.insert(
 		current.connections,
-		model:GetAttributeChangedSignal("PodState"):Connect(function()
+		model:GetAttributeChangedSignal(Names.Attributes.PodState):Connect(function()
 			if session == current then
 				current.yaw = nil -- the heading source changes
 				showButtons(current)
@@ -354,7 +358,7 @@ end
 
 -- The walker whose cab holds this point, if any.
 local function cabAt(position: Vector3): Model?
-	for _, cab in CollectionService:GetTagged("MechCab") do
+	for _, cab in CollectionService:GetTagged(Names.Tags.MechCab) do
 		if cab:IsA("BasePart") and cab.Parent and cab.Parent:IsA("Model") then
 			local offset = cab.CFrame:PointToObjectSpace(position)
 			local half = cab.Size / 2
@@ -374,11 +378,11 @@ end
 -- seat in one (not a pod walker's legs seat, which rides outside).
 local function inCockpit(seat: BasePart): boolean
 	local model = seat.Parent
-	local driver = model and model:FindFirstChild("DriverSeat")
+	local driver = model and model:FindFirstChild(Names.Instances.DriverSeat)
 	return driver ~= nil
-		and driver:GetAttribute("CockpitCamera") == true
+		and driver:GetAttribute(Names.Attributes.CockpitCamera) == true
 		and (seat:IsA("Seat") or seat == driver)
-		and not seat:GetAttribute("LegsSeat")
+		and not seat:GetAttribute(Names.Attributes.LegsSeat)
 end
 
 -- Called on every seat change and every frame: seated in a cockpit, or standing in a cab, keeps
@@ -430,7 +434,7 @@ end
 local function watchCab()
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if humanoid and (session or #CollectionService:GetTagged("MechCab") > 0) then
+	if humanoid and (session or #CollectionService:GetTagged(Names.Tags.MechCab) > 0) then
 		update(humanoid)
 	end
 end

@@ -7,6 +7,7 @@ local Teams = game:GetService("Teams")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Names = require(ReplicatedStorage.Shared.Names)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 local Announcer = require(script.Parent.Announcer)
@@ -290,7 +291,7 @@ local cards: { [string]: TextButton } = {}
 
 -- Admin-only weapons are listed for admins only. The server refuses them for everyone else.
 local function isAvailable(weapon: WeaponCatalog.Weapon): boolean
-	return not weapon.adminOnly or player:GetAttribute("IsAdmin") == true
+	return not weapon.adminOnly or player:GetAttribute(Names.Attributes.IsAdmin) == true
 end
 
 local function refresh()
@@ -474,7 +475,9 @@ local hiddenByChoice = false
 local function updateVisibility()
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	local inLobby = humanoid ~= nil and humanoid.Health > 0 and not player:GetAttribute("Deployed")
+	local inLobby = humanoid ~= nil
+		and humanoid.Health > 0
+		and not player:GetAttribute(Names.Attributes.Deployed)
 	panel.Visible = inLobby and not hiddenByChoice
 	openButton.Visible = inLobby and hiddenByChoice
 end
@@ -500,15 +503,15 @@ function LobbyUI.start()
 	refresh()
 	updateVisibility()
 
-	player:GetAttributeChangedSignal("Deployed"):Connect(function()
-		if player:GetAttribute("Deployed") then
+	player:GetAttributeChangedSignal(Names.Attributes.Deployed):Connect(function()
+		if player:GetAttribute(Names.Attributes.Deployed) then
 			Announcer.show("GO! Run out through any glowing gate!", rgb(120, 255, 140), 4)
 		end
 		hiddenByChoice = false
 		updateVisibility()
 	end)
 	player:GetPropertyChangedSignal("Team"):Connect(refresh)
-	player:GetAttributeChangedSignal("IsAdmin"):Connect(refresh)
+	player:GetAttributeChangedSignal(Names.Attributes.IsAdmin):Connect(refresh)
 	Teams.ChildAdded:Connect(refresh)
 	player.CharacterAdded:Connect(function(character)
 		hiddenByChoice = false

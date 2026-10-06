@@ -10,6 +10,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local CreatureCatalog = require(ReplicatedStorage.Shared.CreatureCatalog)
+local Names = require(ReplicatedStorage.Shared.Names)
+local RemoteActions = require(ReplicatedStorage.Shared.RemoteActions)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Combat = require(script.Parent.Combat)
 local CreatureModel = require(script.Parent.CreatureModel)
@@ -30,7 +32,7 @@ local KINDS = CreatureCatalog.KINDS
 local REGION_KIND = CreatureCatalog.REGION_KIND
 
 local folder = Instance.new("Folder")
-folder.Name = "Creatures"
+folder.Name = Names.Instances.Creatures
 folder.Parent = workspace
 
 type Creature = {
@@ -106,7 +108,7 @@ local function build(kindId: string, position: Vector3): Creature
 	humanoid.MaxHealth = kind.health
 	humanoid.Health = kind.health
 	humanoid.WalkSpeed = kind.speed
-	humanoid:SetAttribute("BaseWalkSpeed", kind.speed)
+	humanoid:SetAttribute(Names.Attributes.BaseWalkSpeed, kind.speed)
 	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
 	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOn
 	humanoid.Parent = model
@@ -220,7 +222,7 @@ end
 -- players in vehicles.
 local function inVehicle(humanoid: Humanoid): boolean
 	local seat = humanoid.SeatPart
-	local vehicles = workspace:FindFirstChild("Vehicles")
+	local vehicles = workspace:FindFirstChild(Names.Instances.Vehicles)
 	return seat ~= nil and vehicles ~= nil and seat:IsDescendantOf(vehicles)
 end
 
@@ -234,7 +236,7 @@ local function nearestPlayer(creature: Creature): (Model?, BasePart?, number)
 			root
 			and humanoid
 			and humanoid.Health > 0
-			and player:GetAttribute("Deployed")
+			and player:GetAttribute(Names.Attributes.Deployed)
 			and not Config.isInLobby(root.Position)
 			and not inVehicle(humanoid)
 		then
@@ -326,7 +328,12 @@ local function playersNear(center: Vector3, radius: number): number
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		if root and humanoid and humanoid.Health > 0 and player:GetAttribute("Deployed") then
+		if
+			root
+			and humanoid
+			and humanoid.Health > 0
+			and player:GetAttribute(Names.Attributes.Deployed)
+		then
 			local offset = root.Position - center
 			if Vector2.new(offset.X, offset.Z).Magnitude < radius then
 				count += 1
@@ -345,7 +352,7 @@ local function releaseHorde(index: number, size: number)
 		"🧟 THE DEAD POUR OUT OF " .. string.upper(region.name) .. "! 🧟",
 		rgb(150, 255, 120),
 		4,
-		"alarm"
+		RemoteActions.AnnounceStyle.ALARM
 	)
 	for count = 1, size do
 		if #active >= MAX_ACTIVE then

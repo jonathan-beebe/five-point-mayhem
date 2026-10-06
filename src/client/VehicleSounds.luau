@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local MechGait = require(ReplicatedStorage.Shared.MechGait)
+local Names = require(ReplicatedStorage.Shared.Names)
 local SoundCatalog = require(ReplicatedStorage.Shared.SoundCatalog)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 
@@ -38,17 +39,18 @@ end
 
 local function engineHandler(model: Model, profile: SoundCatalog.VehicleSounds): Handler?
 	local skid = model.PrimaryPart
-	local seat = model:FindFirstChild("DriverSeat")
+	local seat = model:FindFirstChild(Names.Instances.DriverSeat)
 	if
 		not skid
 		or not seat
 		or not seat:IsA("VehicleSeat")
-		or not seat:GetAttribute("MayhemCar")
+		or not seat:GetAttribute(Names.Attributes.MayhemCar)
 	then
 		return nil
 	end
 	local driverSeat = seat :: VehicleSeat
-	local topSpeed = (driverSeat:GetAttribute("TopSpeed") :: number?) or driverSeat.MaxSpeed
+	local topSpeed = (driverSeat:GetAttribute(Names.Attributes.TopSpeed) :: number?)
+		or driverSeat.MaxSpeed
 
 	type Voice = { loop: SoundCatalog.Loop, sound: Sound, isEngine: boolean }
 	local voices: { Voice } = {}
@@ -134,7 +136,7 @@ end
 -- same signal).
 local function mechHandler(model: Model, profile: SoundCatalog.MechSounds): Handler?
 	local skid = model.PrimaryPart
-	local seat = model:FindFirstChild("DriverSeat")
+	local seat = model:FindFirstChild(Names.Instances.DriverSeat)
 	if not skid or not seat or not seat:IsA("VehicleSeat") then
 		return nil
 	end
@@ -160,9 +162,19 @@ local function mechHandler(model: Model, profile: SoundCatalog.MechSounds): Hand
 
 	local footfall = MechMotion.footfall:Connect(function(walker: Model, foot: string, strength)
 		if walker == model then
-			Sounds.playOn(profile.step, part("Bone_foot_" .. foot), GROUP, strength)
+			Sounds.playOn(
+				profile.step,
+				part(Names.Instances.BonePrefix .. "foot_" .. foot),
+				GROUP,
+				strength
+			)
 			if profile.creak then
-				Sounds.playOn(profile.creak, part("Bone_shin_" .. foot), GROUP, strength)
+				Sounds.playOn(
+					profile.creak,
+					part(Names.Instances.BonePrefix .. "shin_" .. foot),
+					GROUP,
+					strength
+				)
 			end
 		end
 	end)
@@ -173,10 +185,10 @@ local function mechHandler(model: Model, profile: SoundCatalog.MechSounds): Hand
 			running = true
 			humAt = os.clock() + profile.humDelay
 			Sounds.playOn(profile.powerUp, skid, GROUP)
-			Sounds.playOn(profile.hatchClose, part("Bone_hatch"), GROUP)
+			Sounds.playOn(profile.hatchClose, part(Names.Instances.BonePrefix .. "hatch"), GROUP)
 		elseif not seated and running then
 			running = false
-			Sounds.playOn(profile.hatchOpen, part("Bone_hatch"), GROUP)
+			Sounds.playOn(profile.hatchOpen, part(Names.Instances.BonePrefix .. "hatch"), GROUP)
 		end
 
 		local gait = MechMotion.gait(model)
@@ -227,7 +239,7 @@ local function mechHandler(model: Model, profile: SoundCatalog.MechSounds): Hand
 end
 
 local function makeHandler(model: Model): Handler?
-	local id = model:GetAttribute("VehicleId")
+	local id = model:GetAttribute(Names.Attributes.VehicleId)
 	if typeof(id) ~= "string" then
 		return nil
 	end
@@ -291,7 +303,7 @@ local function choose(folder: Instance)
 end
 
 function VehicleSounds.start()
-	local folder = workspace:WaitForChild("Vehicles")
+	local folder = workspace:WaitForChild(Names.Instances.Vehicles)
 	folder.ChildRemoved:Connect(function(child)
 		drop(child :: Model)
 	end)

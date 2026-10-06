@@ -9,6 +9,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
+local Names = require(ReplicatedStorage.Shared.Names)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local PodControls = require(script.Parent.PodControls)
 
@@ -91,7 +92,11 @@ local function driverSeat(): VehicleSeat?
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	local seat = humanoid and humanoid.SeatPart
-	if seat and seat:IsA("VehicleSeat") and seat:GetAttribute("MayhemCar") == true then
+	if
+		seat
+		and seat:IsA("VehicleSeat")
+		and seat:GetAttribute(Names.Attributes.MayhemCar) == true
+	then
 		return seat
 	end
 	return nil

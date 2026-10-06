@@ -9,6 +9,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Names = require(ReplicatedStorage.Shared.Names)
 local SoundCatalog = require(ReplicatedStorage.Shared.SoundCatalog)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 
@@ -79,7 +80,7 @@ function Combat.getTargets(): { Target }
 	for _, player in Players:GetPlayers() do
 		consider(player.Character)
 	end
-	local creatures = workspace:FindFirstChild("Creatures")
+	local creatures = workspace:FindFirstChild(Names.Instances.Creatures)
 	if creatures then
 		for _, creature in creatures:GetChildren() do
 			consider(creature)
@@ -89,7 +90,7 @@ function Combat.getTargets(): { Target }
 end
 
 local function credit(attacker: Player, character: Model)
-	local stats = attacker:FindFirstChild("leaderstats")
+	local stats = attacker:FindFirstChild(Names.Instances.Leaderstats)
 	if not stats then
 		return
 	end
@@ -179,14 +180,14 @@ function Combat.freeze(character: Model, seconds: number)
 end
 
 local function slow(character: Model, humanoid: Humanoid, seconds: number)
-	local base = humanoid:GetAttribute("BaseWalkSpeed") or humanoid.WalkSpeed
-	humanoid:SetAttribute("BaseWalkSpeed", base)
+	local base = humanoid:GetAttribute(Names.Attributes.BaseWalkSpeed) or humanoid.WalkSpeed
+	humanoid:SetAttribute(Names.Attributes.BaseWalkSpeed, base)
 	local token = os.clock()
 	humanoid:SetAttribute("SlowToken", token)
 	humanoid.WalkSpeed = base * 0.45
 	task.delay(seconds, function()
 		if humanoid:GetAttribute("SlowToken") == token and humanoid.Parent then
-			humanoid.WalkSpeed = humanoid:GetAttribute("BaseWalkSpeed") :: number
+			humanoid.WalkSpeed = humanoid:GetAttribute(Names.Attributes.BaseWalkSpeed) :: number
 		end
 	end)
 	local root = character:FindFirstChild("HumanoidRootPart")
@@ -278,7 +279,7 @@ function Combat.hitPart(
 	power: number?,
 	from: Vector3?
 ): Model?
-	if CollectionService:HasTag(part, "ExplosiveBarrel") then
+	if CollectionService:HasTag(part, Names.Tags.ExplosiveBarrel) then
 		Combat.detonateBarrel(part, attacker)
 		return nil
 	end
@@ -327,7 +328,7 @@ function Combat.blast(
 		end
 	end
 
-	for _, barrel in CollectionService:GetTagged("ExplosiveBarrel") do
+	for _, barrel in CollectionService:GetTagged(Names.Tags.ExplosiveBarrel) do
 		if (barrel.Position - position).Magnitude <= radius + 2 then
 			task.delay(0.15, Combat.detonateBarrel, barrel, attacker)
 		end
@@ -369,7 +370,7 @@ function Combat.detonateBarrel(barrel: BasePart, attacker: Player?)
 	end
 	barrel:SetAttribute("Detonated", true)
 	local parent = barrel.Parent
-	local home = barrel:GetAttribute("Home") :: CFrame?
+	local home = barrel:GetAttribute(Names.Attributes.Home) :: CFrame?
 	local position = barrel.Position
 	barrel:Destroy()
 	Combat.explode(attacker, position, 18, 55)

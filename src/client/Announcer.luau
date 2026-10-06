@@ -6,6 +6,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
+local RemoteActions = require(ReplicatedStorage.Shared.RemoteActions)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local Announcer = {}
@@ -74,11 +75,11 @@ function Announcer.show(text: string, color: Color3?, seconds: number?, style: s
 	banner.TextTransparency = 0
 	banner.TextStrokeTransparency = 0
 	banner.Visible = true
-	if style == "alarm" then
+	if style == RemoteActions.AnnounceStyle.ALARM then
 		overlay.BackgroundTransparency = 0.6
 		overlay.Visible = true
 		fadeOut(overlay, TweenInfo.new(0.8), { BackgroundTransparency = 1 })
-	elseif style == "mayhem" then
+	elseif style == RemoteActions.AnnounceStyle.MAYHEM then
 		overlay.BackgroundColor3 = Color3.new(1, 1, 1)
 		overlay.BackgroundTransparency = 0
 		overlay.Visible = true
@@ -102,7 +103,7 @@ end
 function Announcer.start()
 	overlay.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
 	Remotes.Announce.OnClientEvent:Connect(function(text, color, seconds, style)
-		if style ~= "mayhem" then
+		if style ~= RemoteActions.AnnounceStyle.MAYHEM then
 			overlay.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
 		end
 		Announcer.show(text, color, seconds, style)

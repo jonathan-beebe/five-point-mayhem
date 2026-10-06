@@ -26,6 +26,9 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local Names = require(ReplicatedStorage.Shared.Names)
+local PodState = require(ReplicatedStorage.Shared.PodState)
+local RemoteActions = require(ReplicatedStorage.Shared.RemoteActions)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local PodFlight = {}
@@ -58,7 +61,7 @@ local HOME_TIMEOUT = 60 -- seconds; past this the pod snaps onto the dock
 
 local WRECK_FRICTION = 0.8 -- a wrecked pod's hull away from its legs
 
-export type State = "docked" | "flying" | "returning" | "landed" | "wrecked"
+export type State = PodState.State
 
 export type Pod = {
 	model: Model,
@@ -140,31 +143,29 @@ end
 
 local function setState(pod: Pod, state: State)
 	pod.state = state
-	pod.model:SetAttribute("PodState", state)
-	pod.prompt.ActionText = if state == "docked" or state == "landed"
-		then "Launch"
-		else "Return home"
-	pod.prompt.Enabled = state ~= "returning" and state ~= "wrecked"
-	pod.board.Enabled = state == "landed" and freeSeat(pod) ~= nil
+	pod.model:SetAttribute(Names.Attributes.PodState, state)
+	pod.prompt.ActionText = if PodState.isAtRest(state) then "Launch" else "Return home"
+	pod.prompt.Enabled = state ~= PodState.RETURNING and state ~= PodState.WRECKED
+	pod.board.Enabled = state == PodState.LANDED and freeSeat(pod) ~= nil
 	for _, jet in pod.jets do
-		jet.Enabled = state == "flying" or state == "returning"
+		jet.Enabled = PodState.inFlight(state)
 	end
-	if state ~= "flying" then
-		pod.model:SetAttribute("PodCanLand", false)
+	if state ~= PodState.FLYING then
+		pod.model:SetAttribute(Names.Attributes.PodCanLand, false)
 	end
 end
 
 local function launch(pod: Pod)
-	if pod.state == "landed" then
+	if pod.state == PodState.LANDED then
 		pod.launchedAt = os.clock() -- the lift-off rise, as from the legs
-		setState(pod, "flying")
+		setState(pod, PodState.FLYING)
 		return
 	end
-	if pod.state ~= "docked" then
+	if pod.state ~= PodState.DOCKED then
 		return
 	end
 	-- Nobody rides along standing in the cab.
-	local cab = pod.model:FindFirstChild("Cab") :: BasePart?
+	local cab = pod.model:FindFirstChild(Names.Instances.Cab) :: BasePart?
 	if cab then
 		for _, player in Players:GetPlayers() do
 			local character = player.Character
@@ -196,11 +197,11 @@ local function launch(pod: Pod)
 	pod.aligner.Enabled = true
 	pod.speed, pod.bank, pod.pitch = 0, 0, 0
 	pod.launchedAt = os.clock()
-	setState(pod, "flying")
+	setState(pod, PodState.FLYING)
 end
 
 local function goHome(pod: Pod)
-	if pod.state ~= "flying" then
+	if pod.state ~= PodState.FLYING then
 		return
 	end
 	-- The pod docks onto the legs' saddle: whoever rides the legs goes to the ground first.
@@ -210,7 +211,7 @@ local function goHome(pod: Pod)
 	end
 	pod.phase = "climb"
 	pod.returningSince = os.clock()
-	setState(pod, "returning")
+	setState(pod, PodState.RETURNING)
 end
 
 local function docked(pod: Pod)
@@ -220,7 +221,7 @@ local function docked(pod: Pod)
 	pod.root.AssemblyLinearVelocity = Vector3.zero
 	pod.root.AssemblyAngularVelocity = Vector3.zero
 	pod.joint.Enabled = true
-	setState(pod, "docked")
+	setState(pod, PodState.DOCKED)
 end
 
 -- The pilot's controls.
@@ -238,8 +239,8 @@ local function fly(pod: Pod, dt: number)
 	end
 	local height = clearance(pod)
 	local canLand = height < LAND_HEIGHT
-	if pod.model:GetAttribute("PodCanLand") ~= canLand then
-		pod.model:SetAttribute("PodCanLand", canLand)
+	if pod.model:GetAttribute(Names.Attributes.PodCanLand) ~= canLand then
+		pod.model:SetAttribute(Names.Attributes.PodCanLand, canLand)
 	end
 	if height < CLEARANCE then
 		rise = math.max(rise, (CLEARANCE - height) * 4)
@@ -344,10 +345,10 @@ end
 
 -- Settles to HOVER over the ground and puts everyone aboard outside, behind the pod, side by side.
 local function land(pod: Pod)
-	if pod.state ~= "flying" or clearance(pod) >= LAND_HEIGHT then
+	if pod.state ~= PodState.FLYING or clearance(pod) >= LAND_HEIGHT then
 		return
 	end
-	setState(pod, "landed") -- before anyone gets out, so the seat locks let go
+	setState(pod, PodState.LANDED) -- before anyone gets out, so the seat locks let go
 	pod.speed, pod.lift, pod.throttle, pod.steer = 0, 0, 0, 0
 	local pilot = pod.seat.Occupant
 	pod.pilot = nil
@@ -376,7 +377,7 @@ end
 -- landed pod lifts it off.
 -- A passenger seat while the pod flies: put a living passenger back.
 local function onRider(pod: Pod, seat: Seat)
-	pod.board.Enabled = pod.state == "landed" and freeSeat(pod) ~= nil
+	pod.board.Enabled = pod.state == PodState.LANDED and freeSeat(pod) ~= nil
 	local occupant = seat.Occupant
 	if occupant then
 		pod.riders[seat] = occupant
@@ -384,7 +385,7 @@ local function onRider(pod: Pod, seat: Seat)
 	end
 	local rider = pod.riders[seat]
 	pod.riders[seat] = nil
-	if pod.state ~= "flying" and pod.state ~= "returning" then
+	if not PodState.inFlight(pod.state) then
 		return
 	end
 	task.defer(function()
@@ -402,16 +403,16 @@ local function onRider(pod: Pod, seat: Seat)
 end
 
 local function onOccupant(pod: Pod)
-	if pod.state == "wrecked" then
+	if pod.state == PodState.WRECKED then
 		return
 	end
 	local occupant = pod.seat.Occupant
-	pod.board.Enabled = pod.state == "landed" and freeSeat(pod) ~= nil
+	pod.board.Enabled = pod.state == PodState.LANDED and freeSeat(pod) ~= nil
 	if occupant then
 		pod.pilot = occupant
 		return
 	end
-	if pod.state == "docked" or pod.state == "landed" then
+	if PodState.isAtRest(pod.state) then
 		pod.pilot = nil
 		return
 	end
@@ -503,7 +504,7 @@ function PodFlight.new(setup: Setup): Pod
 	anchor.CFrame = setup.button
 	anchor.Parent = root
 	local prompt = Instance.new("ProximityPrompt")
-	prompt.Name = "PodPrompt"
+	prompt.Name = Names.Instances.PodPrompt
 	prompt.ObjectText = setup.model.Name .. " pod"
 	prompt.KeyboardKeyCode = Enum.KeyCode.F
 	prompt.MaxActivationDistance = 6
@@ -537,7 +538,7 @@ function PodFlight.new(setup: Setup): Pod
 		dismount = setup.dismount,
 		passengers = setup.passengers,
 		riders = {},
-		state = "docked",
+		state = PodState.DOCKED,
 		pilot = nil,
 		throttle = 0,
 		steer = 0,
@@ -550,17 +551,24 @@ function PodFlight.new(setup: Setup): Pod
 		returningSince = 0,
 		phase = "climb",
 	}
-	setup.model:SetAttribute("PodBone", string.sub(root.Name, 6))
-	setState(pod, "docked")
+	setup.model:SetAttribute(
+		Names.Attributes.PodBone,
+		string.sub(root.Name, #Names.Instances.BonePrefix + 1)
+	)
+	setState(pod, PodState.DOCKED)
 	prompt.Triggered:Connect(function(player)
-		local takeOff = pod.state == "docked" or pod.state == "landed"
-		PodFlight.command(player, pod, if takeOff then "launch" else "home")
+		local takeOff = PodState.isAtRest(pod.state)
+		PodFlight.command(
+			player,
+			pod,
+			if takeOff then RemoteActions.PodCommand.LAUNCH else RemoteActions.PodCommand.HOME
+		)
 	end)
 	board.Triggered:Connect(function(player)
 		local character = player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local seat = freeSeat(pod)
-		if pod.state == "landed" and humanoid and humanoid.Health > 0 and seat then
+		if pod.state == PodState.LANDED and humanoid and humanoid.Health > 0 and seat then
 			seat:Sit(humanoid)
 		end
 	end)
@@ -583,11 +591,11 @@ function PodFlight.command(player: Player, pod: Pod, action: any)
 	if not humanoid or pod.seat.Occupant ~= humanoid then
 		return
 	end
-	if action == "launch" then
+	if action == RemoteActions.PodCommand.LAUNCH then
 		launch(pod)
-	elseif action == "home" then
+	elseif action == RemoteActions.PodCommand.HOME then
 		goHome(pod)
-	elseif action == "land" then
+	elseif action == RemoteActions.PodCommand.LAND then
 		land(pod)
 	end
 end
@@ -600,7 +608,7 @@ end
 -- back in a seat, and stops flying wherever it is.
 function PodFlight.wreck(pod: Pod)
 	-- Away from the legs, the hull grinds to a stop on the ground: its boxes are frictionless.
-	if pod.state ~= "docked" then
+	if pod.state ~= PodState.DOCKED then
 		local body = pod.root.AssemblyRootPart
 		for _, part in pod.model:GetDescendants() do
 			if part:IsA("BasePart") and part.CanCollide and part.AssemblyRootPart == body then
@@ -612,14 +620,14 @@ function PodFlight.wreck(pod: Pod)
 	end
 	pod.pilot = nil
 	table.clear(pod.riders)
-	setState(pod, "wrecked")
+	setState(pod, PodState.WRECKED)
 	pod.mover.Enabled = false
 	pod.aligner.Enabled = false
 end
 
 -- Whether the walker's pod sits on its legs (a walker without a pod always does).
 function PodFlight.isDocked(pod: Pod?): boolean
-	return pod == nil or pod.state == "docked"
+	return pod == nil or pod.state == PodState.DOCKED
 end
 
 function PodFlight.start()
@@ -627,11 +635,11 @@ function PodFlight.start()
 		for model, pod in pods do
 			if not model.Parent then
 				pods[model] = nil
-			elseif pod.state == "flying" then
+			elseif pod.state == PodState.FLYING then
 				fly(pod, dt)
-			elseif pod.state == "returning" then
+			elseif pod.state == PodState.RETURNING then
 				returnHome(pod, dt)
-			elseif pod.state == "landed" then
+			elseif pod.state == PodState.LANDED then
 				hover(pod)
 			end
 		end

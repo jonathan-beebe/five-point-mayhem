@@ -9,9 +9,12 @@
 -- target heading at low per-input rates; the view eases toward it, so it responds slowly.
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
+
+local Names = require(ReplicatedStorage.Shared.Names)
 
 local SniperScope = {}
 
@@ -133,7 +136,7 @@ end
 -- Touch button --------------------------------------------------------------------------------
 
 local buttonGui = Instance.new("ScreenGui")
-buttonGui.Name = "SniperScopeButton"
+buttonGui.Name = Names.Instances.SniperScopeButton
 buttonGui.ResetOnSpawn = false
 buttonGui.DisplayOrder = 6
 buttonGui.Enabled = false
@@ -322,7 +325,7 @@ local function equippedSniper(): Tool?
 		return nil
 	end
 	for _, child in character:GetChildren() do
-		if child:IsA("Tool") and child:GetAttribute("WeaponId") == WEAPON_ID then
+		if child:IsA("Tool") and child:GetAttribute(Names.Attributes.WeaponId) == WEAPON_ID then
 			return child
 		end
 	end

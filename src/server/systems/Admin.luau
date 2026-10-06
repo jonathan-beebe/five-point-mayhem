@@ -21,6 +21,8 @@ local TextChatService = game:GetService("TextChatService")
 local TweenService = game:GetService("TweenService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Names = require(ReplicatedStorage.Shared.Names)
+local RemoteActions = require(ReplicatedStorage.Shared.RemoteActions)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
@@ -110,10 +112,15 @@ local function mayhem()
 	doomRunning = true
 	local sky = redSky()
 	for count = 3, 1, -1 do
-		announce("☢ TOTAL MAYHEM IN " .. count .. " ☢", rgb(255, 50, 50), 1, "alarm")
+		announce(
+			"☢ TOTAL MAYHEM IN " .. count .. " ☢",
+			rgb(255, 50, 50),
+			1,
+			RemoteActions.AnnounceStyle.ALARM
+		)
 		task.wait(1)
 	end
-	announce("☢ MAYHEM ☢", rgb(255, 50, 50), 3, "mayhem")
+	announce("☢ MAYHEM ☢", rgb(255, 50, 50), 3, RemoteActions.AnnounceStyle.MAYHEM)
 	for _, player in Players:GetPlayers() do
 		local character, humanoid, root = characterParts(player)
 		if character and humanoid and root and not Config.isInLobby(root.Position) then
@@ -135,17 +142,27 @@ local function nuke(caller: Player)
 	local sky = redSky()
 	local ground = Config.NUKE_GROUND
 	Remotes.Nuke:FireAllClients(ground)
-	announce("☢ NUKE INCOMING ☢", rgb(255, 50, 50), Config.NUKE_FALL_SECONDS - 3, "alarm")
+	announce(
+		"☢ NUKE INCOMING ☢",
+		rgb(255, 50, 50),
+		Config.NUKE_FALL_SECONDS - 3,
+		RemoteActions.AnnounceStyle.ALARM
+	)
 	task.wait(Config.NUKE_FALL_SECONDS - 3)
 	for count = 3, 1, -1 do
-		announce("☢ NUKE INCOMING " .. count .. " ☢", rgb(255, 50, 50), 1, "alarm")
+		announce(
+			"☢ NUKE INCOMING " .. count .. " ☢",
+			rgb(255, 50, 50),
+			1,
+			RemoteActions.AnnounceStyle.ALARM
+		)
 		task.wait(1)
 	end
 	announce(
 		"☢ NUKED BY " .. string.upper(caller.DisplayName) .. " ☢",
 		rgb(255, 50, 50),
 		3,
-		"mayhem"
+		RemoteActions.AnnounceStyle.MAYHEM
 	)
 	-- Each player is struck once, so nobody who respawns in the lobby dies again.
 	local struck: { [Player]: boolean } = { [caller] = true }
@@ -187,7 +204,7 @@ local function gift(player: Player, item: string): boolean
 	elseif not character or not humanoid or not root then
 		return weapon ~= nil and backpack ~= nil and Weapons.give(player, weapon.id)
 	elseif item == "speed" then
-		humanoid:SetAttribute("BaseWalkSpeed", 40)
+		humanoid:SetAttribute(Names.Attributes.BaseWalkSpeed, 40)
 		humanoid.WalkSpeed = 40
 	elseif item == "jump" then
 		humanoid.UseJumpPower = true
@@ -271,7 +288,7 @@ end
 -- 3. METEORS ---------------------------------------------------------------------------------
 
 local function meteors(seconds: number)
-	announce("☄ METEOR STORM ☄", rgb(255, 140, 40), 3, "alarm")
+	announce("☄ METEOR STORM ☄", rgb(255, 140, 40), 3, RemoteActions.AnnounceStyle.ALARM)
 	local stop = os.clock() + seconds
 	task.spawn(function()
 		while os.clock() < stop do
@@ -353,7 +370,12 @@ local function horde(caller: Player, who: string?)
 			Creatures.horde(Config.pointAt(Config.regionAngle(index) + math.rad(36), 300), 6)
 		end
 	end
-	announce("👹 THE HORDE APPROACHES 👹", rgb(140, 255, 100), 3, "alarm")
+	announce(
+		"👹 THE HORDE APPROACHES 👹",
+		rgb(140, 255, 100),
+		3,
+		RemoteActions.AnnounceStyle.ALARM
+	)
 end
 
 local function setTime(night: boolean)
@@ -392,9 +414,9 @@ local function macCommand(caller: Player, action: any)
 	if not MacAccess.has(caller) then
 		return
 	end
-	if action == "sniper" then
+	if action == RemoteActions.MacCommand.SNIPER then
 		Weapons.give(caller, "sniper")
-	elseif action == "nuke" then
+	elseif action == RemoteActions.MacCommand.NUKE then
 		task.spawn(nuke, caller)
 	end
 end

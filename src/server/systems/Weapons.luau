@@ -10,6 +10,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Names = require(ReplicatedStorage.Shared.Names)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 local Combat = require(script.Parent.Combat)
@@ -28,7 +29,7 @@ local GRIP = rgb(45, 40, 38)
 local random = Random.new()
 
 local effectsFolder = Instance.new("Folder")
-effectsFolder.Name = "WeaponEffects"
+effectsFolder.Name = Names.Instances.WeaponEffects
 effectsFolder.Parent = workspace
 
 -- Tool models ---------------------------------------------------------------------------------
@@ -370,7 +371,7 @@ function Weapons.createTool(weapon: Weapon): Tool
 	tool.Name = weapon.name
 	tool.ToolTip = weapon.description
 	tool.CanBeDropped = false
-	tool:SetAttribute("WeaponId", weapon.id)
+	tool:SetAttribute(Names.Attributes.WeaponId, weapon.id)
 	-- Shot muzzles are handle.CFrame * muzzle, so they follow the grip.
 	tool.Grip = WeaponModel.grip(modelFor(weapon))
 	local handle = makeHandle(weapon)
@@ -570,7 +571,7 @@ local function fireMelee(shot: Shot)
 			end
 		end
 	end
-	for _, barrel in CollectionService:GetTagged("ExplosiveBarrel") do
+	for _, barrel in CollectionService:GetTagged(Names.Tags.ExplosiveBarrel) do
 		if (barrel.Position - shot.root.Position).Magnitude <= weapon.range then
 			Combat.detonateBarrel(barrel, shot.player)
 		end
@@ -1011,7 +1012,7 @@ Remotes.FireWeapon.OnServerEvent:Connect(function(player, weaponId, aim)
 	local head = character:FindFirstChild("Head") :: BasePart?
 	if
 		not tool
-		or tool:GetAttribute("WeaponId") ~= weaponId
+		or tool:GetAttribute(Names.Attributes.WeaponId) ~= weaponId
 		or not humanoid
 		or humanoid.Health <= 0
 		or not root

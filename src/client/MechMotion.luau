@@ -14,11 +14,14 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local MechGait = require(ReplicatedStorage.Shared.MechGait)
+local Names = require(ReplicatedStorage.Shared.Names)
 local VehicleDefaults = require(ReplicatedStorage.Shared.VehicleDefaults)
 
 local MechMotion = {}
 
 local GAIT = "mech"
+local BONE_PREFIX = Names.Instances.BonePrefix
+local JOINT_PREFIX = Names.Instances.JointPrefix
 local ANIMATE_RANGE = 500 -- studs from the camera
 local DUST_RANGE = 200
 local DUST_SPEED = 3 -- ground speed (studs/s) below which steps raise no dust
@@ -54,8 +57,8 @@ local function resolve(mech: Mech): boolean
 		return true
 	end
 	local model = mech.model
-	local skid = model.PrimaryPart or model:FindFirstChild("Skid") :: BasePart?
-	local seat = model:FindFirstChild("DriverSeat")
+	local skid = model.PrimaryPart or model:FindFirstChild(Names.Instances.Skid) :: BasePart?
+	local seat = model:FindFirstChild(Names.Instances.DriverSeat)
 	if not skid or not seat or not seat:IsA("VehicleSeat") then
 		return false
 	end
@@ -69,7 +72,7 @@ local function resolve(mech: Mech): boolean
 	local pending = {}
 	for _, child in model:GetChildren() do
 		local joint = child:FindFirstChildOfClass("Motor6D")
-		if joint and string.sub(joint.Name, 1, 6) == "Joint_" then
+		if joint and string.sub(joint.Name, 1, #JOINT_PREFIX) == JOINT_PREFIX then
 			table.insert(pending, joint)
 		end
 	end
@@ -81,28 +84,28 @@ local function resolve(mech: Mech): boolean
 		progress = false
 		for index = #pending, 1, -1 do
 			local joint = pending[index]
-			local name = string.sub(joint.Name, 7)
+			local name = string.sub(joint.Name, #JOINT_PREFIX + 1)
 			local parent = joint.Part0
 			local pivot: Vector3? = nil
 			local parentName: string? = nil
 			if parent == skid then
 				pivot = (SKID_TO_GROUND:Inverse() * joint.C0).Position
-			elseif parent and string.sub(parent.Name, 1, 5) == "Bone_" then
-				parentName = string.sub(parent.Name, 6)
+			elseif parent and string.sub(parent.Name, 1, #BONE_PREFIX) == BONE_PREFIX then
+				parentName = string.sub(parent.Name, #BONE_PREFIX + 1)
 				local base = pivots[parentName :: string]
 				pivot = base and base + joint.C0.Position
 			end
 			if pivot then
 				pivots[name] = pivot
 				joints[name] = joint
-				local steer = joint.Parent and joint.Parent:GetAttribute("Steer")
+				local steer = joint.Parent and joint.Parent:GetAttribute(Names.Attributes.Steer)
 				if typeof(steer) == "Vector3" then
 					wheels[name] = steer
 				end
-				if joint.Parent and joint.Parent:GetAttribute("Wobble") then
+				if joint.Parent and joint.Parent:GetAttribute(Names.Attributes.Wobble) then
 					wobbles[name] = MechGait.newWobble()
 				end
-				local aim = joint.Parent and joint.Parent:GetAttribute("Aim")
+				local aim = joint.Parent and joint.Parent:GetAttribute(Names.Attributes.Aim)
 				table.insert(bones, {
 					name = name,
 					parent = parentName,
@@ -143,7 +146,7 @@ local function resolve(mech: Mech): boolean
 	mech.dust = dust
 
 	for _, descendant in model:GetDescendants() do
-		if descendant:IsA("Attachment") and descendant.Name == "Smoke" then
+		if descendant:IsA("Attachment") and descendant.Name == Names.Instances.Smoke then
 			local smoke = Instance.new("ParticleEmitter")
 			smoke.Rate = 0
 			smoke.Color =
@@ -175,7 +178,11 @@ local function resolve(mech: Mech): boolean
 end
 
 local function track(model: Instance)
-	if model:IsA("Model") and model:GetAttribute("Gait") == GAIT and not mechs[model] then
+	if
+		model:IsA("Model")
+		and model:GetAttribute(Names.Attributes.Gait) == GAIT
+		and not mechs[model]
+	then
 		mechs[model] = { model = model, smoke = {}, posed = false }
 	end
 end
@@ -191,7 +198,7 @@ end
 
 -- A pod walker's legs seat (Vehicles) is taken: someone drives the legs while the pod is away.
 local function legsRidden(model: Model): boolean
-	local saddle = model:FindFirstChild("LegsSeat")
+	local saddle = model:FindFirstChild(Names.Instances.LegsSeat)
 	return saddle ~= nil and saddle:IsA("VehicleSeat") and saddle.Occupant ~= nil
 end
 
@@ -217,11 +224,14 @@ local function animate(mech: Mech, dt: number, viewer: Vector3)
 	local velocity = skid.AssemblyLinearVelocity
 	local footfalls = MechGait.step(state, {
 		forward = velocity:Dot(forward),
-		climb = if mech.model:GetAttribute("Climbing") then math.max(velocity.Y, 0) else 0,
+		climb = if mech.model:GetAttribute(Names.Attributes.Climbing)
+			then math.max(velocity.Y, 0)
+			else 0,
 		yawRate = skid.AssemblyAngularVelocity.Y,
 		occupied = seat.Occupant ~= nil or legsRidden(mech.model),
-		topSpeed = (seat:GetAttribute("TopSpeed") :: number?) or 18,
-		turnRate = (seat:GetAttribute("TurnRate") :: number?) or VehicleDefaults.turnRate,
+		topSpeed = (seat:GetAttribute(Names.Attributes.TopSpeed) :: number?) or 18,
+		turnRate = (seat:GetAttribute(Names.Attributes.TurnRate) :: number?)
+			or VehicleDefaults.turnRate,
 		time = os.clock(),
 	}, dt)
 	local poses = MechGait.pose(state)
@@ -269,7 +279,7 @@ function MechMotion.gait(model: Model): MechGait.State?
 end
 
 function MechMotion.start()
-	local folder = Workspace:WaitForChild("Vehicles")
+	local folder = Workspace:WaitForChild(Names.Instances.Vehicles)
 	folder.ChildAdded:Connect(track)
 	folder.ChildRemoved:Connect(function(child)
 		mechs[child :: Model] = nil

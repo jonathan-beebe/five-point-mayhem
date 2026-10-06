@@ -5,6 +5,7 @@ local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Names = require(ReplicatedStorage.Shared.Names)
 local Build = require(script.Parent.Build)
 local Regions = require(script.Parent.Regions)
 local Roads = require(script.Parent.Roads)
@@ -259,9 +260,9 @@ end
 function Landscape.explosiveBarrel(parent: Instance, cframe: CFrame): Part
 	local barrel =
 		Build.column(parent, cframe, 4, 3, rgb(200, 40, 30), M.Metal, { name = "ExplosiveBarrel" })
-	barrel:SetAttribute("Home", cframe)
-	CollectionService:AddTag(barrel, "ExplosiveBarrel")
-	barrel.CollisionGroup = "Scenery"
+	barrel:SetAttribute(Names.Attributes.Home, cframe)
+	CollectionService:AddTag(barrel, Names.Tags.ExplosiveBarrel)
+	barrel.CollisionGroup = Names.CollisionGroups.Scenery
 	return barrel
 end
 
@@ -329,8 +330,8 @@ function Landscape.build(parent: Instance)
 		local tree = Build.model(style, trees)
 		TREE_BUILDERS[style](tree, position, scale)
 		tree.PrimaryPart = tree:FindFirstChildWhichIsA("BasePart")
-		tree:SetAttribute("Toughness", scale)
-		CollectionService:AddTag(tree, "Tree")
+		tree:SetAttribute(Names.Attributes.Toughness, scale)
+		CollectionService:AddTag(tree, Names.Tags.Tree)
 	end)
 	scatter(110, 6, function(position)
 		rock(obstacles, position)
@@ -350,7 +351,7 @@ function Landscape.build(parent: Instance)
 	-- Walkers (the mech) step through scenery; see Vehicles.registerCollisionGroups.
 	for _, part in model:GetDescendants() do
 		if part:IsA("BasePart") then
-			part.CollisionGroup = "Scenery"
+			part.CollisionGroup = Names.CollisionGroups.Scenery
 		end
 	end
 	return model

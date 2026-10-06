@@ -4,6 +4,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Names = require(ReplicatedStorage.Shared.Names)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
@@ -325,11 +326,11 @@ local function build()
 end
 
 function AdminPanel.start()
-	if player:GetAttribute("IsAdmin") then
+	if player:GetAttribute(Names.Attributes.IsAdmin) then
 		build()
 	end
-	player:GetAttributeChangedSignal("IsAdmin"):Connect(function()
-		if player:GetAttribute("IsAdmin") then
+	player:GetAttributeChangedSignal(Names.Attributes.IsAdmin):Connect(function()
+		if player:GetAttribute(Names.Attributes.IsAdmin) then
 			build()
 		end
 	end)

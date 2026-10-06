@@ -11,6 +11,9 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
+local Names = require(ReplicatedStorage.Shared.Names)
+local PodState = require(ReplicatedStorage.Shared.PodState)
+local RemoteActions = require(ReplicatedStorage.Shared.RemoteActions)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local MechCamera = require(script.Parent.MechCamera)
 
@@ -20,7 +23,7 @@ local player = Players.LocalPlayer
 local rgb = Color3.fromRGB
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "PodButtons"
+gui.Name = Names.Instances.PodButtons
 gui.ResetOnSpawn = false
 gui.DisplayOrder = 6
 gui.Enabled = false
@@ -65,8 +68,10 @@ local touchLift = { up = false, down = false }
 local jumpLocked = false
 local passenger = false -- seated in a passenger seat (no buttons, only the jump lock)
 
-local function state(): string
-	return if model then (model:GetAttribute("PodState") or "docked") :: string else "docked"
+local function state(): PodState.State
+	return if model
+		then PodState.of(model:GetAttribute(Names.Attributes.PodState))
+		else PodState.DOCKED
 end
 
 -- The column MechCamera measured: the pod button spans two slots above STAND (its right edge on
@@ -101,24 +106,25 @@ end
 local function refresh()
 	local current = state()
 	gui.Enabled = model ~= nil and not passenger
-	podButton.Text = if current == "docked" or current == "landed"
+	podButton.Text = if PodState.isAtRest(current)
 		then "LAUNCH"
-		elseif current == "flying" then "RETURN HOME"
+		elseif current == PodState.FLYING then "RETURN HOME"
 		else "RETURNING"
-	podButton.Active = current ~= "returning"
-	podButton.AutoButtonColor = current ~= "returning"
-	podButton.BackgroundColor3 = if current == "docked" or current == "landed"
+	podButton.Active = current ~= PodState.RETURNING
+	podButton.AutoButtonColor = current ~= PodState.RETURNING
+	podButton.BackgroundColor3 = if PodState.isAtRest(current)
 		then rgb(0, 120, 170)
-		elseif current == "flying" then rgb(150, 90, 0)
+		elseif current == PodState.FLYING then rgb(150, 90, 0)
 		else rgb(60, 60, 70)
-	local flying = model ~= nil and current == "flying"
-	landButton.Visible = flying and (model :: Model):GetAttribute("PodCanLand") == true
+	local flying = model ~= nil and current == PodState.FLYING
+	landButton.Visible = flying
+		and (model :: Model):GetAttribute(Names.Attributes.PodCanLand) == true
 	upButton.Visible = flying and UserInputService.TouchEnabled
 	downButton.Visible = flying and UserInputService.TouchEnabled
 	if not flying then
 		touchLift.up, touchLift.down = false, false
 	end
-	lockJump(model ~= nil and (current == "flying" or current == "returning"))
+	lockJump(model ~= nil and PodState.inFlight(current))
 	layout()
 end
 
@@ -134,7 +140,7 @@ local function setModel(new: Model?)
 	model = new
 	if new then
 		watching = new.AttributeChanged:Connect(function(name)
-			if name == "PodState" or name == "PodCanLand" then
+			if name == Names.Attributes.PodState or name == Names.Attributes.PodCanLand then
 				refresh()
 			end
 		end)
@@ -150,9 +156,9 @@ local function onSeat()
 	local aboard = seat ~= nil
 		and parent ~= nil
 		and parent:IsA("Model")
-		and parent:GetAttribute("PodBone") ~= nil
-		and (seat.Name == "DriverSeat" or seat:IsA("Seat"))
-	passenger = aboard and (seat :: BasePart).Name ~= "DriverSeat"
+		and parent:GetAttribute(Names.Attributes.PodBone) ~= nil
+		and (seat.Name == Names.Instances.DriverSeat or seat:IsA("Seat"))
+	passenger = aboard and (seat :: BasePart).Name ~= Names.Instances.DriverSeat
 	setModel(if aboard then parent :: Model else nil)
 end
 
@@ -192,14 +198,14 @@ function PodControls.start()
 	gui.Parent = player:WaitForChild("PlayerGui")
 	podButton.Activated:Connect(function()
 		local current = state()
-		if current == "docked" or current == "landed" then
-			Remotes.PodCommand:FireServer("launch")
-		elseif current == "flying" then
-			Remotes.PodCommand:FireServer("home")
+		if PodState.isAtRest(current) then
+			Remotes.PodCommand:FireServer(RemoteActions.PodCommand.LAUNCH)
+		elseif current == PodState.FLYING then
+			Remotes.PodCommand:FireServer(RemoteActions.PodCommand.HOME)
 		end
 	end)
 	landButton.Activated:Connect(function()
-		Remotes.PodCommand:FireServer("land")
+		Remotes.PodCommand:FireServer(RemoteActions.PodCommand.LAND)
 	end)
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if
@@ -208,7 +214,7 @@ function PodControls.start()
 			and landButton.Visible
 			and gui.Enabled
 		then
-			Remotes.PodCommand:FireServer("land")
+			Remotes.PodCommand:FireServer(RemoteActions.PodCommand.LAND)
 		end
 	end)
 	hold(upButton, "up")

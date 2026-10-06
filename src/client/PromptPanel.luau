@@ -21,11 +21,13 @@
 local Players = game:GetService("Players")
 local GuiService = game:GetService("GuiService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
+local Names = require(ReplicatedStorage.Shared.Names)
 local MacPanel = require(script.Parent.MacPanel)
 
 local PromptPanel = {}
@@ -39,7 +41,8 @@ local MIN_CARD_HEIGHT = 28 -- the shortest a card shrinks to above the touch con
 local GAP = MacPanel.GAP
 
 -- ScreenGuis of the bottom-right controls the cards stay above (besides the touch jump button).
-local BOTTOM_CONTROLS = { "MechButtons", "PodButtons", "SniperScopeButton" }
+local BOTTOM_CONTROLS =
+	{ Names.Instances.MechButtons, Names.Instances.PodButtons, Names.Instances.SniperScopeButton }
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "Prompts"
@@ -77,10 +80,10 @@ local function useful(prompt: ProximityPrompt, sitting: BasePart, own: Model): b
 	if vehicle ~= own then
 		return false
 	end
-	if prompt.Name == "PodPrompt" then
-		return sitting.Name == "DriverSeat"
+	if prompt.Name == Names.Instances.PodPrompt then
+		return sitting.Name == Names.Instances.DriverSeat
 	end
-	if prompt.Name == "DrivePrompt" then
+	if prompt.Name == Names.Instances.DrivePrompt then
 		return sitting:IsA("Seat") -- a passenger seat; driver seats are VehicleSeats
 	end
 	return false
@@ -447,7 +450,7 @@ end
 
 function PromptPanel.start()
 	gui.Parent = player:WaitForChild("PlayerGui")
-	vehicles = Workspace:WaitForChild("Vehicles")
+	vehicles = Workspace:WaitForChild(Names.Instances.Vehicles)
 
 	ProximityPromptService.PromptShown:Connect(function(prompt, inputType)
 		if prompt.Style ~= Enum.ProximityPromptStyle.Custom then

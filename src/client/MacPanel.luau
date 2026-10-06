@@ -5,6 +5,8 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Names = require(ReplicatedStorage.Shared.Names)
+local RemoteActions = require(ReplicatedStorage.Shared.RemoteActions)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local MacPanel = {}
@@ -53,7 +55,7 @@ local function corner(): UICorner
 end
 
 local function hasMac(): boolean
-	return player:GetAttribute("HasMac") == true
+	return player:GetAttribute(Names.Attributes.HasMac) == true
 end
 
 function MacPanel.close()
@@ -120,7 +122,7 @@ local function build()
 	}, { corner() })
 	sniper.Activated:Connect(function()
 		if hasMac() then
-			Remotes.MacCommand:FireServer("sniper")
+			Remotes.MacCommand:FireServer(RemoteActions.MacCommand.SNIPER)
 		end
 	end)
 
@@ -144,7 +146,7 @@ local function build()
 		if armedAt and os.clock() - armedAt < CONFIRM_SECONDS then
 			armedAt = nil
 			nuke.Text = NUKE_TEXT
-			Remotes.MacCommand:FireServer("nuke")
+			Remotes.MacCommand:FireServer(RemoteActions.MacCommand.NUKE)
 			return
 		end
 		local stamp = os.clock()
@@ -179,7 +181,7 @@ local function build()
 		toggle.BackgroundColor3 = if unlocked then rgb(80, 190, 255) else rgb(90, 90, 100)
 		toggle.TextColor3 = if unlocked then rgb(0, 25, 45) else rgb(200, 200, 200)
 	end
-	player:GetAttributeChangedSignal("HasMac"):Connect(refresh)
+	player:GetAttributeChangedSignal(Names.Attributes.HasMac):Connect(refresh)
 	refresh()
 
 	toggle.Activated:Connect(function()

@@ -20,6 +20,8 @@ local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local MechClimb = require(ReplicatedStorage.Shared.MechClimb)
+local Names = require(ReplicatedStorage.Shared.Names)
+local PodState = require(ReplicatedStorage.Shared.PodState)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local SoundCatalog = require(ReplicatedStorage.Shared.SoundCatalog)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
@@ -37,7 +39,7 @@ local M = Enum.Material
 local modelFiles = script.Parent.Parent:FindFirstChild("vehicleModels")
 
 local folder = Instance.new("Folder")
-folder.Name = "Vehicles"
+folder.Name = Names.Instances.Vehicles
 folder.Parent = workspace
 
 -- Stands in for a vehicle whose model file is missing or broken.
@@ -156,7 +158,7 @@ end
 local climbParams = RaycastParams.new()
 climbParams.FilterType = Enum.RaycastFilterType.Exclude
 climbParams.FilterDescendantsInstances = { folder }
-climbParams.CollisionGroup = "Walkers"
+climbParams.CollisionGroup = Names.CollisionGroups.Walkers
 climbParams.RespectCanCollide = true
 
 -- Terrain and anchored parts are climbable, unless they or a parent are tagged NoClimb.
@@ -167,7 +169,7 @@ local function climbable(hit: RaycastResult): boolean
 	end
 	local node: Instance? = instance
 	while node and node ~= workspace do
-		if CollectionService:HasTag(node, "NoClimb") then
+		if CollectionService:HasTag(node, Names.Tags.NoClimb) then
 			return false
 		end
 		node = node.Parent
@@ -216,7 +218,7 @@ end
 local function setClimbing(car: Car, climbing: boolean)
 	if car.climbing ~= climbing then
 		car.climbing = climbing
-		car.model:SetAttribute("Climbing", climbing)
+		car.model:SetAttribute(Names.Attributes.Climbing, climbing)
 	end
 end
 
@@ -321,7 +323,7 @@ local function drive(car: Car, dt: number)
 	car.mover.Enabled = true
 	car.turner.Enabled = true
 
-	local topSpeed = (car.seat:GetAttribute("TopSpeed") :: number?) or 80
+	local topSpeed = (car.seat:GetAttribute(Names.Attributes.TopSpeed) :: number?) or 80
 	local look = skid.CFrame.LookVector
 	local forward = Vector3.new(look.X, 0, look.Z).Unit
 	local speed = skid.AssemblyLinearVelocity:Dot(forward)
@@ -434,7 +436,7 @@ local function buildBones(
 	local bones: { [string]: Bone } = {}
 	for _, boneSpec in (spec.bones or {}) :: { VehicleModel.BoneSpec } do
 		local part = Instance.new("Part")
-		part.Name = "Bone_" .. boneSpec.name
+		part.Name = Names.Instances.BonePrefix .. boneSpec.name
 		part.Size = Vector3.new(0.2, 0.2, 0.2)
 		part.Transparency = 1
 		part.CanCollide = false
@@ -444,7 +446,7 @@ local function buildBones(
 		part.CFrame = skid.CFrame * SKID_TO_GROUND * CFrame.new(boneSpec.pivot)
 		local parent = boneSpec.parent and bones[boneSpec.parent]
 		local joint = Instance.new("Motor6D")
-		joint.Name = "Joint_" .. boneSpec.name
+		joint.Name = Names.Instances.JointPrefix .. boneSpec.name
 		joint.Part0 = if parent then parent.part else skid
 		joint.Part1 = part
 		joint.C0 = if parent
@@ -452,13 +454,13 @@ local function buildBones(
 			else SKID_TO_GROUND * CFrame.new(boneSpec.pivot)
 		joint.Parent = part
 		if boneSpec.aim then
-			part:SetAttribute("Aim", boneSpec.aim)
+			part:SetAttribute(Names.Attributes.Aim, boneSpec.aim)
 		end
 		if boneSpec.steer then
-			part:SetAttribute("Steer", boneSpec.steer)
+			part:SetAttribute(Names.Attributes.Steer, boneSpec.steer)
 		end
 		if boneSpec.wobble then
-			part:SetAttribute("Wobble", true)
+			part:SetAttribute(Names.Attributes.Wobble, true)
 		end
 		part.Parent = model
 		bones[boneSpec.name] = { part = part, pivot = boneSpec.pivot }
@@ -471,16 +473,25 @@ end
 -- barrels). Buildings, roads, terrain and players stay solid to both. A felled tree is Wreckage:
 -- it falls through vehicles and players onto the ground. Player groups come from Session.
 function Vehicles.registerCollisionGroups()
-	for _, group in { "Vehicles", "Walkers", "Scenery", "Wreckage" } do
+	local Groups = Names.CollisionGroups
+	for _, group in { Groups.Vehicles, Groups.Walkers, Groups.Scenery, Groups.Wreckage } do
 		if not PhysicsService:IsCollisionGroupRegistered(group) then
 			PhysicsService:RegisterCollisionGroup(group)
 		end
 	end
-	PhysicsService:CollisionGroupSetCollidable("Walkers", "Vehicles", false)
-	PhysicsService:CollisionGroupSetCollidable("Walkers", "Scenery", false)
-	for _, group in { "Vehicles", "Walkers", "LobbyPlayers", "DeployedPlayers", "LockedOutPlayers" } do
+	PhysicsService:CollisionGroupSetCollidable(Groups.Walkers, Groups.Vehicles, false)
+	PhysicsService:CollisionGroupSetCollidable(Groups.Walkers, Groups.Scenery, false)
+	for _, group in
+		{
+			Groups.Vehicles,
+			Groups.Walkers,
+			Groups.LobbyPlayers,
+			Groups.DeployedPlayers,
+			Groups.LockedOutPlayers,
+		}
+	do
 		if PhysicsService:IsCollisionGroupRegistered(group) then
-			PhysicsService:CollisionGroupSetCollidable("Wreckage", group, false)
+			PhysicsService:CollisionGroupSetCollidable(Groups.Wreckage, group, false)
 		end
 	end
 end
@@ -490,7 +501,7 @@ local function addSmoke(skid: BasePart, bones: { [string]: Bone }, spec: Vehicle
 	for _, stack in (spec.smoke or {}) :: { VehicleModel.SmokeSpec } do
 		local bone = stack.bone and bones[stack.bone]
 		local attachment = Instance.new("Attachment")
-		attachment.Name = "Smoke"
+		attachment.Name = Names.Instances.Smoke
 		attachment.CFrame = if bone
 			then CFrame.new(bone.pivot):Inverse() * CFrame.new(stack.position)
 			else SKID_TO_GROUND * CFrame.new(stack.position)
@@ -554,7 +565,7 @@ type Crash = {
 	podMass: number, -- the pod's footprint mass, for rams into it while it is away
 	tracker: VehicleDamage.Tracker, -- the skid
 	podTracker: VehicleDamage.Tracker, -- the pod's root while it is away
-	podState: string, -- last seen; any change clears both trackers
+	podState: PodState.State, -- last seen; any change clears both trackers
 	climbOut: ((Player) -> ())?, -- a walker's cab exit
 	lastHit: BasePart?, -- the part (skid or pod root) that took the last damage: the wreck's center
 	smoke: Smoke?,
@@ -595,7 +606,7 @@ local function newCrash(id: string, spec: VehicleModel.Model): Crash
 		podMass = pod.X * pod.Z * 4,
 		tracker = VehicleDamage.newTracker(),
 		podTracker = VehicleDamage.newTracker(),
-		podState = "docked",
+		podState = PodState.DOCKED,
 		climbOut = nil,
 		lastHit = nil,
 		smoke = nil,
@@ -614,7 +625,7 @@ end
 
 -- A crash's sound and a burst of sparks at `at`.
 local function crashFeedback(model: Model, at: Vector3, amount: number)
-	local maxHealth = (model:GetAttribute("MaxHealth") :: number?) or 100
+	local maxHealth = (model:GetAttribute(Names.Attributes.MaxHealth) :: number?) or 100
 	local cue = if amount >= HEAVY_CRASH * maxHealth
 		then SoundCatalog.CRASH.heavy
 		else SoundCatalog.CRASH.light
@@ -680,7 +691,7 @@ end
 
 local function trackCrash(model: Model, car: Car, dt: number)
 	local crash = car.crash
-	local podState = if car.pod then car.pod.state else "docked"
+	local podState = if car.pod then car.pod.state else PodState.DOCKED
 	if podState ~= crash.podState then
 		-- A pod letting go of its legs or snapping back onto them jumps both velocities.
 		crash.podState = podState
@@ -688,7 +699,7 @@ local function trackCrash(model: Model, car: Car, dt: number)
 		VehicleDamage.clear(crash.podTracker)
 	end
 	sampleCrash(model, crash, car.skid, crash.tracker, crash.bulk, crash.walker, crash.length, dt)
-	if car.pod and podState ~= "docked" then
+	if car.pod and podState ~= PodState.DOCKED then
 		sampleCrash(
 			model,
 			crash,
@@ -744,11 +755,11 @@ end
 -- puts whoever stands in it at the exit), explodes, chars, hops, and is cleared after WRECK_TIME.
 -- A parked vehicle's spot then builds a fresh one (Vehicles.start); a /give vehicle is gone.
 local function wreck(model: Model, car: Car)
-	if model:GetAttribute("Wrecked") then
+	if model:GetAttribute(Names.Attributes.Wrecked) then
 		return
 	end
-	model:SetAttribute("Wrecked", true)
-	model:SetAttribute("Health", 0)
+	model:SetAttribute(Names.Attributes.Wrecked, true)
+	model:SetAttribute(Names.Attributes.Health, 0)
 	cars[model] = nil
 	-- The skid is frictionless: the drive constraints, held at zero, are the hulk's brake. A
 	-- rammed wreck flies its throw out first (the rest of STUN_TIME), then brakes.
@@ -783,7 +794,7 @@ local function wreck(model: Model, car: Car)
 		throwOut(seat)
 	end
 	local climbOut = car.crash.climbOut
-	local cab = model:FindFirstChild("Cab") :: BasePart?
+	local cab = model:FindFirstChild(Names.Instances.Cab) :: BasePart?
 	if climbOut and cab then
 		-- Deferred: a thrown-out driver sits until the weld's removal lands, and climbOut skips
 		-- anyone seated.
@@ -820,11 +831,11 @@ end
 -- Smoke at half health and fire at a quarter, from the skid at half the solid height; a wreck at
 -- none.
 local function onHealth(model: Model, car: Car)
-	if model:GetAttribute("Wrecked") then
+	if model:GetAttribute(Names.Attributes.Wrecked) then
 		return
 	end
-	local health = (model:GetAttribute("Health") :: number?) or 0
-	local maxHealth = (model:GetAttribute("MaxHealth") :: number?) or 1
+	local health = (model:GetAttribute(Names.Attributes.Health) :: number?) or 0
+	local maxHealth = (model:GetAttribute(Names.Attributes.MaxHealth) :: number?) or 1
 	local crash = car.crash
 	local share = health / maxHealth
 	if share <= SMOKE_SHARE and not crash.smoke then
@@ -858,20 +869,24 @@ end
 -- Health from the vehicle's bulk, set before the model is parented so clients see it at once.
 local function addHealth(model: Model, car: Car)
 	local maxHealth = VehicleDamage.maxHealth(car.crash.bulk)
-	model:SetAttribute("MaxHealth", maxHealth)
-	model:SetAttribute("Health", maxHealth)
-	model:GetAttributeChangedSignal("Health"):Connect(function()
+	model:SetAttribute(Names.Attributes.MaxHealth, maxHealth)
+	model:SetAttribute(Names.Attributes.Health, maxHealth)
+	model:GetAttributeChangedSignal(Names.Attributes.Health):Connect(function()
 		onHealth(model, car)
 	end)
 end
 
 -- Takes `amount` health from a vehicle (crashes, rams; weapons could). A wreck takes no more.
 function Vehicles.damage(model: Model, amount: number)
-	local health = model:GetAttribute("Health")
-	if model:GetAttribute("Wrecked") or typeof(health) ~= "number" or amount <= 0 then
+	local health = model:GetAttribute(Names.Attributes.Health)
+	if
+		model:GetAttribute(Names.Attributes.Wrecked)
+		or typeof(health) ~= "number"
+		or amount <= 0
+	then
 		return
 	end
-	model:SetAttribute("Health", math.max(0, health - amount))
+	model:SetAttribute(Names.Attributes.Health, math.max(0, health - amount))
 end
 
 -- Contact damage and ramming -------------------------------------------------------------------
@@ -934,8 +949,8 @@ local function addGrove(tree: Instance)
 		rammable.FilterDescendantsInstances = rammableRoots
 	end
 end
-CollectionService:GetInstanceAddedSignal("Tree"):Connect(addGrove)
-for _, tree in CollectionService:GetTagged("Tree") do
+CollectionService:GetInstanceAddedSignal(Names.Tags.Tree):Connect(addGrove)
+for _, tree in CollectionService:GetTagged(Names.Tags.Tree) do
 	addGrove(tree)
 end
 
@@ -948,7 +963,7 @@ local function regrow(sapling: Model, grove: Instance, box: CFrame, extent: Vect
 		return
 	end
 	local blockers: { Instance } = { folder }
-	local creatures = workspace:FindFirstChild("Creatures")
+	local creatures = workspace:FindFirstChild(Names.Instances.Creatures)
 	if creatures then
 		table.insert(blockers, creatures)
 	end
@@ -985,7 +1000,7 @@ local function fell(tree: Model, direction: Vector3, pace: number, weight: numbe
 				weld.Part1 = part
 				weld.Parent = part
 			end
-			part.CollisionGroup = "Wreckage"
+			part.CollisionGroup = Names.CollisionGroups.Wreckage
 			part.CanTouch = false
 			part.Anchored = false
 			mass += part:GetMass()
@@ -1144,8 +1159,8 @@ local function hurtTouching(model: Model, car: Car, dt: number, checkTargets: bo
 				closing,
 				now
 			)
-		elseif CollectionService:HasTag(victim, "Tree") then
-			local toughness = (victim:GetAttribute("Toughness") :: number?) or 1
+		elseif CollectionService:HasTag(victim, Names.Tags.Tree) then
+			local toughness = (victim:GetAttribute(Names.Attributes.Toughness) :: number?) or 1
 			if pace * car.weight >= TREE_BREAK * toughness then
 				car.struck[victim :: Model] = now
 				fell(
@@ -1193,7 +1208,7 @@ local function hurtTouching(model: Model, car: Car, dt: number, checkTargets: bo
 			Combat.push(target.model, push, 0.2)
 		end
 	end
-	for _, barrel in CollectionService:GetTagged("ExplosiveBarrel") do
+	for _, barrel in CollectionService:GetTagged(Names.Tags.ExplosiveBarrel) do
 		if barrel:IsA("BasePart") and touches(car, ground, barrel.Position) then
 			Combat.detonateBarrel(barrel, driver)
 		end
@@ -1227,12 +1242,12 @@ end)
 -- (src/client/PromptPanel.luau).
 local function seatPlayer(player: Player, seat: Seat | VehicleSeat)
 	local model = seat.Parent
-	local podState = model and model:GetAttribute("PodState") or "docked"
-	if seat:GetAttribute("LegsSeat") then
-		if podState ~= "flying" and podState ~= "landed" then
+	local podState = PodState.of(model and model:GetAttribute(Names.Attributes.PodState))
+	if seat:GetAttribute(Names.Attributes.LegsSeat) then
+		if not PodState.legsFree(podState) then
 			return -- the legs ride only while the pod is away, and not while it comes home
 		end
-	elseif podState ~= "docked" then
+	elseif podState ~= PodState.DOCKED then
 		return -- the seat is away with its pod
 	end
 	local character = player.Character
@@ -1262,9 +1277,10 @@ local function addPrompts(
 		reach = spec.prompt.reach
 	end
 
-	local function prompt(action: string, key: Enum.KeyCode): ProximityPrompt
+	-- `name` defaults to `<action>Prompt`; PromptPanel finds the Drive prompt by its name.
+	local function prompt(action: string, key: Enum.KeyCode, name: string?): ProximityPrompt
 		local each = Instance.new("ProximityPrompt")
-		each.Name = action .. "Prompt"
+		each.Name = name or action .. "Prompt"
 		each.ActionText = action
 		each.ObjectText = spec.name
 		each.KeyboardKeyCode = key
@@ -1277,13 +1293,13 @@ local function addPrompts(
 	-- Drive takes the driver seat, or while a pod is away (flying or landed) the legs seat.
 	local model = skid.Parent :: Model
 	local function driveSeat(): VehicleSeat?
-		local podState = model:GetAttribute("PodState") or "docked"
-		if podState == "docked" then
+		local podState = PodState.of(model:GetAttribute(Names.Attributes.PodState))
+		if podState == PodState.DOCKED then
 			return driver
 		end
-		return if legsSeat and (podState == "flying" or podState == "landed") then legsSeat else nil
+		return if legsSeat and PodState.legsFree(podState) then legsSeat else nil
 	end
-	local drivePrompt = prompt("Drive", Enum.KeyCode.E)
+	local drivePrompt = prompt("Drive", Enum.KeyCode.E, Names.Instances.DrivePrompt)
 	drivePrompt.Triggered:Connect(function(player)
 		local seat = driveSeat()
 		if seat then
@@ -1297,7 +1313,7 @@ local function addPrompts(
 	driver:GetPropertyChangedSignal("Occupant"):Connect(refreshDrive)
 	if legsSeat then
 		legsSeat:GetPropertyChangedSignal("Occupant"):Connect(refreshDrive)
-		model:GetAttributeChangedSignal("PodState"):Connect(refreshDrive)
+		model:GetAttributeChangedSignal(Names.Attributes.PodState):Connect(refreshDrive)
 	end
 
 	if #passengers == 0 then
@@ -1393,7 +1409,7 @@ local function addCab(
 	local cab = spec.cab :: VehicleModel.CabSpec
 	local exit = spec.exit :: CFrame
 	local volume = Instance.new("Part")
-	volume.Name = "Cab"
+	volume.Name = Names.Instances.Cab
 	volume.Size = cab.size
 	volume.Transparency = 1
 	volume.CanCollide = false
@@ -1401,7 +1417,7 @@ local function addCab(
 	volume.CanQuery = false
 	-- A flying pod takes its cab along.
 	attachTo(model, skid, podBone, volume, CFrame.new(cab.center))
-	CollectionService:AddTag(volume, "MechCab")
+	CollectionService:AddTag(volume, Names.Tags.MechCab)
 
 	local anchor = Instance.new("Attachment")
 	anchor.Name = "CabPromptAnchor"
@@ -1409,9 +1425,10 @@ local function addCab(
 	anchor.Parent = volume
 	local reach = math.sqrt((cab.size.X / 2) ^ 2 + (cab.size.Z / 2) ^ 2) + 0.5
 
-	local function prompt(action: string, key: Enum.KeyCode): ProximityPrompt
+	-- `name` defaults to `<action>Prompt`; PromptPanel finds the Drive prompt by its name.
+	local function prompt(action: string, key: Enum.KeyCode, name: string?): ProximityPrompt
 		local each = Instance.new("ProximityPrompt")
-		each.Name = action .. "Prompt"
+		each.Name = name or action .. "Prompt"
 		each.ActionText = action
 		each.ObjectText = spec.name
 		each.KeyboardKeyCode = key
@@ -1421,7 +1438,7 @@ local function addCab(
 		return each
 	end
 
-	local drivePrompt = prompt("Drive", Enum.KeyCode.E)
+	local drivePrompt = prompt("Drive", Enum.KeyCode.E, Names.Instances.DrivePrompt)
 	drivePrompt.Triggered:Connect(function(player)
 		seatPlayer(player, driver)
 	end)
@@ -1437,7 +1454,7 @@ local function addCab(
 		end
 	end
 	prompt("Climb out", Enum.KeyCode.Q).Triggered:Connect(function(player)
-		if (model:GetAttribute("PodState") or "docked") == "docked" then
+		if PodState.of(model:GetAttribute(Names.Attributes.PodState)) == PodState.DOCKED then
 			climbOut(player)
 		end
 	end)
@@ -1448,7 +1465,7 @@ local function build(id: string, cframe: CFrame): Model
 	local spec = specFor(id)
 	local model = Instance.new("Model")
 	model.Name = spec.name
-	model:SetAttribute("VehicleId", id)
+	model:SetAttribute(Names.Attributes.VehicleId, id)
 	local W, L = spec.footprint.X, spec.footprint.Y
 	local grounded
 	cframe, grounded = onTerrain(cframe, W, L)
@@ -1458,7 +1475,7 @@ local function build(id: string, cframe: CFrame): Model
 	-- a ledge up to RAMP_HEIGHT (road edges, plazas, steps) lifts the vehicle onto it.
 	local ramp = math.min(RAMP_LENGTH, L / 4)
 	local skid = Instance.new("Part")
-	skid.Name = "Skid"
+	skid.Name = Names.Instances.Skid
 	skid.Size = Vector3.new(W, 1, L - ramp * 2)
 	skid.Transparency = 1
 	skid.CustomPhysicalProperties = PhysicalProperties.new(4, 0, 0, 100, 1)
@@ -1499,7 +1516,9 @@ local function build(id: string, cframe: CFrame): Model
 	local podBone = spec.pod and bones[spec.pod.bone]
 	addLadders(model, skid, spec)
 	addSmoke(skid, bones, spec)
-	local group = if spec.stepsOver then "Walkers" else "Vehicles"
+	local group = if spec.stepsOver
+		then Names.CollisionGroups.Walkers
+		else Names.CollisionGroups.Vehicles
 	for _, part in model:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.CollisionGroup = group
@@ -1521,7 +1540,7 @@ local function build(id: string, cframe: CFrame): Model
 		part.CanTouch = false
 		part.CastShadow = part.Transparency < 0.5
 		if piece.hideInCockpit then
-			part:SetAttribute("HideInCockpit", true) -- MechCamera
+			part:SetAttribute(Names.Attributes.HideInCockpit, true) -- MechCamera
 		end
 		attachTo(model, skid, piece.bone and bones[piece.bone], part, piece.offset)
 	end
@@ -1529,7 +1548,7 @@ local function build(id: string, cframe: CFrame): Model
 	-- Outside-view camera subject.
 	if spec.cameraFocus then
 		local focus = Instance.new("Part")
-		focus.Name = "CameraFocus"
+		focus.Name = Names.Instances.CameraFocus
 		focus.Size = Vector3.one
 		focus.Transparency = 1
 		focus.CanCollide = false
@@ -1538,14 +1557,14 @@ local function build(id: string, cframe: CFrame): Model
 		attachTo(model, skid, podBone, focus, CFrame.new(spec.cameraFocus))
 	end
 	if spec.gait then
-		model:SetAttribute("Gait", spec.gait)
+		model:SetAttribute(Names.Attributes.Gait, spec.gait)
 	end
 
 	local driver: VehicleSeat
 	local passengers: { Seat } = {}
 	for index, offset in spec.seats do
 		local chair: BasePart = Instance.new(if index == 1 then "VehicleSeat" else "Seat") :: any
-		chair.Name = if index == 1 then "DriverSeat" else "Seat" .. index
+		chair.Name = if index == 1 then Names.Instances.DriverSeat else "Seat" .. index
 		chair.Size = VehicleModel.SEAT_SIZE
 		chair.Transparency = 1
 		chair.CanCollide = false
@@ -1569,31 +1588,31 @@ local function build(id: string, cframe: CFrame): Model
 			end
 		end
 		local saddle = Instance.new("VehicleSeat")
-		saddle.Name = "LegsSeat"
+		saddle.Name = Names.Instances.LegsSeat
 		saddle.Size = VehicleModel.SEAT_SIZE
 		saddle.Transparency = 1
 		saddle.CanCollide = false
 		saddle.CanTouch = false
 		saddle.MaxSpeed = spec.speed
-		saddle:SetAttribute("MayhemCar", true) -- CarInput sends its driver's input
-		saddle:SetAttribute("TopSpeed", spec.speed)
-		saddle:SetAttribute("LegsSeat", true)
+		saddle:SetAttribute(Names.Attributes.MayhemCar, true) -- CarInput sends its driver's input
+		saddle:SetAttribute(Names.Attributes.TopSpeed, spec.speed)
+		saddle:SetAttribute(Names.Attributes.LegsSeat, true)
 		attachTo(model, skid, legsBone, saddle, spec.pod.legsSeat)
 		legsSeat = saddle
 	end
 	addPrompts(skid, spec, driver, passengers, legsSeat)
 	driver.MaxSpeed = spec.speed
-	driver:SetAttribute("MayhemCar", true)
-	driver:SetAttribute("TopSpeed", spec.speed)
+	driver:SetAttribute(Names.Attributes.MayhemCar, true)
+	driver:SetAttribute(Names.Attributes.TopSpeed, spec.speed)
 	if spec.cockpitCamera then
-		driver:SetAttribute("CockpitCamera", true)
+		driver:SetAttribute(Names.Attributes.CockpitCamera, true)
 	end
 	local eject: ((Player) -> ())? = nil
 	if spec.cab then
 		eject = addCab(model, skid, spec, driver, podBone)
 	end
 	if spec.gait then
-		driver:SetAttribute("TurnRate", spec.turnRate or TURN_RATE) -- the walk animator reads it
+		driver:SetAttribute(Names.Attributes.TurnRate, spec.turnRate or TURN_RATE) -- the walk animator reads it
 	end
 
 	local mass = W * L * 4
@@ -1735,7 +1754,7 @@ local function build(id: string, cframe: CFrame): Model
 			skid = skid,
 			seat = driver,
 			root = podBone.part,
-			joint = podBone.part:FindFirstChild("Joint_" .. spec.pod.bone) :: Motor6D,
+			joint = podBone.part:FindFirstChild(Names.Instances.JointPrefix .. spec.pod.bone) :: Motor6D,
 			button = CFrame.new(spec.pod.button - pivot),
 			jets = jets,
 			exit = podExit,
@@ -1806,7 +1825,7 @@ local function isOccupied(model: Model): boolean
 			end
 		end
 	end
-	local cab = model:FindFirstChild("Cab")
+	local cab = model:FindFirstChild(Names.Instances.Cab)
 	if cab and cab:IsA("BasePart") then
 		for _, player in Players:GetPlayers() do
 			local character = player.Character

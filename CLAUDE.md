@@ -23,6 +23,7 @@ src/shared/   ReplicatedStorage.Shared. Every file --!strict. Loads under Lune.
   *Catalog    data only: WeaponCatalog, VehicleCatalog, CreatureCatalog, SoundCatalog
   pure logic  DayNight, VehicleDamage, MechGait, MechClimb, VehicleDefaults (tested in tools/tests)
   Config      world layout, REGIONS, teams, admin ids;  Remotes: every RemoteEvent, typed record
+  contracts   Names (attributes, tags, collision groups, instance names), PodState, RemoteActions
 src/server/   ServerScriptService.Server. init.server.luau boots in this order:
   1. collision groups, barrel factory, lighting, DayNight.start, gravity
   2. buildWorld(): Lobby, Roads, one building per Config.REGIONS entry (in order), Landscape
@@ -61,6 +62,10 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   `CFrame`: Lune 0.10.5's `CFrame.lookAt` faces +Z. It also stubs `Random` (deterministic, not
   Roblox's sequence) and resolves `script`/`require`. Modules that build Instances at require
   time (Weapons, Combat, Landscape) do not load under Lune; `data_integrity` reads them as text.
+- Cross-module names come from `src/shared/Names.luau` (attributes, tags, collision groups,
+  instance names set in one module and read in another), `PodState.luau` (pod states) and
+  `RemoteActions.luau` (remote action strings). Module-private names stay local literals. Add a
+  new shared name to its module and to the golden list in `tools/tests/names.luau`.
 - Every file opens with a header comment saying what it is; match the surrounding comment density.
 
 ## UI rules
@@ -152,7 +157,8 @@ Move these word for word; do not "simplify" them.
   server's value (the server never changes it after creation).
 - `src/client/MechMotion.luau` `resolve`, and `src/client/CarInput.luau`'s lazy
   `PlayerModule:GetControls()` (retried on a slow load).
-- Instance, attribute, tag and prompt names the client reads (e.g. `Gait`, `PodState`, `Skid`)
-  are a contract between server and client: rename both sides or neither.
+- Instance, attribute, tag, collision group and prompt names, pod states and remote action strings
+  (`src/shared/Names.luau`, `PodState.luau`, `RemoteActions.luau`) are a contract between server
+  and client: never change a value. `tools/tests/names.luau` pins each one.
 - Numbers in `VehicleDamage`, `MechClimb`, `MechGait` and `DayNight` are tuning pinned by tests;
   changing one is a gameplay change.

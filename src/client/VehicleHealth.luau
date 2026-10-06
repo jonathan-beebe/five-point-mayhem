@@ -4,8 +4,11 @@
 -- each hit. A wrecked vehicle (attribute Wrecked) hides it.
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+
+local Names = require(ReplicatedStorage.Shared.Names)
 
 local VehicleHealth = {}
 
@@ -89,8 +92,8 @@ local function refresh()
 	if not model then
 		return
 	end
-	local health = (model:GetAttribute("Health") :: number?) or 0
-	local maxHealth = math.max((model:GetAttribute("MaxHealth") :: number?) or 1, 1)
+	local health = (model:GetAttribute(Names.Attributes.Health) :: number?) or 0
+	local maxHealth = math.max((model:GetAttribute(Names.Attributes.MaxHealth) :: number?) or 1, 1)
 	local share = math.clamp(health / maxHealth, 0, 1)
 	fill.Size = UDim2.fromScale(share, 1)
 	fill.BackgroundColor3 = colorFor(share)
@@ -100,7 +103,7 @@ local function refresh()
 		TweenService:Create(flash, TweenInfo.new(FLASH_TIME), { BackgroundTransparency = 1 }):Play()
 	end
 	lastHealth = health
-	gui.Enabled = health > 0 and not model:GetAttribute("Wrecked")
+	gui.Enabled = health > 0 and not model:GetAttribute(Names.Attributes.Wrecked)
 end
 
 -- The vehicle model holding the local player's seat, if any.
@@ -128,9 +131,13 @@ local function watch(model: Model?)
 		gui.Enabled = false
 		return
 	end
-	lastHealth = (model:GetAttribute("Health") :: number?) or 0
+	lastHealth = (model:GetAttribute(Names.Attributes.Health) :: number?) or 0
 	connection = model.AttributeChanged:Connect(function(name)
-		if name == "Health" or name == "MaxHealth" or name == "Wrecked" then
+		if
+			name == Names.Attributes.Health
+			or name == Names.Attributes.MaxHealth
+			or name == Names.Attributes.Wrecked
+		then
 			refresh()
 		end
 	end)
@@ -139,7 +146,7 @@ end
 
 function VehicleHealth.start()
 	gui.Parent = player:WaitForChild("PlayerGui")
-	vehicles = workspace:WaitForChild("Vehicles")
+	vehicles = workspace:WaitForChild(Names.Instances.Vehicles)
 	RunService.Heartbeat:Connect(function()
 		watch(seatedIn())
 	end)
