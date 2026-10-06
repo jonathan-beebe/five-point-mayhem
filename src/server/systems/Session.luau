@@ -14,6 +14,7 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
 local Weapons = require(script.Parent.Weapons)
 local Characters = require(script.Parent.util.Characters)
+local Guard = require(script.Parent.util.Guard)
 
 local Session = {}
 
@@ -195,12 +196,7 @@ end
 
 function Session.start()
 	createTeams()
-	task.spawn(function()
-		while true do
-			task.wait(LOCKOUT_CHECK_INTERVAL)
-			enforceLockout()
-		end
-	end)
+	Guard.loop("session lockout", LOCKOUT_CHECK_INTERVAL, enforceLockout)
 	Players.PlayerAdded:Connect(onPlayer)
 	for _, player in Players:GetPlayers() do
 		task.spawn(onPlayer, player)

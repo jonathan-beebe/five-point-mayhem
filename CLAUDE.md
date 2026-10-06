@@ -53,7 +53,7 @@ src/server/   ServerScriptService.Server. init.server.luau boots in this order:
               Firing (FireWeapon remote, cooldowns), kinds/ (one module per kind; kinds/init.luau
               is the FIRE table). init.luau's header lists the require graph.
     util/     Instance helpers the systems share: Characters, Seats, Prompts, Parts, Ownership
-              (tested in tools/tests/server_helpers.luau)
+              (tested in tools/tests/server_helpers.luau); Guard (tools/tests/guard.luau)
   vehicleModels/ weaponModels/ creatureModels/   one model file per catalog id
 src/client/   StarterPlayerScripts.Client. Feature modules with start(), each task.spawned by
               init.client.luau so one failure cannot stop the rest.
@@ -69,7 +69,9 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   `systems/CreatureModel.luau`. Weapon model files require `WeaponModel` and return
   `WeaponModel.define({...})`.
 - A broken vehicle file becomes a grey placeholder (`pcall` in `Vehicles/Specs`). A broken creature
-  file stops server boot (`Creatures` requires every one at load, no `pcall`).
+  file is warned and its kind never spawns (`Guard.run` per file in `Creatures`; roaming, themed,
+  lair and horde spawns skip it). A vehicle whose build throws leaves its spot empty (warned);
+  the respawn loop retries it.
 - `workspace.Creatures` (`Names.Instances.Creatures`) is created by `Creatures` when first
   required; `Combat` and `Vehicles/Trees` find it by name at call time.
 
@@ -158,7 +160,21 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
     Weapons CanQuery false/Massless). `Parts.weldTo(base, part, offset, parent)` places, welds, and
     parents last.
   - `Ownership.set(part, player?)` (pcall'd SetNetworkOwner), `Ownership.isServerSimulated(part)`.
+  - `Guard.run(tag, fn, ...)`, `Guard.loop(tag, interval, pass)`,
+    `Guard.warn(tag, message, detail?)`: see Robustness.
   `tools/tests/server_helpers.luau` compares each helper with the inline code it replaced.
+- Robustness: one failure in server work warns and the rest carries on. A background loop is
+  `Guard.loop(tag, interval, pass)` (wait, then the pass in `xpcall`); no endless loop
+  (`while true`, `while task.wait`, `until false`) in `src/server` outside Guard
+  (`tools/tests/robustness.luau` fails on one). Per-item boot work (a
+  model file, a parking spot, each system's `start()` in `init.server.luau`) runs each item through
+  `Guard.run` and skips the item on failure; CharacterAutoLoads comes back on after a failed start.
+  A system starts its loops before its per-item work (Guard.loop waits first, so timing holds).
+  Guard warns `[Mayhem <tag>] <error's first line>` plus the traceback, at most once per
+  `REPEAT_SECONDS` (30) per tag and first line; past `MAX_TRACKED` keys it drops stale ones. A
+  catalog kind with no handler (`FIRE[kind]` nil) warns once and ignores the shot.
+  Heartbeat and event handlers need no guard: Roblox keeps the connection after an error.
+  `tools/tests/robustness.luau` runs Creatures, Parking, Firing and the boot with a failing piece.
 - Every file opens with a header comment saying what it is; match the surrounding comment density.
 
 ## UI rules

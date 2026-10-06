@@ -1,7 +1,7 @@
 -- The FireWeapon remote: a client reports "I fired weapon X at point P"; this checks the held
 -- tool, a living character outside the lobby and the cooldown, builds the Shot (eye origin, muzzle
--- from the tool's model) and fires it through FIRE[weapon.kind]. init.luau connects `onFire` and
--- `forget` (PlayerRemoving).
+-- from the tool's model) and fires it through FIRE[weapon.kind] (a kind with no entry is warned
+-- once and its shots ignored). init.luau connects `onFire` and `forget` (PlayerRemoving).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -19,6 +19,10 @@ local Firing = {}
 local modelFor = Tools.modelFor
 
 local lastFired: { [Player]: { [string]: number } } = {}
+
+-- Kinds with no FIRE entry, warned once each: their shots are ignored. Once per kind, not
+-- Guard.warn's 30 s limit: the gap is fixed at boot, so a repeat every 30 s while firing is noise.
+local unknownKinds: { [string]: true } = {}
 
 -- Drops a leaving player's cooldown clocks.
 local function forget(player: Player)
@@ -38,6 +42,18 @@ local function onFire(player: Player, weaponId, aim)
 	local weapon = WeaponCatalog.get(weaponId)
 	local character = player.Character
 	if not weapon or not character then
+		return
+	end
+	local fire = FIRE[weapon.kind]
+	if not fire then
+		if not unknownKinds[weapon.kind] then
+			unknownKinds[weapon.kind] = true
+			warn(
+				("[Mayhem weapons] no FIRE entry for kind %s; ignoring its shots"):format(
+					weapon.kind
+				)
+			)
+		end
 		return
 	end
 	local tool = character:FindFirstChildOfClass("Tool")
@@ -72,7 +88,7 @@ local function onFire(player: Player, weaponId, aim)
 		then origin + root.CFrame.LookVector * 10
 		else aim
 	WeaponSounds.fire(handle, weaponId)
-	FIRE[weapon.kind]({
+	fire({
 		player = player,
 		weapon = weapon,
 		character = character,
