@@ -73,6 +73,7 @@ end
 
 export type Crash = {
 	bulk: number,
+	armor: number, -- divides crash and ram damage (VehicleDamage.armor); 1 is none
 	walker: boolean, -- lands on its legs (VehicleDamage.thresholds)
 	length: number, -- footprint length: a head-on crash's sparks fly at the front
 	height: number, -- solid height: smoke and fire rise from half of it

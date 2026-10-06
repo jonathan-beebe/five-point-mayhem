@@ -8,6 +8,7 @@ export type Vehicle = {
 	icon: string,
 	mech: boolean?, -- a walker (its model has a gait); the admin panel lists these under MECHS
 	bulk: number?, -- crash toughness (VehicleDamage); default from the model's size
+	armor: number?, -- divides crash and ram damage (VehicleDamage.armor); default 1, none
 }
 
 local VEHICLES: { Vehicle } = {
@@ -42,12 +43,12 @@ local VEHICLES: { Vehicle } = {
 	{ id = "ice_cream", name = "Ice Cream Truck", icon = "🍦" },
 	{ id = "semi", name = "Peterbilt 389 Semi", icon = "🚛" },
 	{ id = "tractor", name = "Farm Tractor", icon = "🚜" },
-	{ id = "bulldozer", name = "Bulldozer", icon = "🚧" },
+	{ id = "bulldozer", name = "Bulldozer", icon = "🚧", armor = 4 },
 	-- Military
-	{ id = "humvee", name = "Humvee", icon = "🪖" },
-	{ id = "stryker", name = "Stryker APC", icon = "🛡" },
-	{ id = "abrams", name = "M1 Abrams Tank", icon = "💥" },
-	{ id = "tiger", name = "Tiger I Tank", icon = "💥" },
+	{ id = "humvee", name = "Humvee", icon = "🪖", armor = 3 },
+	{ id = "stryker", name = "Stryker APC", icon = "🛡", armor = 6 },
+	{ id = "abrams", name = "M1 Abrams Tank", icon = "💥", armor = 25 },
+	{ id = "tiger", name = "Tiger I Tank", icon = "💥", armor = 25 },
 	-- Walkers (they stand guard around the lobby)
 	{ id = "mech", name = "OG", icon = "🤖", mech = true },
 	{ id = "cherry_bomb", name = "Cherry Bomb", icon = "🍒", mech = true },

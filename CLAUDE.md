@@ -227,7 +227,8 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
 
 `tools/tests/data_integrity.luau` enforces the cross-file rules (`lune run tools/test data`).
 
-**Vehicle.** 1) Entry in `src/shared/VehicleCatalog.luau` (`id`, `name`, `icon`, optional `bulk`).
+**Vehicle.** 1) Entry in `src/shared/VehicleCatalog.luau` (`id`, `name`, `icon`, optional `bulk`,
+optional `armor`: divides crash and ram damage, pinned per vehicle in `tools/tests/vehicle_damage`).
 2) `src/server/vehicleModels/<id>.luau`, require-free, per `VehicleModel.Model`; `speed`,
 `acceleration`, `braking`, `coasting` from the real vehicle by the mapping in
 `src/shared/VehicleDefaults.luau`, with a `-- Real:` comment. 3) Engine profile
@@ -237,8 +238,9 @@ and the GOD MODE VEHICLES menu pick it up from the catalog.
 `cockpitCamera` as OG in `vehicleModels/mech.luau` uses them); sounds in `SoundCatalog.MECHS[id]`
 (`mechVariant`) instead of `VEHICLES`. It parks in the guard ring round the lobby, appears in the
 MECHS menu and climbs unless `climbs = false`. Render mid-stride with `--phase 0..1`.
-Enforced: id pattern, unique id, name, icon; id ↔ model file; `define()`/`ModelChecks`;
-`mech` ↔ `gait`; sound entry in the right table; positive `acceleration`, `braking`, `coasting`.
+Enforced: id pattern, unique id, name, icon, `bulk` > 0, `armor` >= 1; id ↔ model file;
+`define()`/`ModelChecks`; `mech` ↔ `gait`; sound entry in the right table; positive
+`acceleration`, `braking`, `coasting`.
 
 *Vehicle behaviour:* change the module that owns it in `systems/Vehicles/`
 (each header says what it owns); math goes in the `src/shared/Vehicle*` modules with a test. State
