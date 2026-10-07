@@ -58,9 +58,15 @@ type Session = {
 
 local session: Session? = nil
 
--- The button column, for other modules that stack buttons beside it (PodControls): button size
--- and gap in pixels, and the bottom-right corner of VIEW. Set whenever the buttons are laid out.
-export type Layout = { size: number, gap: number, corner: UDim2, insets: Enum.ScreenInsets }
+-- The action cluster, for other modules that place buttons in it (PodControls): slot size and gap
+-- in pixels, and the bottom-right corners of VIEW and STAND. Set whenever the buttons are laid out.
+export type Layout = {
+	size: number,
+	gap: number,
+	corner: UDim2,
+	seat: UDim2,
+	insets: Enum.ScreenInsets,
+}
 MechCamera.layout = nil :: Layout?
 local layoutEvent = Instance.new("BindableEvent")
 MechCamera.layoutChanged = layoutEvent.Event
@@ -74,7 +80,6 @@ buttonGui.Name = Names.Instances.MechButtons
 buttonGui.ResetOnSpawn = false
 buttonGui.DisplayOrder = Theme.DisplayOrder.touch
 buttonGui.Enabled = false
-Hud.addBottomControls(buttonGui)
 
 local function makeButton(name: string, text: string): TextButton
 	return TouchButton.new({
@@ -94,8 +99,8 @@ local viewButton = makeButton("View", "VIEW") -- touch only; V and gamepad Y eve
 local standButton = makeButton("Stand", "STAND") -- every platform; jumping does the same
 
 -- VIEW sits directly left of the default jump button, bottoms aligned; STAND sits directly above
--- VIEW. Measured at runtime in the jump button's coordinate space (the ScreenGui copies TouchGui's
--- inset setting).
+-- the jump button (HudLayout.mechColumn). Measured at runtime in the jump button's coordinate space
+-- (the ScreenGui copies TouchGui's inset setting).
 local function layoutButton()
 	local jump = Hud.jumpButton()
 	local column
@@ -105,12 +110,18 @@ local function layoutButton()
 	else
 		column = HudLayout.mechColumnFallback(Workspace.CurrentCamera.ViewportSize)
 	end
-	local size, gap, corner = column.size, column.gap, column.corner
+	local size, gap, corner, seat = column.size, column.gap, column.corner, column.seat
 	viewButton.Size = UDim2.fromOffset(size, size)
 	viewButton.Position = corner
 	standButton.Size = UDim2.fromOffset(size, size)
 	standButton.Position = HudLayout.standPosition(column)
-	MechCamera.layout = { size = size, gap = gap, corner = corner, insets = buttonGui.ScreenInsets }
+	MechCamera.layout = {
+		size = size,
+		gap = gap,
+		corner = corner,
+		seat = seat,
+		insets = buttonGui.ScreenInsets,
+	}
 	layoutEvent:Fire()
 end
 

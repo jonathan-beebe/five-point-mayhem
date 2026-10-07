@@ -199,29 +199,36 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   starts below the top bar and inside the device's cutouts; `GuiService.TopbarInset` is the free
   strip inside the top bar), re-layout on resize, and fall back to fractions of the screen where
   nothing is measurable (`HudLayout.*Fallback`: no jump button on desktop). A gap from a measured
-  edge (`RightColumn.MARGIN`, `GAP`) is a spacing value, not a guess. Fixed offsets the user
-  accepted: `VehicleHealth` `BAR_BOTTOM`, LobbyUI's CHOOSE WEAPONS `-110`. Not precedent.
-- On desktop the GOD MODE/MAC column overlaps Roblox's PlayerList (CoreGui, not measurable). The
-  user accepted the overlap; do not offset the column or disable the PlayerList for it.
+  edge (`HudLayout.MARGIN`, `GAP`) is a spacing value, not a guess; so are the size classes'
+  element sizes (`HudLayout.sizes`). Fixed offsets the user accepted: LobbyUI's CHOOSE WEAPONS
+  `-110`. Not precedent.
+- HUD zones (the approved design; README's UI conventions draw them): top right the vehicle
+  status and the system rail (GOD MODE, MAC) with its drawer to the left; top left the prompt
+  stack; bottom right the action cluster round the jump button (camera slot left of jump, seat
+  slot above it, ▲/▼ left, the pod button above); bottom left the thumbstick. Small screens
+  (short side ≤ 500, `HudLayout.isSmall`) get square rail icons under the status; large ones
+  full-width toggles in the corner with the status left of them. A new element goes in its zone.
+- On desktop the system rail overlaps Roblox's PlayerList (CoreGui, not measurable). The user
+  accepted the overlap; do not offset the rail or disable the PlayerList for it.
 - Build client UI with `src/client/ui` (each header lists its functions):
   - `Create`: `create(className, properties, children?)`, `corner(radius)`,
     `stroke(color, thickness?, mode?)`, `padding(horizontal, vertical)`, `label(...)` (LobbyUI's)
   - `Theme`: `Fonts`, the colours more than one module uses (`Colors.hud`, `white`, `cyan`,
     `HUD_TRANSPARENCY`), `Radius.round`/`panel`, and `DisplayOrder`: every ScreenGui's layer.
     A new ScreenGui takes its DisplayOrder from there (`ui_kit` fails on a literal).
-  - `TouchButton.new(options)`: the round bottom-right touch button
-  - `Hud`: `jumpButton`, `jumpWatcher`, `matchInset`, `edgeY`, `shownIn`, and the list of
-    bottom-right control guis PromptPanel's cards stay above (`addBottomControls`)
-  - `RightColumn`: the GOD MODE/MAC column's constants (`SCREEN_INSETS` for its ScreenGuis and
-    PromptPanel's), `makeToggle`, `makePanel`, `fullHeight`, `toggle`, `panels`, `opened`
+  - `TouchButton.new(options)`: the round touch button of the action cluster
+  - `Hud`: `jumpButton`, `jumpWatcher`, `matchInset`
+  - `RightColumn`: the system rail (`SCREEN_INSETS` for its ScreenGuis, PromptPanel's and
+    VehicleHealth's), `makeToggle`, `setLabels`, `makePanel`, `layoutIn`, `watch`, `panels`,
+    `opened`
   Layout arithmetic goes in `src/shared/HudLayout.luau` with a case in
   `tools/tests/hud_layout.luau`. `tools/tests/ui_kit.luau` compares each widget with the inline
   code it replaced.
 - Persistent HUD never sits at the screen center. Exempt: UI the player opens and closes (MAC and
   GOD MODE panels, the lobby armory), transient prompt cards, the sniper scope's lens and
   reticle, full-screen flashes (MAYHEM, alarms).
-- Every ProximityPrompt renders as a card at the right edge (`src/client/PromptPanel.luau`); new
-  prompts need no UI code.
+- Every ProximityPrompt renders as a card in the top-left prompt stack
+  (`src/client/PromptPanel.luau`); new prompts need no UI code.
 
 ## Recipes
 
@@ -292,13 +299,12 @@ with recording fakes).
 
 **HUD element.** 1) A client module with `start()` listed in `init.client.luau`; its ScreenGui's
 `DisplayOrder` from a `Theme.DisplayOrder` layer (a new layer goes in Theme's header table and in
-`ORDERS` in `tools/tests/ui_kit.luau`). 2) Build with `ui/Create` and `ui/Theme`; a bottom-right
-touch button is `TouchButton.new`. 3) Place it against measured elements: `Hud.jumpButton()` plus
-`Hud.jumpWatcher(layout)` and `Hud.matchInset`, or `RightColumn`'s toggle and panels; re-layout on
-`ViewportSize` changes. The arithmetic goes in `HudLayout` with a reference case in
-`tools/tests/hud_layout.luau`. 4) Bottom-right controls: `Hud.addBottomControls(gui)` at require
-time so prompt cards stay above them. 5) Name what needs a human in Studio: placement on phone,
-tablet and desktop.
+`ORDERS` in `tools/tests/ui_kit.luau`). 2) Build with `ui/Create` and `ui/Theme`; an action
+cluster button is `TouchButton.new`. 3) Put it in its zone (UI rules) against measured elements:
+`Hud.jumpButton()` plus `Hud.jumpWatcher(layout)` and `Hud.matchInset` for the action cluster, the
+gui's `AbsoluteSize` with `CoreUISafeInsets` for the corners; re-layout on resize. The arithmetic
+goes in `HudLayout` with a golden case in `tools/tests/hud_layout.luau`. 4) Name what needs a
+human in Studio: placement on phone, tablet and desktop.
 
 **Landmark / region.** 1) Append to `Config.REGIONS` (`id`, `name`, `country`).
 `Config.regionAngle` spaces regions 360° / #REGIONS apart; `Config.betweenRegions` is half a step

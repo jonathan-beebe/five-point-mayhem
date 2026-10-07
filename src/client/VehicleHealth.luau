@@ -1,6 +1,7 @@
 -- The health bar of the vehicle the local player sits in (any seat: driver, passenger, a walker's
--- legs saddle). Server Vehicles keeps the model's Health and MaxHealth attributes; the bar sits at
--- the bottom centre, above the backpack hotbar, goes green to yellow to red, and flashes white on
+-- legs saddle). Server Vehicles keeps the model's Health and MaxHealth attributes; the bar is the
+-- vehicle status in the top-right corner (HudLayout.statusPosition: above the system rail on a
+-- small screen, left of it on a large one), goes green to yellow to red, and flashes white on
 -- each hit. A wrecked vehicle (attribute Wrecked) hides it.
 
 local Players = game:GetService("Players")
@@ -9,8 +10,10 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local HealthBar = require(ReplicatedStorage.Shared.HealthBar)
+local HudLayout = require(ReplicatedStorage.Shared.HudLayout)
 local Names = require(ReplicatedStorage.Shared.Names)
 local Create = require(script.Parent.ui.Create)
+local RightColumn = require(script.Parent.ui.RightColumn)
 local Theme = require(script.Parent.ui.Theme)
 
 local VehicleHealth = {}
@@ -18,21 +21,18 @@ local VehicleHealth = {}
 local player = Players.LocalPlayer
 local rgb = Color3.fromRGB
 
-local BAR_SIZE = Vector2.new(260, 22)
-local BAR_BOTTOM = 100 -- pixels from the bottom of the screen: clear of the backpack hotbar
 local FLASH_TIME = 0.15
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "VehicleHealth"
 gui.ResetOnSpawn = false
 gui.DisplayOrder = Theme.DisplayOrder.vehicleBar
+gui.ScreenInsets = RightColumn.SCREEN_INSETS -- the system rail's space
 gui.Enabled = false
 
 local frame = Instance.new("Frame")
 frame.Name = "Bar"
-frame.AnchorPoint = Vector2.new(0.5, 1)
-frame.Position = UDim2.new(0.5, 0, 1, -BAR_BOTTOM)
-frame.Size = UDim2.fromOffset(BAR_SIZE.X, BAR_SIZE.Y)
+frame.AnchorPoint = Vector2.new(1, 0)
 frame.BackgroundColor3 = Theme.Colors.hud
 frame.BackgroundTransparency = Theme.HUD_TRANSPARENCY
 frame.ClipsDescendants = true
@@ -65,6 +65,13 @@ label.TextSize = 14
 label.TextColor3 = rgb(255, 255, 255)
 label.TextStrokeTransparency = 0.4
 label.Parent = frame
+
+local function layout()
+	local area = gui.AbsoluteSize
+	local size = HudLayout.sizes(area).status
+	frame.Position = HudLayout.statusPosition(area)
+	frame.Size = UDim2.fromOffset(size.X, size.Y)
+end
 
 local vehicles: Instance? = nil -- workspace.Vehicles
 local current: Model? = nil -- the vehicle shown
@@ -131,6 +138,8 @@ end
 
 function VehicleHealth.start()
 	gui.Parent = player:WaitForChild("PlayerGui")
+	gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(layout)
+	layout()
 	vehicles = workspace:WaitForChild(Names.Instances.Vehicles)
 	RunService.Heartbeat:Connect(function()
 		watch(seatedIn())

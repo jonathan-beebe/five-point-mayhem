@@ -1,5 +1,6 @@
 -- God-mode panel for admins: one-tap powers, plus gifting any weapon or power-up to a player
--- or to everyone. The server re-checks admin rights on every command.
+-- or to everyone. Its toggle tops the system rail; the panel opens in the rail's drawer
+-- (ui/RightColumn). The server re-checks admin rights on every command.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -49,19 +50,20 @@ local function build()
 		Text = "👑 GOD MODE",
 		TextColor3 = rgb(40, 20, 0),
 	})
+	RightColumn.setLabels(toggle, "👑\nGOD", "👑 GOD MODE")
 
-	-- The whole panel scrolls as one, and is never taller than the space below the toggles, so on
-	-- a short (phone) screen every part of it stays reachable.
+	-- The whole panel scrolls as one, and is never taller than the drawer, so on a short (phone)
+	-- screen every part of it stays reachable.
 	local width = RightColumn.PANEL_WIDTH
 	local panel = RightColumn.makePanel("ScrollingFrame", gui, rgb(255, 200, 40), {
-		Size = RightColumn.fullHeight(width),
+		Size = UDim2.fromOffset(width, 0),
 		BackgroundColor3 = rgb(20, 16, 10),
 		BorderSizePixel = 0,
 		ScrollBarThickness = 6,
 		CanvasSize = UDim2.new(),
 	}, {
 		create("UISizeConstraint", { MaxSize = Vector2.new(width, 470) }),
-	})
+	}, true)
 
 	local targetButton = create("TextButton", {
 		Position = UDim2.fromOffset(10, 10),
@@ -247,6 +249,7 @@ local function build()
 	RightColumn.opened:Connect(function()
 		panel.Visible = false
 	end)
+	RightColumn.watch(gui)
 end
 
 function AdminPanel.start()

@@ -1,17 +1,15 @@
 -- Checks src/shared/HudLayout.luau outside Roblox.
 -- Usage: lune run tools/tests/hud_layout.luau
 --
---   - every function gives the same bits as the inline code it replaced (copied below as the
---     reference, compiled with luau.load as Sandbox compiles HudLayout), composed the way each
---     caller composes it now: MechCamera's VIEW/STAND column from a jump button, SniperScope's
---     SCOPE button (from a jump button and without one), PromptPanel's card stack (column, every
---     card's frame, badge and text box)
---   - golden values where the layout changed on purpose: the right column, PodControls' buttons
---     and MechCamera's fallback column (moved to keep persistent HUD off the screen centre)
---   - inputs: jump button sizes and positions (zero, fractional, phone to tablet), viewports
---     (zero, odd, 4K), and card stacks with and without the MAC toggle, open panels and controls
---     under, beside and clear of the column, 1 to 7 cards, screens too short to fit them
---   - a few plain values
+--   - mechColumn's slot size, gap and camera slot give the same bits as the inline code it
+--     replaced (copied below as the reference, compiled with luau.load as Sandbox compiles
+--     HudLayout), over jump button sizes and positions (zero, fractional, phone to tablet)
+--   - golden values where the layout changed on purpose (the HUD zones redesign): the seat slot,
+--     the fallback cluster, PodControls' buttons, the system rail, the vehicle status, the drawer
+--     and the prompt stack, per size class
+--   - rules: the rail and drawer line up, the status sits clear of the rail, the prompt stack
+--     stays above STACK_SHARE of the height and left of the centre, and every touch button stays
+--     in the lower right, clear of the screen centre, on phone, tablet and desktop screens
 
 local luau = require("@lune/luau")
 local roblox = require("@lune/roblox")
@@ -32,82 +30,15 @@ local Reference = luau.load(
 	[[
 local Reference = {}
 
--- MechCamera.luau `layoutButton`.
-function Reference.mech(jump, viewport)
-	local size, gap, corner
-	if jump then
-		size = math.floor(math.min(jump.AbsoluteSize.X, jump.AbsoluteSize.Y) * 0.8)
-		gap = math.floor(jump.AbsoluteSize.X * 0.15)
-		corner = UDim2.fromOffset(
-			jump.AbsolutePosition.X - gap,
-			jump.AbsolutePosition.Y + jump.AbsoluteSize.Y
-		)
-	end -- the fallback (no jump button) moved since: golden values in "pod buttons"
-	return {
-		viewSize = UDim2.fromOffset(size, size),
-		viewPosition = corner,
-		standSize = UDim2.fromOffset(size, size),
-		standPosition = corner - UDim2.fromOffset(0, size + gap),
-		layout = { size = size, gap = gap, corner = corner },
-	}
-end
-
--- SniperScope.luau `layoutButton`.
-function Reference.scope(jump, viewport)
-	if jump then
-		local size = math.floor(math.min(jump.AbsoluteSize.X, jump.AbsoluteSize.Y) * 0.8)
-		local gap = math.floor(jump.AbsoluteSize.Y * 0.15)
-		local center = jump.AbsolutePosition.X + jump.AbsoluteSize.X / 2
-		return {
-			size = UDim2.fromOffset(size, size),
-			position = UDim2.fromOffset(math.floor(center), jump.AbsolutePosition.Y - gap),
-		}
-	end
-	local size = math.floor(math.min(viewport.X, viewport.Y) * 0.14)
-	return { size = UDim2.fromOffset(size, size), position = UDim2.fromScale(0.88, 0.62) }
-end
-
--- PromptPanel.luau `layout` after the sort. `edgeY` is the module's edgeY (now Hud.edgeY), here
--- a lookup of precomputed edges; `panels` the shown panels; `controls` bottomControls().
-function Reference.cards(screen, toggle, panels, controls, count, edgeY)
-	local CARD_WIDTH, CARD_HEIGHT, MIN_CARD_HEIGHT, GAP = 220, 48, 28, 6
-	local right, top = screen.X, 0
-	if toggle then
-		right = toggle.AbsolutePosition.X + toggle.AbsoluteSize.X
-		top = edgeY(toggle, true) + GAP
-	end
-	for _, panel in panels do
-		right = math.min(right, panel.AbsolutePosition.X - GAP)
-	end
-	local left = right - CARD_WIDTH
-	local bottom = screen.Y
-	for _, control in controls do
-		local x0 = control.AbsolutePosition.X
-		if x0 < right and x0 + control.AbsoluteSize.X > left then
-			bottom = math.min(bottom, edgeY(control, false) - GAP)
-		end
-	end
-
-	local height = math.clamp(
-		math.floor((bottom - top - (count - 1) * GAP) / count),
-		MIN_CARD_HEIGHT,
-		CARD_HEIGHT
+-- MechCamera.luau `layoutButton`: VIEW's slot (STAND moved since: golden values below).
+function Reference.mech(jump)
+	local size = math.floor(math.min(jump.AbsoluteSize.X, jump.AbsoluteSize.Y) * 0.8)
+	local gap = math.floor(jump.AbsoluteSize.X * 0.15)
+	local corner = UDim2.fromOffset(
+		jump.AbsolutePosition.X - gap,
+		jump.AbsolutePosition.Y + jump.AbsoluteSize.Y
 	)
-	local cards = {}
-	for index = 1, count do
-		local card = {}
-		card.frameSize = UDim2.fromOffset(CARD_WIDTH, height)
-		card.framePosition = UDim2.fromOffset(right, top + (index - 1) * (height + GAP))
-		local margin = math.floor(height * 0.15)
-		local side = height - margin * 2
-		card.badgeSize = UDim2.fromOffset(side, side)
-		card.badgePosition = UDim2.new(0, margin, 0.5, 0)
-		local textLeft = margin * 2 + side
-		card.textsPosition = UDim2.fromOffset(textLeft, margin)
-		card.textsSize = UDim2.fromOffset(CARD_WIDTH - textLeft - margin, height - margin * 2)
-		cards[index] = card
-	end
-	return cards
+	return { size = size, gap = gap, corner = corner }
 end
 
 return Reference
@@ -115,74 +46,10 @@ return Reference
 	{ debugName = "HudLayout reference", environment = { UDim2 = UDim2, math = math } }
 )()
 
--- The callers' code now, copied (MechCamera and SniperScope `layoutButton`, PromptPanel
--- `layout`), with the same inputs and outputs as Reference.
-local Now = {}
-
-function Now.mech(jump)
+-- mechColumn's slot size, gap and camera slot, with the same inputs and outputs as Reference.
+local function nowMech(jump)
 	local column = HudLayout.mechColumn(jump.AbsolutePosition, jump.AbsoluteSize)
-	local size, gap, corner = column.size, column.gap, column.corner
-	return {
-		viewSize = UDim2.fromOffset(size, size),
-		viewPosition = corner,
-		standSize = UDim2.fromOffset(size, size),
-		standPosition = HudLayout.standPosition(column),
-		layout = { size = size, gap = gap, corner = corner },
-	}
-end
-
-function Now.scope(jump, viewport)
-	if jump then
-		return HudLayout.scopeButton(jump.AbsolutePosition, jump.AbsoluteSize)
-	end
-	return HudLayout.scopeButtonFallback(viewport)
-end
-
-function Now.cards(screen, toggle, panels, controls, count, edgeY)
-	local CARD_WIDTH, CARD_HEIGHT, MIN_CARD_HEIGHT, GAP = 220, 48, 28, 6
-	local panelLefts = {}
-	for _, panel in panels do
-		table.insert(panelLefts, panel.AbsolutePosition.X)
-	end
-	local measured = {}
-	for _, control in controls do
-		local x0 = control.AbsolutePosition.X
-		table.insert(measured, {
-			left = x0,
-			right = x0 + control.AbsoluteSize.X,
-			top = edgeY(control, false),
-		})
-	end
-	local column = HudLayout.cardStack({
-		screen = screen,
-		toggle = if toggle
-			then {
-				right = toggle.AbsolutePosition.X + toggle.AbsoluteSize.X,
-				bottom = edgeY(toggle, true),
-			}
-			else nil,
-		panelLefts = panelLefts,
-		controls = measured,
-		count = count,
-		width = CARD_WIDTH,
-		height = CARD_HEIGHT,
-		minHeight = MIN_CARD_HEIGHT,
-		gap = GAP,
-	})
-	local height = column.height
-	local insides = HudLayout.cardInsides(height, CARD_WIDTH)
-	local cards = {}
-	for index = 1, count do
-		cards[index] = {
-			frameSize = UDim2.fromOffset(CARD_WIDTH, height),
-			framePosition = UDim2.fromOffset(column.right, HudLayout.cardTop(column, GAP, index)),
-			badgeSize = UDim2.fromOffset(insides.side, insides.side),
-			badgePosition = UDim2.new(0, insides.margin, 0.5, 0),
-			textsPosition = UDim2.fromOffset(insides.textLeft, insides.margin),
-			textsSize = UDim2.fromOffset(insides.textWidth, insides.textHeight),
-		}
-	end
-	return cards
+	return { size = column.size, gap = column.gap, corner = column.corner }
 end
 
 -- Same 64 bits: -0 differs from 0, a NaN equals the same NaN.
@@ -284,160 +151,57 @@ end
 
 Check.section("mech column")
 for _, jump in jumps do
-	sameResult(Now.mech(jump), Reference.mech(jump, nil), "mech " .. describe(jump))
+	sameResult(nowMech(jump), Reference.mech(jump), "mech " .. describe(jump))
 end
 
-Check.section("scope button")
+-- The seat slot (STAND, LAND): directly above the jump button, centred on it, a gap above it.
+Check.section("seat slot")
 for _, jump in jumps do
-	sameResult(Now.scope(jump, nil), Reference.scope(jump, nil), "scope " .. describe(jump))
+	local column = HudLayout.mechColumn(jump.AbsolutePosition, jump.AbsoluteSize)
+	local seat = HudLayout.standPosition(column)
+	local centre = jump.AbsolutePosition.X + jump.AbsoluteSize.X / 2
+	local label = "seat " .. describe(jump)
+	check(
+		math.abs(seat.X.Offset - column.size / 2 - centre) < 1,
+		label .. ": centred on the jump button"
+	)
+	local above = UDim2.fromOffset(0, jump.AbsolutePosition.Y - column.gap)
+	equal(seat.Y.Offset, above.Y.Offset, label .. ": a gap above jump")
+	check(seat.X.Scale == 0 and seat.Y.Scale == 0, label .. ": in pixels")
 end
 for _, viewport in VIEWPORTS do
-	sameResult(
-		Now.scope(nil, viewport),
-		Reference.scope(nil, viewport),
-		"scope viewport " .. tostring(viewport)
+	local column = HudLayout.mechColumnFallback(viewport)
+	equal(
+		HudLayout.standPosition(column),
+		column.corner + UDim2.fromOffset(column.size + column.gap, 0),
+		"fallback seat " .. tostring(viewport) .. ": a gap right of the camera slot"
 	)
 end
+-- A phone's jump button (70 at 749, 242 in an 844 x 332 area).
+local phone = HudLayout.mechColumn(Vector2.new(749, 242), Vector2.new(70, 70))
+equal(phone.size, 56, "phone slot side")
+equal(phone.gap, 10, "phone gap")
+equal(phone.corner, UDim2.fromOffset(739, 312), "phone camera slot left of jump")
+equal(phone.seat, UDim2.fromOffset(812, 232), "phone seat slot above jump")
 
-Check.section("card stack")
--- A stand-in GuiObject: position, size, and the edges edgeY would report for it (the inset
--- shift folded in).
-local function object(x: number, y: number, width: number, height: number, shift: number)
-	return {
-		AbsolutePosition = Vector2.new(x, y),
-		AbsoluteSize = Vector2.new(width, height),
-		shift = shift,
-	}
-end
-local function edgeY(each, bottom: boolean): number
-	local y = each.AbsolutePosition.Y + (if bottom then each.AbsoluteSize.Y else 0)
-	return y + each.shift
-end
-
-local SCREENS = {
-	Vector2.new(375.5, 667.25),
-	Vector2.new(800, 600),
-	Vector2.new(1920, 1080),
-	Vector2.new(640, 200), -- too short for the cards
-}
-local cases = 0
-for _, screen in SCREENS do
-	local toggles = {
-		false,
-		object(screen.X - 142, 106, 130, 40, 0),
-		object(screen.X - 142, 106, 130, 40, 36),
-		object(screen.X - 142.5, 60.25, 130, 40, -36),
-	}
-	local panelSets = {
-		{},
-		{ object(screen.X - 312, 152, 300, 142, 0) },
-		{ object(screen.X - 312, 152, 300, 142, 0), object(screen.X - 312.5, 152, 300, 400, 0) },
-	}
-	local controlSets = {
-		{},
-		-- the jump button under the column
-		{ object(screen.X - 100, screen.Y - 110, 90, 90, 0) },
-		-- MechCamera's column left of the jump button, one control clear of the cards
-		{
-			object(screen.X - 100, screen.Y - 110, 90, 90, -36),
-			object(screen.X - 184, screen.Y - 92, 72, 72, 0),
-			object(screen.X - 184, screen.Y - 177.5, 72, 72, 0),
-			object(10, screen.Y - 300, 72, 72, 0),
-		},
-		-- controls touching the column's left or right edge exactly (with the toggle): not under it
-		{ object(screen.X - 12 - 220 - 72, screen.Y - 200, 72, 72, 0) },
-		{ object(screen.X - 12, screen.Y - 200, 72, 72, 0) },
-	}
-	for _, toggle in toggles do
-		for _, panels in panelSets do
-			for _, controls in controlSets do
-				for count = 1, 7 do
-					local given = if toggle then toggle else nil
-					local label = string.format(
-						"screen %s toggle %s panels %d controls %d count %d",
-						tostring(screen),
-						if given then tostring(given.AbsolutePosition) else "none",
-						#panels,
-						#controls,
-						count
-					)
-					sameResult(
-						Now.cards(screen, given, panels, controls, count, edgeY),
-						Reference.cards(screen, given, panels, controls, count, edgeY),
-						label
-					)
-					cases += 1
-				end
-			end
-		end
-	end
-end
-check(cases == 4 * 4 * 3 * 5 * 7, "card stack cases")
-
-Check.section("values")
-local tall = HudLayout.cardStack({
-	screen = Vector2.new(1920, 1080),
-	toggle = { right = 1908, bottom = 146 },
-	panelLefts = {},
-	controls = {},
-	count = 2,
-	width = 220,
-	height = 48,
-	minHeight = 28,
-	gap = 6,
-})
-equal(tall.right, 1908, "cards align with the toggle's right edge")
-equal(tall.top, 152, "cards start a gap under the toggle")
-equal(tall.height, 48, "cards are full height with room")
-local short = HudLayout.cardStack({
-	screen = Vector2.new(640, 200),
-	toggle = nil,
-	panelLefts = { 300 },
-	controls = {},
-	count = 7,
-	width = 220,
-	height = 48,
-	minHeight = 28,
-	gap = 6,
-})
-equal(short.right, 294, "cards sit a gap left of an open panel")
-equal(short.height, 28, "cards shrink no further than minHeight")
-equal(HudLayout.cardTop({ top = 10, height = 40 }, 6, 3), 102, "third card's top")
-local insides = HudLayout.cardInsides(48, 220)
-equal(insides.margin, 7, "card margin")
-equal(insides.side, 34, "badge side")
-equal(insides.textWidth, 220 - 48 - 7, "text width")
-
--- The right column hangs from the top-right corner of its ScreenGui, whose CoreUISafeInsets area
--- the engine keeps below the top bar and inside the device's safe area: nothing to guess about the
--- top bar. Golden values for RightColumn's spec, then the rule on other specs.
-Check.section("right column")
-local COLUMN = { margin = 12, toggleHeight = 40, gap = 6, toggles = 2 }
-equal(HudLayout.columnToggle(COLUMN, 0), UDim2.new(1, -12, 0, 12), "GOD MODE toggle")
-equal(HudLayout.columnToggle(COLUMN, 1), UDim2.new(1, -12, 0, 58), "MAC toggle")
-equal(HudLayout.columnPanelTop(COLUMN), 104, "panels start a gap under the MAC toggle")
-equal(
-	HudLayout.columnPanelSize(COLUMN, 300),
-	UDim2.new(0, 300, 1, -116),
-	"a full-height panel stops a margin above the bottom"
-)
-for _, spec in
+-- Without a jump button: sides 14% of the short side, gaps 20% of a side, the camera slot's
+-- corner at 85% across and 95% down, the seat slot in the jump button's place right of it.
+for _, case in
 	{
-		{ margin = 0, toggleHeight = 40, gap = 6, toggles = 2 },
-		{ margin = 8, toggleHeight = 33, gap = 0, toggles = 1 },
-		{ margin = 20, toggleHeight = 50, gap = 10, toggles = 3 },
+		{ viewport = Vector2.new(1000, 800), size = 112, gap = 22 },
+		{ viewport = Vector2.new(844, 390), size = 54, gap = 10 },
+		{ viewport = Vector2.new(0, 0), size = 0, gap = 0 },
 	}
 do
-	local label = string.format("margin %s gap %s toggles %d", spec.margin, spec.gap, spec.toggles)
-	local first = HudLayout.columnToggle(spec, 0)
-	equal(first.Y.Offset, spec.margin, label .. ": first toggle a margin below the safe top")
-	equal(first.X, UDim.new(1, -spec.margin), label .. ": a margin in from the safe right edge")
-	equal(first.Y.Scale, 0, label .. ": hangs from the top, whatever the screen height")
-	local last = HudLayout.columnToggle(spec, spec.toggles - 1)
+	local column = HudLayout.mechColumnFallback(case.viewport)
+	local label = "fallback column " .. tostring(case.viewport)
+	equal(column.size, case.size, label .. " size")
+	equal(column.gap, case.gap, label .. " gap")
+	equal(column.corner, UDim2.fromScale(0.85, 0.95), label .. " VIEW corner")
 	equal(
-		HudLayout.columnPanelTop(spec),
-		last.Y.Offset + spec.toggleHeight + spec.gap,
-		label .. ": panels a gap under the last toggle"
+		HudLayout.standPosition(column),
+		UDim2.new(0.85, case.size + case.gap, 0.95, 0),
+		label .. " STAND right of VIEW"
 	)
 end
 
@@ -467,36 +231,104 @@ for _, state in { "docked", "flying", "returning", "landed", "wrecked" } do
 		end
 	end
 end
-local golden = HudLayout.podButtons({ size = 50, gap = 10, corner = UDim2.fromOffset(700, 400) })
-equal(golden.pod.size, UDim2.fromOffset(110, 50), "pod button two slots wide")
-equal(golden.pod.position, UDim2.fromOffset(640, 340), "pod button left of STAND")
+local golden = HudLayout.podButtons({
+	size = 50,
+	gap = 10,
+	corner = UDim2.fromOffset(700, 400),
+	seat = UDim2.fromOffset(785, 330),
+})
+equal(golden.pod.size, UDim2.fromOffset(195, 35), "pod button spans ▲ to the seat slot")
+equal(golden.pod.position, UDim2.fromOffset(785, 270), "pod button a gap above the seat slot")
 equal(golden.land.size, UDim2.fromOffset(50, 50), "LAND one slot")
-equal(golden.land.position, UDim2.fromOffset(700, 340), "LAND in STAND's slot")
-equal(golden.up.position, UDim2.fromOffset(580, 400), "▲ left of ▼")
+equal(golden.land.position, UDim2.fromOffset(785, 330), "LAND in STAND's slot")
+equal(golden.up.position, UDim2.fromOffset(640, 340), "▲ above ▼")
 equal(golden.down.position, UDim2.fromOffset(640, 400), "▼ left of VIEW")
--- Without a jump button: sides 14% of the short side, gaps 20% of a side, VIEW's corner at 85%
--- across (80% before the two-row pod buttons) and 95% down.
-for _, case in
-	{
-		{ viewport = Vector2.new(1000, 800), size = 112, gap = 22 },
-		{ viewport = Vector2.new(844, 390), size = 54, gap = 10 },
-		{ viewport = Vector2.new(0, 0), size = 0, gap = 0 },
-	}
-do
-	local column = HudLayout.mechColumnFallback(case.viewport)
-	local label = "fallback column " .. tostring(case.viewport)
-	equal(column.size, case.size, label .. " size")
-	equal(column.gap, case.gap, label .. " gap")
-	equal(column.corner, UDim2.fromScale(0.85, 0.95), label .. " VIEW corner")
+local desk = HudLayout.podButtons(HudLayout.mechColumnFallback(Vector2.new(1000, 800)))
+equal(desk.pod.size, UDim2.fromOffset(380, 78), "fallback pod button size")
+equal(desk.pod.position, UDim2.new(0.85, 134, 0.95, -268), "fallback pod button above ▲")
+equal(desk.land.position, UDim2.new(0.85, 134, 0.95, 0), "fallback LAND in STAND's slot")
+
+-- The top right: the vehicle status, the system rail and the drawer, per size class.
+Check.section("system rail")
+local SMALL_AREA, LARGE_AREA = Vector2.new(844, 332), Vector2.new(1180, 764)
+check(HudLayout.isSmall(SMALL_AREA), "a phone is small")
+check(not HudLayout.isSmall(LARGE_AREA), "a tablet is large")
+check(HudLayout.isSmall(Vector2.new(500, 900)), "a short side of 500 is small")
+check(not HudLayout.isSmall(Vector2.new(501, 501)), "a short side of 501 is large")
+equal(HudLayout.railToggle(SMALL_AREA, 0), UDim2.new(1, -12, 0, 60), "small: GOD under status")
+equal(HudLayout.railToggle(SMALL_AREA, 1), UDim2.new(1, -12, 0, 124), "small: MAC under GOD")
+equal(HudLayout.statusPosition(SMALL_AREA), UDim2.new(1, -12, 0, 12), "small: status in corner")
+local smallDrawer = HudLayout.drawer(SMALL_AREA)
+equal(smallDrawer.position, UDim2.new(1, -76, 0, 60), "small: drawer left of the rail")
+equal(smallDrawer.height, 260, "small: drawer down to the bottom margin")
+equal(HudLayout.sizes(SMALL_AREA).toggle, Vector2.new(56, 56), "small toggle")
+equal(HudLayout.sizes(SMALL_AREA).status, Vector2.new(236, 40), "small status")
+equal(HudLayout.railToggle(LARGE_AREA, 0), UDim2.new(1, -12, 0, 12), "large: GOD in corner")
+equal(HudLayout.railToggle(LARGE_AREA, 1), UDim2.new(1, -12, 0, 76), "large: MAC under GOD")
+equal(HudLayout.statusPosition(LARGE_AREA), UDim2.new(1, -240, 0, 12), "large: status left")
+local largeDrawer = HudLayout.drawer(LARGE_AREA)
+equal(largeDrawer.position, UDim2.new(1, -240, 0, 12), "large: drawer left of the rail")
+equal(largeDrawer.height, 740, "large: drawer down to the bottom margin")
+equal(HudLayout.sizes(LARGE_AREA).toggle, Vector2.new(220, 56), "large toggle")
+equal(HudLayout.sizes(LARGE_AREA).status, Vector2.new(300, 48), "large status")
+equal(HudLayout.drawer(Vector2.new(400, 20)).height, 0, "a drawer never has negative height")
+for _, area in { SMALL_AREA, LARGE_AREA, Vector2.new(667, 317), Vector2.new(1920, 1022) } do
+	local label = "area " .. tostring(area)
+	local sizes = HudLayout.sizes(area)
+	local first = HudLayout.railToggle(area, 0)
+	local drawer = HudLayout.drawer(area)
+	equal(drawer.position.Y.Offset, first.Y.Offset, label .. ": drawer top-aligned with the rail")
 	equal(
-		HudLayout.standPosition(column),
-		UDim2.new(0.85, 0, 0.95, -(case.size + case.gap)),
-		label .. " STAND above VIEW"
+		-drawer.position.X.Offset,
+		-first.X.Offset + sizes.toggle.X + HudLayout.GAP,
+		label .. ": drawer a gap left of the rail"
 	)
+	local status = HudLayout.statusPosition(area)
+	local clear = status.Y.Offset + sizes.status.Y + HudLayout.GAP <= first.Y.Offset
+		or -status.X.Offset >= -first.X.Offset + sizes.toggle.X + HudLayout.GAP
+	check(clear, label .. ": status clear of the rail")
 end
 
+-- The top left: the prompt stack, per size class.
+Check.section("prompt stack")
+for _, case in
+	{
+		{ area = SMALL_AREA, count = 1, width = 236, height = 52 },
+		{ area = SMALL_AREA, count = 2, width = 236, height = 52 },
+		{ area = SMALL_AREA, count = 3, width = 236, height = 40 },
+		{ area = SMALL_AREA, count = 7, width = 236, height = 28 },
+		{ area = LARGE_AREA, count = 3, width = 300, height = 64 },
+		{ area = Vector2.new(640, 40), count = 1, width = 236, height = 52 },
+	}
+do
+	local stack = HudLayout.promptStack(case.area, case.count, 28)
+	local label = string.format("stack %s count %d", tostring(case.area), case.count)
+	equal(stack.left, 12, label .. " left")
+	equal(stack.top, 12, label .. " top")
+	equal(stack.width, case.width, label .. " width")
+	equal(stack.height, case.height, label .. " height")
+end
+for _, area in { SMALL_AREA, LARGE_AREA, Vector2.new(667, 317), Vector2.new(1920, 1022) } do
+	for count = 1, 7 do
+		local stack = HudLayout.promptStack(area, count, 28)
+		local label = string.format("stack %s count %d", tostring(area), count)
+		local bottom = HudLayout.cardTop(stack, HudLayout.GAP, count) + stack.height
+		check(
+			stack.height == 28 or bottom <= area.Y * HudLayout.STACK_SHARE,
+			label .. ": ends above the thumbstick"
+		)
+		check(stack.left + stack.width < area.X / 2, label .. ": left of the centre")
+	end
+end
+equal(HudLayout.cardTop({ top = 10, height = 40 }, 6, 3), 102, "third card's top")
+local insides = HudLayout.cardInsides(48, 220)
+equal(insides.margin, 7, "card margin")
+equal(insides.side, 34, "badge side")
+equal(insides.textWidth, 220 - 48 - 7, "text width")
+
 -- Persistent HUD never sits at the screen centre (CLAUDE.md UI rules). Every touch button
--- (SCOPE, VIEW, STAND, and PodControls' pod, LAND, ▲ and ▼) stays inside its gui, clear of the
+-- (VIEW and SCOPE in the camera slot, STAND, and PodControls' pod, LAND, ▲ and ▼) stays inside its
+-- gui, clear of the
 -- screen's centre point, in the right half and in the lower half of the screen, laid out two ways:
 --   - measured from the jump button where Roblox's PlayerModule puts it (ControlModule/TouchJump
 --     `ResizeJumpButton`, in ControlModule's TouchControlFrame, which fills TouchGui: a ScreenGui
@@ -581,15 +413,11 @@ for _, each in SCREEN_SIZES do
 			centre = screen / 2 - Vector2.new(0, topBar),
 		}
 		local label = string.format("%s top bar %d", tostring(screen), topBar)
-		local scope = HudLayout.scopeButtonFallback(screen)
-		offCentre(rect(scope, Vector2.new(0.5, 1), space), space, "SCOPE fallback " .. label)
 		columnButtons(HudLayout.mechColumnFallback(screen), space, "fallback " .. label)
 		layouts += 1
 		if each.touch then
 			local size, position = jumpButton(space.area)
 			local where = "jump button " .. label
-			local placed = HudLayout.scopeButton(position, size)
-			offCentre(rect(placed, Vector2.new(0.5, 1), space), space, "SCOPE " .. where)
 			columnButtons(HudLayout.mechColumn(position, size), space, where)
 			layouts += 1
 		end

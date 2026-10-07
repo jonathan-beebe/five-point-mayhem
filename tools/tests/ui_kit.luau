@@ -3,18 +3,17 @@
 --
 --   - every widget the kit now builds matches the inline code it replaced (copied below from the
 --     modules before the kit, Names constants inlined), property by property and child by child:
---     the touch buttons (SCOPE, VIEW, STAND, pod, LAND, ▲, ▼), the right column's toggles and
+--     the touch buttons (SCOPE, VIEW, STAND, pod, LAND, ▲, ▼), the system rail's toggles and
 --     panels, the scope lens and dot, the vehicle health bar, a prompt card, and LobbyUI's panel,
---     buttons, grid and a weapon card
+--     buttons, grid and a weapon card. What the HUD zones redesign moved (anchors, positions and
+--     sizes now set by layout, the rail toggles' text size) is excepted and pinned by golden
+--     values: RightColumn.layoutIn places the rail and drawer for a small and a large area
 --   - Theme: every DisplayOrder, colour, font and radius equals the literal it replaced, and every
 --     client ScreenGui takes its DisplayOrder from Theme
---   - RightColumn's constants equal MacPanel's old ones (PANEL_TOP follows the column's new top);
---     notifyOpened fires `opened`
---   - Hud: jumpButton and shownIn give the golden results generated once from the code at
---     a50e99c, over trees with each piece missing, of the wrong class, hidden or disabled; edgeY
---     and bottomControls give what the inline lookups gave (the bottom-right guis found by name
---     before, listed with addBottomControls now); jumpWatcher hooks a jump button once and lays
---     out on every call
+--   - RightColumn's constants; notifyOpened fires `opened`
+--   - Hud: jumpButton gives the golden results generated once from the code at a50e99c, over
+--     trees with each piece missing, of the wrong class, hidden or disabled; matchInset copies
+--     ScreenInsets; jumpWatcher hooks a jump button once and lays out on every call
 --
 -- Not covered: events and layout (Lune instances have no signals or AbsolutePosition). Hud's
 -- signal hookup is checked against stand-ins.
@@ -600,7 +599,7 @@ function Now.scopeButton(buttonGui: any): any
 		name = "Scope",
 		text = "SCOPE",
 		parent = buttonGui,
-		anchor = Vector2.new(0.5, 1),
+		anchor = Vector2.new(1, 1),
 		color = Theme.Colors.hud,
 		transparency = Theme.HUD_TRANSPARENCY,
 		strokeColor = Theme.Colors.white,
@@ -658,9 +657,7 @@ end
 function Now.healthBar(gui: any): any
 	local frame = RealInstance.new("Frame")
 	frame.Name = "Bar"
-	frame.AnchorPoint = Vector2.new(0.5, 1)
-	frame.Position = UDim2.new(0.5, 0, 1, -100)
-	frame.Size = UDim2.fromOffset(260, 22)
+	frame.AnchorPoint = Vector2.new(1, 0)
 	frame.BackgroundColor3 = Theme.Colors.hud
 	frame.BackgroundTransparency = Theme.HUD_TRANSPARENCY
 	frame.ClipsDescendants = true
@@ -689,7 +686,7 @@ end
 function Now.card(gui: any): any
 	local frame = RealInstance.new("TextButton")
 	frame.Name = "DrivePrompt"
-	frame.AnchorPoint = Vector2.new(1, 0)
+	frame.AnchorPoint = Vector2.new(0, 0)
 	frame.Text = ""
 	frame.AutoButtonColor = false
 	frame.BackgroundColor3 = Theme.Colors.hud
@@ -724,7 +721,6 @@ function Now.macToggle(gui: any): any
 end
 function Now.macPanel(gui: any): any
 	return RightColumn.makePanel("Frame", gui, rgb(80, 190, 255), {
-		Size = UDim2.fromOffset(RightColumn.PANEL_WIDTH, 142),
 		BackgroundColor3 = rgb(10, 18, 24),
 	})
 end
@@ -738,14 +734,14 @@ end
 function Now.adminPanel(gui: any): any
 	local width = RightColumn.PANEL_WIDTH
 	return RightColumn.makePanel("ScrollingFrame", gui, rgb(255, 200, 40), {
-		Size = RightColumn.fullHeight(width),
+		Size = UDim2.fromOffset(width, 0),
 		BackgroundColor3 = rgb(20, 16, 10),
 		BorderSizePixel = 0,
 		ScrollBarThickness = 6,
 		CanvasSize = UDim2.new(),
 	}, {
 		Create.create("UISizeConstraint", { MaxSize = Vector2.new(width, 470) }),
-	})
+	}, true)
 end
 
 function Now.lobby(gui: any): any
@@ -871,7 +867,10 @@ end
 -- Widgets -------------------------------------------------------------------------------------
 
 Check.section("touch buttons")
-sameWidget(Now.scopeButton(holder("A")), Before.scopeButton(holder("A")), "SCOPE")
+-- SCOPE moved to the camera slot left of the jump button: bottom-right anchored like VIEW.
+local scope = Now.scopeButton(holder("A"))
+sameWidget(scope, Before.scopeButton(holder("A")), "SCOPE", { AnchorPoint = true })
+equal(scope.AnchorPoint, Vector2.new(1, 1), "SCOPE anchor")
 for _, each in { { "View", "VIEW" }, { "Stand", "STAND" } } do
 	sameWidget(
 		Now.mechButton(holder("A"), each[1], each[2]),
@@ -896,15 +895,21 @@ end
 
 Check.section("scope lens, health bar, prompt card")
 sameWidget(Now.lens(holder("A")), Before.lens(holder("A")), "lens")
-sameWidget(Now.healthBar(holder("A")), Before.healthBar(holder("A")), "health bar")
-sameWidget(Now.card(holder("A")), Before.card(holder("A")), "prompt card")
+-- The health bar is the vehicle status in the top-right corner (placed by layout); prompt cards
+-- stack from the top-left corner.
+local bar = Now.healthBar(holder("A"))
+local MOVED = { AnchorPoint = true, Position = true, Size = true }
+sameWidget(bar, Before.healthBar(holder("A")), "health bar", MOVED)
+equal(bar.AnchorPoint, Vector2.new(1, 0), "health bar anchor")
+local card = Now.card(holder("A"))
+sameWidget(card, Before.card(holder("A")), "prompt card", { AnchorPoint = true })
+equal(card.AnchorPoint, Vector2.new(0, 0), "prompt card anchor")
 
-Check.section("right column")
--- The column's top moved from a guessed 60 below the top bar to MARGIN (12) below it, where the
--- ScreenGui's CoreUISafeInsets area starts (HudLayout.columnToggle): everything else matches the
--- code before; the positions and the GOD MODE panel's height are golden values.
+Check.section("system rail")
+-- The rail lays itself out (RightColumn.layoutIn) by size class: positions, sizes and the toggles'
+-- text size are golden values; everything else matches the code before.
 local panelsBefore = #RightColumn.panels
-local PLACED = { Position = true, Size = true }
+local PLACED = { Position = true, Size = true, TextSize = true, TextWrapped = true }
 local macToggle = Now.macToggle(holder("Mac"))
 sameWidget(macToggle, Before.macToggle(holder("Mac")), "MAC toggle", PLACED)
 local macPanel = Now.macPanel(holder("Mac"))
@@ -913,23 +918,30 @@ local adminToggle = Now.adminToggle(holder("Admin"))
 sameWidget(adminToggle, Before.adminToggle(holder("Admin")), "GOD toggle", PLACED)
 local adminPanel = Now.adminPanel(holder("Admin"))
 sameWidget(adminPanel, Before.adminPanel(holder("Admin")), "GOD MODE panel", PLACED)
-equal(adminToggle.Position, UDim2.new(1, -12, 0, 12), "GOD toggle position")
-equal(macToggle.Position, UDim2.new(1, -12, 0, 58), "MAC toggle position")
-equal(macPanel.Position, UDim2.new(1, -12, 0, 104), "MAC panel position")
-equal(adminPanel.Position, UDim2.new(1, -12, 0, 104), "GOD MODE panel position")
-for _, each in { { macToggle, "MAC toggle" }, { adminToggle, "GOD toggle" } } do
-	equal(each[1].Size, UDim2.fromOffset(130, 40), each[2] .. " size")
-end
-equal(macPanel.Size, UDim2.fromOffset(300, 142), "MAC panel size")
-equal(adminPanel.Size, UDim2.new(0, 300, 1, -116), "GOD MODE panel fills the column")
 equal(#RightColumn.panels, panelsBefore + 2, "makePanel lists each panel")
 check(RightColumn.panels[panelsBefore + 1] == macPanel, "MAC panel listed first")
 check(RightColumn.panels[panelsBefore + 2] == adminPanel, "GOD MODE panel listed second")
+RightColumn.setLabels(adminToggle, "G", "GOD MODE")
+RightColumn.layoutIn(Vector2.new(844, 332))
+equal(adminToggle.Position, UDim2.new(1, -12, 0, 60), "small: GOD toggle under the status")
+equal(macToggle.Position, UDim2.new(1, -12, 0, 124), "small: MAC toggle under GOD")
+equal(adminToggle.Size, UDim2.fromOffset(56, 56), "small: square toggle")
+equal(adminToggle.Text, "G", "small: short label")
+equal(adminToggle.TextSize, 13, "small: label size")
+equal(macPanel.Position, UDim2.new(1, -76, 0, 60), "small: MAC panel in the drawer")
+equal(adminPanel.Position, UDim2.new(1, -76, 0, 60), "small: GOD MODE panel in the drawer")
+equal(adminPanel.Size, UDim2.fromOffset(300, 260), "small: GOD MODE panel fills the drawer")
+equal(macPanel.Size, UDim2.fromOffset(0, 0), "the MAC panel keeps its own size")
+RightColumn.layoutIn(Vector2.new(1180, 764))
+equal(adminToggle.Position, UDim2.new(1, -12, 0, 12), "large: GOD toggle in the corner")
+equal(macToggle.Position, UDim2.new(1, -12, 0, 76), "large: MAC toggle under GOD")
+equal(adminToggle.Size, UDim2.fromOffset(220, 56), "large: full-width toggle")
+equal(adminToggle.Text, "GOD MODE", "large: full label")
+equal(adminToggle.TextSize, 20, "large: label size")
+equal(adminPanel.Position, UDim2.new(1, -240, 0, 12), "large: GOD MODE panel in the drawer")
+equal(adminPanel.Size, UDim2.fromOffset(300, 740), "large: GOD MODE panel fills the drawer")
 sameTree(Create.corner(Theme.Radius.panel), Before.panelCorner(), "panel corner")
-equal(RightColumn.TOGGLE_HEIGHT, 40, "TOGGLE_HEIGHT")
-equal(RightColumn.TOGGLE_WIDTH, 130, "TOGGLE_WIDTH")
-equal(RightColumn.GAP, 6, "GAP")
-equal(RightColumn.PANEL_TOP, 104, "PANEL_TOP")
+equal(RightColumn.GAP, 8, "GAP")
 equal(RightColumn.PANEL_WIDTH, 300, "PANEL_WIDTH")
 equal(RightColumn.MARGIN, 12, "MARGIN")
 equal(RightColumn.opened.name, "opened", "opened is the BindableEvent's Event")
@@ -1017,70 +1029,14 @@ local fakeGame = {
 	GetService = function(_, name: string): any
 		if name == "Players" then
 			return { LocalPlayer = player }
-		elseif name == "GuiService" then
-			return {
-				GetGuiInset = function()
-					return Vector2.new(0, 36), Vector2.zero
-				end,
-			}
 		end
 		error("no service " .. name)
 	end,
 }
 local Hud = Sandbox.load("src/client/ui/Hud.luau", { game = fakeGame })
 
--- PromptPanel's bottom-control lookup before the registry, word for word (Names constants
--- inlined). Its shownIn was Hud.shownIn word for word; SHOWN_OBJECTS below pins that.
-local function oldBottomControls(): { any }
-	local found = {}
-	local playerGui = player:FindFirstChildOfClass("PlayerGui")
-	if not playerGui then
-		return found
-	end
-	local touchGui = playerGui:FindFirstChild("TouchGui")
-	local touchFrame = touchGui and touchGui:FindFirstChild("TouchControlFrame")
-	local jump = touchFrame and touchFrame:FindFirstChild("JumpButton")
-	if jump and jump:IsA("GuiObject") and Hud.shownIn(jump) then
-		table.insert(found, jump)
-	end
-	for _, name in { "MechButtons", "PodButtons", "SniperScopeButton" } do
-		local each = playerGui:FindFirstChild(name)
-		if each and each:IsA("ScreenGui") and each.Enabled then
-			for _, child in each:GetChildren() do
-				if child:IsA("GuiObject") and child.Visible then
-					table.insert(found, child)
-				end
-			end
-		end
-	end
-	return found
-end
-
-local function sameSet(got: { any }, want: { any }, label: string)
-	equal(#got, #want, label .. " count")
-	for _, each in want do
-		check(table.find(got, each) ~= nil, label .. " has " .. each.Name)
-	end
-end
-
--- The bottom-right guis, listed with Hud as MechCamera, PodControls and SniperScope list them,
--- with a visible and a hidden button each.
-local bottomGuis = {}
-for _, name in { "MechButtons", "PodButtons", "SniperScopeButton" } do
-	local gui = RealInstance.new("ScreenGui")
-	gui.Name = name
-	for _, visible in { true, false } do
-		local button = RealInstance.new("TextButton")
-		button.Name = name .. (if visible then "Shown" else "Hidden")
-		button.Visible = visible
-		button.Parent = gui
-	end
-	Hud.addBottomControls(gui)
-	table.insert(bottomGuis, gui)
-end
-
--- Golden results of Hud.jumpButton and Hud.shownIn, generated once from the code at a50e99c:
--- they pin their behaviour. A deliberate change updates the third entry of each case.
+-- Golden results of Hud.jumpButton, generated once from the code at a50e99c: they pin its
+-- behaviour. A deliberate change updates the third entry of each case.
 local function new(className: string, name: string, parent: any?): any
 	local each = RealInstance.new(className)
 	each.Name = name
@@ -1203,50 +1159,7 @@ for _, case in JUMP_TREES do
 	end
 end
 
--- { label, the object asked about, shownIn }
-local SHOWN_OBJECTS = {}
-for _, visible in { true, false } do
-	local function object(parent: any): any
-		local button = new("TextButton", "Button", parent)
-		button.Visible = visible
-		return button
-	end
-	local function disabled(gui: any): any
-		gui.Enabled = false
-		return gui
-	end
-	local shown = if visible then "visible" else "hidden"
-	for _, case in
-		{
-			{ "no ScreenGui", new("Frame", "Holder"), false },
-			{ "enabled ScreenGui", new("ScreenGui", "Gui"), visible },
-			{ "disabled ScreenGui", disabled(new("ScreenGui", "Gui")), false },
-			{
-				"enabled ScreenGui two levels up",
-				new("Frame", "Inner", new("Frame", "Outer", new("ScreenGui", "Gui"))),
-				visible,
-			},
-			{
-				"disabled ScreenGui inside an enabled one",
-				disabled(new("ScreenGui", "Inner", new("ScreenGui", "Outer"))),
-				false,
-			},
-			{
-				"enabled ScreenGui inside a disabled one",
-				new("ScreenGui", "Inner", disabled(new("ScreenGui", "Outer"))),
-				visible,
-			},
-		}
-	do
-		table.insert(SHOWN_OBJECTS, { shown .. ", " .. case[1], object(case[2]), case[3] })
-	end
-end
-for _, case in SHOWN_OBJECTS do
-	equal(Hud.shownIn(case[2]), case[3], "shownIn, " .. case[1])
-end
-
 equal(Hud.jumpButton(), nil, "no PlayerGui: no jump button")
-sameSet(Hud.bottomControls(), oldBottomControls(), "no PlayerGui")
 
 local playerGui = RealInstance.new("PlayerGui")
 playerGui.Parent = player
@@ -1260,41 +1173,14 @@ jump.Name = "JumpButton"
 jump.Parent = touchFrame
 
 -- Golden results per touch state, generated once from the code at a50e99c: whether jumpButton
--- returns `jump` (else nil) and shownIn(jump).
+-- returns `jump` (else nil).
 local JUMP_BY_TOUCH = { none = false, hidden = true, disabled = true, shown = true }
-local SHOWN_BY_TOUCH = { none = true, hidden = false, disabled = false, shown = true }
-local scenarios = 0
 for _, touch in { "none", "hidden", "disabled", "shown" } do
 	touchGui.Parent = if touch == "none" then nil else playerGui
 	touchGui.Enabled = touch ~= "disabled"
 	jump.Visible = touch ~= "hidden"
-	for mask = 0, 63 do
-		-- Two bits per gui: parented to PlayerGui, Enabled.
-		for index, gui in bottomGuis do
-			local bits = bit32.extract(mask, (index - 1) * 2, 2)
-			gui.Parent = if bit32.btest(bits, 1) then playerGui else nil
-			gui.Enabled = bit32.btest(bits, 2)
-		end
-		local label = string.format("touch %s guis %d", touch, mask)
-		equal(Hud.jumpButton(), if JUMP_BY_TOUCH[touch] then jump else nil, label .. " jumpButton")
-		sameSet(Hud.bottomControls(), oldBottomControls(), label)
-		equal(Hud.shownIn(jump), SHOWN_BY_TOUCH[touch], label .. " shownIn")
-		scenarios += 1
-	end
+	equal(Hud.jumpButton(), if JUMP_BY_TOUCH[touch] then jump else nil, "touch " .. touch)
 end
-equal(scenarios, 256, "hud scenarios")
-
--- A gui of the same name that nobody listed is not a bottom control (the name no longer counts).
-for _, gui in bottomGuis do
-	gui.Parent = nil
-end
-local stray = RealInstance.new("ScreenGui")
-stray.Name = "MechButtons"
-local strayButton = RealInstance.new("TextButton")
-strayButton.Parent = stray
-stray.Parent = playerGui
-check(table.find(Hud.bottomControls(), strayButton) == nil, "an unlisted gui is ignored")
-stray.Parent = nil
 
 -- Stand-in GuiObjects (Lune has no AbsolutePosition) for the measured functions.
 Check.section("hud measuring")
@@ -1310,34 +1196,6 @@ local function standIn(ignoreInset: boolean?, x: number, y: number, width: numbe
 			return if className == "ScreenGui" then owner else nil
 		end,
 	}
-end
--- PromptPanel `edgeY` before Hud, word for word (`gui` passed in; GuiService's inset is 36).
-local function oldEdgeY(object: any, bottom: boolean, gui: any): number
-	local y = object.AbsolutePosition.Y + (if bottom then object.AbsoluteSize.Y else 0)
-	local owner = object:FindFirstAncestorOfClass("ScreenGui")
-	if owner and owner.IgnoreGuiInset ~= gui.IgnoreGuiInset then
-		local inset = 36
-		y += if owner.IgnoreGuiInset then -inset else inset
-	end
-	return y
-end
-for _, ownerInset in { true, false, nil } do
-	for _, spaceInset in { true, false } do
-		for _, bottom in { true, false } do
-			local object = standIn(ownerInset, 17.5, 403.25, 90, 72.5)
-			local space = { IgnoreGuiInset = spaceInset }
-			equal(
-				Hud.edgeY(object, bottom, space),
-				oldEdgeY(object, bottom, space),
-				string.format(
-					"edgeY %s %s %s",
-					tostring(ownerInset),
-					tostring(spaceInset),
-					tostring(bottom)
-				)
-			)
-		end
-	end
 end
 -- matchInset copies ScreenInsets, which carries every inset mode (the IgnoreGuiInset boolean
 -- covers only two of the four) and sets IgnoreGuiInset to match in Roblox.

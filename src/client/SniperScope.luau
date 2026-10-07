@@ -135,13 +135,12 @@ buttonGui.Name = Names.Instances.SniperScopeButton
 buttonGui.ResetOnSpawn = false
 buttonGui.DisplayOrder = Theme.DisplayOrder.touch
 buttonGui.Enabled = false
-Hud.addBottomControls(buttonGui)
 
 local button = TouchButton.new({
 	name = "Scope",
 	text = "SCOPE",
 	parent = buttonGui,
-	anchor = Vector2.new(0.5, 1),
+	anchor = Vector2.new(1, 1),
 	color = Theme.Colors.hud,
 	transparency = Theme.HUD_TRANSPARENCY,
 	strokeColor = Theme.Colors.white,
@@ -149,19 +148,20 @@ local button = TouchButton.new({
 	paddingY = 0.3,
 })
 
--- Sits directly above the default jump button, measured at runtime, in the same coordinate
--- space (the button's ScreenGui copies TouchGui's inset setting).
+-- Takes the action cluster's camera slot (MechCamera's VIEW: nobody holds a tool while seated),
+-- directly left of the default jump button, measured at runtime in the same coordinate space (the
+-- button's ScreenGui copies TouchGui's inset setting).
 local function layoutButton()
 	local jump = Hud.jumpButton()
-	local placed
+	local column
 	if jump then
 		Hud.matchInset(buttonGui, jump)
-		placed = HudLayout.scopeButton(jump.AbsolutePosition, jump.AbsoluteSize)
+		column = HudLayout.mechColumn(jump.AbsolutePosition, jump.AbsoluteSize)
 	else
-		placed = HudLayout.scopeButtonFallback(Workspace.CurrentCamera.ViewportSize)
+		column = HudLayout.mechColumnFallback(Workspace.CurrentCamera.ViewportSize)
 	end
-	button.Size = placed.size
-	button.Position = placed.position
+	button.Size = UDim2.fromOffset(column.size, column.size)
+	button.Position = column.corner
 end
 
 local watchJumpButton = Hud.jumpWatcher(layoutButton)
