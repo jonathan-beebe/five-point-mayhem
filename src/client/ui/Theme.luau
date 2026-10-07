@@ -3,12 +3,13 @@
 --
 -- DisplayOrder: a higher layer draws over a lower one. Guis sharing a layer do not overlap.
 --   5   scope       SniperScope's overlay (lens, reticle, black bars)
---   5   vehicleBar  VehicleHealth's bar (bottom centre)
---   6   touch       touch buttons beside the jump button: SniperScope's SCOPE, MechCamera's VIEW
---                   and STAND, PodControls' pod, LAND, ▲ and ▼
+--   5   vehicleBar  VehicleHealth's bar (the vehicle status, top right)
+--   6   touch       the action cluster round the jump button: SniperScope's SCOPE, MechCamera's
+--                   VIEW and STAND, PodControls' pod, LAND, ▲ and ▼
 --   10  lobby       LobbyUI's armory and its CHOOSE WEAPONS button
---   14  prompts     PromptPanel's cards, under the right column's panels
---   15  panels      the right column: GOD MODE (AdminPanel) and MAC (MacPanel)
+--   14  prompts     PromptPanel's cards (top left), under the system rail's panels
+--   15  panels      the system rail (top right): GOD MODE (AdminPanel) and MAC (MacPanel), and
+--                   their drawer, over the action cluster while open
 --   20  announcer   Announcer's banner and full-screen flash, over everything
 
 local rgb = Color3.fromRGB

@@ -39,7 +39,7 @@ runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is
 | `src/shared/VehicleRam.luau` | Ram and contact math (pace, sweep box, shoves, flings, tree breaks) |
 | `src/shared/VehicleLayout.luau` | Where vehicles park (motor pool spots, walker guard ring), the respawn rule, spawn placement |
 | `src/shared/PodPilot.luau` | Pod flight math the server applies (pilot controls, autopilot home, hover, launch prompt, rider stand spot) |
-| `src/shared/HudLayout.luau` | Layout math for the measured HUD: the touch button columns beside the jump button, the prompt card stack |
+| `src/shared/HudLayout.luau` | Layout math for the measured HUD: the size classes, the system rail and its drawer, the vehicle status, the prompt stack, the action cluster round the jump button |
 | `src/shared` client logic | The pure rules and math the client modules apply: `Loadout` (armory), `PodButtons` (pod controls), `PromptRules` (prompt cards), `HealthBar` (vehicle health bar), `DriveAxes` (car input), `EngineEnvelope` and `NearestSet` (vehicle sounds), `ScopeMath` (sniper scope), `FootfallShake` (walker camera shake), `NukeMath` (NUKE), `ConfirmTap` (the MAC's two-tap NUKE) |
 | `src/server/vehicleModels` | One part-built model per vehicle (format: `src/server/systems/VehicleModel.luau`) |
 | `src/server/weaponModels` | One part-built model per weapon (format: `src/server/systems/WeaponModel.luau`) |
@@ -55,7 +55,7 @@ runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is
 | `src/server/systems/Vehicles` | Vehicles, one module per job behind `init.luau`: `Registry` (live cars), `Specs` (model files), `Placement`, `Climb`, `Drive`, `Health` (crashes, wrecks), `Trees`, `Contact` (rams), `Boarding` (prompts, cab), `Builder`, `Parking` (spots, respawn) |
 | `src/server/systems/Weapons` | Weapons, one module per job behind `init.luau`: `Tools` (tools, display stands), `FallbackModels` (models by catalog shape), `Effects` (beams, flashes, lightning), `Aim` (the shot record, spread, raycast), `Projectiles`, `Firing` (the FireWeapon remote, cooldowns), `kinds/` (one module per weapon kind) |
 | `src/client` | Feature modules started by `init.client.luau`: `LobbyUI` (armory), `WeaponInput`, `SniperScope`, `CarInput`, `VehicleHealth`, `VehicleSounds`, `MechMotion` (walker animation), `MechCamera`, `PodControls`, `PromptPanel` (prompt cards), `AdminPanel` (GOD MODE), `MacPanel`, `NukeStrike`, `Announcer` |
-| `src/client/ui` | Client UI kit: `Create` (instance builders), `Theme` (fonts, shared colours, every ScreenGui's DisplayOrder), `TouchButton`, `Hud` (jump button lookup, inset matching, bottom-right controls list), `RightColumn` (GOD MODE and MAC toggles and panels) |
+| `src/client/ui` | Client UI kit: `Create` (instance builders), `Theme` (fonts, shared colours, every ScreenGui's DisplayOrder), `TouchButton`, `Hud` (jump button lookup, inset matching), `RightColumn` (the system rail: GOD MODE and MAC toggles and their drawer) |
 
 ## UI conventions
 
@@ -63,18 +63,40 @@ runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is
   edges. UI the player opens and closes (the MAC and GOD MODE panels, the lobby armory) and prompt
   cards that come and go are exempt, as are the sniper scope's lens and reticle (they are the aim
   point) and full-screen flashes (MAYHEM, alarms).
-- Positions are measured from on-screen elements (the MAC button, the touch jump button), never
-  guessed pixel offsets. The GOD MODE / MAC column hangs from the top-right corner of the area
-  Roblox keeps clear of the top bar and the device's notch (`ScreenInsets` `CoreUISafeInsets`).
-  Without a touch jump button to measure (desktop), SCOPE, VIEW and STAND fall back to fractions of
-  the screen, in the lower right. Client UI is built with the kit in `src/client/ui`; layout math
-  is in `src/shared/HudLayout.luau`.
+- The HUD has four zones, inside the area Roblox keeps clear of the top bar and the device's notch
+  (`ScreenInsets` `CoreUISafeInsets`):
+
+  ```
+  ┌──────────────────────────────────────────────────────────────┐
+  │ [Roblox top bar]                          [vehicle status]   │
+  │ ┌ prompt card ────┐      ┌ drawer ──────────┐  [👑 GOD]      │
+  │ ├ prompt card ────┤      │ GOD MODE or MAC  │  [🖥 MAC]      │
+  │                          └──────────────────┘  ( LAUNCH )    │
+  │                                         [▲]  [     ]  [STAND]│
+  │  (thumbstick)          [hotbar]         [▼]  [VIEW ]  (JUMP) │
+  └──────────────────────────────────────────────────────────────┘
+  ```
+
+  - Top right, the system rail: the GOD MODE and MAC toggles. On a phone (a screen whose short
+    side is 500 pixels or less) they are square icons under the vehicle status; on a tablet or
+    desktop they are full-width buttons in the corner with the status left of them. A toggle
+    opens its panel in the drawer to its left, one at a time; an open panel covers the action
+    buttons until it closes.
+  - Top left, the prompt stack, under the Roblox top bar, clear of the thumbstick.
+  - Bottom right, the action cluster round the jump button: VIEW or SCOPE left of it, STAND or
+    LAND above it, ▼ left of VIEW and ▲ above ▼, and the pod's LAUNCH / RETURN HOME button above
+    them all. Without a touch jump button (desktop), STAND takes the jump button's place and the
+    cluster falls back to fractions of the screen.
+  - Bottom left: Roblox's thumbstick.
+- Positions are measured from on-screen elements (the touch jump button, the gui's safe area),
+  never guessed pixel offsets. Client UI is built with the kit in `src/client/ui`; layout math is
+  in `src/shared/HudLayout.luau`.
 - `LobbyUI` and `Announcer` build their UI in `start()` (Announcer also on its first
   announcement), never when required: `init.client.luau` requires every module before starting
   each in its own thread, so an error building either screen cannot stop the client from loading.
-- Every ProximityPrompt is drawn as a card at the right edge, under the MAC button (left of an
-  open MAC or GOD MODE panel), above the bottom-right touch buttons: key (TAP on touch), object,
-  action. Tap or click a card to use it. `src/client/PromptPanel.luau`.
+- Every ProximityPrompt is drawn as a card in the top-left corner, stacking down from under the
+  Roblox top bar: key (TAP on touch), object, action. Tap or click a card to use it. Cards are
+  larger on a tablet or desktop and shrink when many show. `src/client/PromptPanel.luau`.
 - Seated in a vehicle, only prompts that work from that seat show: **Drive** from a passenger seat,
   and the pod console for Aurora's pilot. Other vehicles' prompts are hidden until you get out.
 
@@ -108,8 +130,8 @@ by respawning.
 
 ### The panel
 
-Admins see a **👑 GOD MODE** button in the top-right corner, just under the Roblox top bar. It
-opens the panel:
+Admins see a **👑 GOD MODE** button at the top of the system rail in the top-right corner (a
+square **👑 GOD** icon on a phone). It opens the panel in the drawer to its left:
 
 ```
 ┌──────────────────────────────────┐
@@ -144,8 +166,8 @@ contents scroll together, so every part is reachable on a phone.
 
 ### The MAC (mini admin console)
 
-Every player sees a **🖥 MAC** button under **👑 GOD MODE** (non-admins see it in the same spot,
-with the space above it empty). It opens a small panel:
+Every player sees a **🖥 MAC** button on the system rail, under **👑 GOD MODE** for admins and at
+the top of the rail for everyone else. It opens a small panel in the drawer:
 
 ```
 ┌──────────────────────────────────┐
@@ -163,7 +185,8 @@ NUKE countdown runs at a time. Timing lives in `Config.NUKE_*`; the client draws
 (`src/client/NukeStrike.luau`).
 
 - Admins always have the MAC.
-- Players without the MAC see **🔒 MAC**, and the panel opens with a lock over it.
+- Players without the MAC see **🔒 MAC**, and the panel opens with a 🔒 notice line and its buttons
+  dimmed.
 - An admin gives the MAC with `/give <who> mac` (until the player leaves the server) or
   `/give <who> mac permanent` (saved, loaded every time they join).
 - Permanent grants live in the `MapAccess` DataStore (the MAC's old name, kept so saved grants still load). In Studio this needs **Enable Studio Access
@@ -331,7 +354,8 @@ size sets how much. Size is bulk: footprint × the height of its solid parts, ov
   chars black, and disappears 10 seconds later. A parked vehicle comes back at its spot with full
   health on the next 10-second respawn check; a `/give` vehicle is gone.
 - **Health bar**: whoever sits in a vehicle (any seat, Aurora's legs saddle too) sees its name and
-  health in a bar at the bottom of the screen. It flashes white on each hit.
+  health in a bar in the top-right corner (above the system rail on a phone, left of it on a
+  tablet or desktop). It flashes white on each hit.
 - Crashes into walls and the ground count only for vehicles the server simulates: driven ones
   (the server keeps them after the driver gets out), shoved ones, and flying pods. One a
   player's client simulates (carrying only passengers, or never driven and near a player) takes
@@ -350,7 +374,7 @@ and works with `/give <who> mech`.
   studs/s, turns in place, and backs up slowly. It speeds up, stops, and turns slowly.
 - **View**: you start in the cockpit, looking out the chest window. **V**, gamepad **Y**, or the
   **VIEW** button (touch, left of the jump button) switches to an outside view and back.
-- **Stand up**: tap **STAND** (above **VIEW**, every platform) or jump. You get out of the seat
+- **Stand up**: tap **STAND** (above the jump button, every platform) or jump. You get out of the seat
   and stand in the cab, still in first person, and can walk around inside it. The mech stays where
   it is, and it does not return to its parking spot while you are inside.
 - **In the cab**: press **E** (or tap **Drive**) to sit back down, or **Q** (**Climb out**) to
@@ -376,14 +400,14 @@ three: the pilot up front and two passengers behind (**F**, **Ride**, while it i
 Passengers look out in first person like the pilot.
 
 - **Launch**: in the pilot's seat, press **F** at the glowing button in the middle of the console,
-  or tap **LAUNCH** (left of **STAND**). The pod lifts off and the legs park where they stand.
+  or tap **LAUNCH** (above the action buttons). The pod lifts off and the legs park where they stand.
 - **Fly**: WASD/arrows, thumbstick or gamepad fly forward and turn. **E** climbs and **Q**
-  descends (touch: **▲** and **▼** left of **VIEW**). With neither, the pod holds its height. It
+  descends (touch: **▼** left of **VIEW**, **▲** above it). With neither, the pod holds its height. It
   never goes lower than 4 studs over the ground.
 - **Return home**: **F** at the console button again, or tap **RETURN HOME**. The autopilot
   climbs, flies back over the legs, turns to their heading and settles onto them.
-- **Land**: within 15 studs of the ground a **LAND** button (or **L**) appears beside
-  **RETURN HOME**, where **STAND** is when docked. The pod settles to hover just over the ground
+- **Land**: within 15 studs of the ground a **LAND** button (or **L**) appears where **STAND** is
+  when docked, above the jump button. The pod settles to hover just over the ground
   and everyone aboard gets out behind it. Walk up and press **E** (**Board**) to get back in: the
   first to board takes the pilot's seat, the next two the passenger seats. The pod waits until the
   pilot presses **LAUNCH** (or **F**).
@@ -422,7 +446,7 @@ Scope (sniper in hand):
 | Input | Scope |
 | --- | --- |
 | Mouse | Hold right button |
-| Touch | Tap **SCOPE** (above the jump button) to toggle |
+| Touch | Tap **SCOPE** (left of the jump button) to toggle |
 | Gamepad | Hold left trigger |
 
 Scoped, the view zooms to a 12° field of view and shots go where the reticle is. Turning is slow

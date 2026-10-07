@@ -1,14 +1,13 @@
--- Every ProximityPrompt, drawn by this client at the right edge of the screen, never over the
+-- Every ProximityPrompt, drawn by this client in the top-left corner of the screen, never over the
 -- world. Each prompt is switched to Style Custom here as it appears; ProximityPromptService still
 -- decides which prompts show and handles their keyboard and gamepad keys and holds. This module
 -- draws one card per shown prompt: the key (or TAP on touch), the object text and the action text,
 -- and a progress bar for hold prompts. Tapping or clicking a card holds the prompt.
 --
--- Placement is measured from the right-hand column of toggles (ui/RightColumn): the cards stack
--- down from just below the MAC button, right edges aligned with it. While a panel is open in that
--- column (the MAC's, GOD MODE's) they sit left of it. They stop above the bottom-right touch
--- controls (ui/Hud.bottomControls: the jump button, MechCamera's and PodControls' columns, SCOPE),
--- shrinking if they have to. The arithmetic is HudLayout.cardStack.
+-- Placement: the cards stack down from the top-left corner of the safe area (under the Roblox top
+-- bar), clear of the thumbstick below and of the system rail and action cluster on the right,
+-- shrinking if there are many. Cards are wider and taller on a large screen. The arithmetic is
+-- HudLayout.promptStack.
 --
 -- Prompts that do nothing for the local player while seated in a vehicle are switched off on this
 -- client (MaxActivationDistance 0; the server never changes it after creation):
@@ -32,7 +31,6 @@ local HudLayout = require(ReplicatedStorage.Shared.HudLayout)
 local Names = require(ReplicatedStorage.Shared.Names)
 local PromptRules = require(ReplicatedStorage.Shared.PromptRules)
 local Create = require(script.Parent.ui.Create)
-local Hud = require(script.Parent.ui.Hud)
 local RightColumn = require(script.Parent.ui.RightColumn)
 local Theme = require(script.Parent.ui.Theme)
 
@@ -41,16 +39,14 @@ local PromptPanel = {}
 local player = Players.LocalPlayer
 local rgb = Color3.fromRGB
 
-local CARD_WIDTH = 220
-local CARD_HEIGHT = 48
-local MIN_CARD_HEIGHT = 28 -- the shortest a card shrinks to above the touch controls
-local GAP = RightColumn.GAP
+local MIN_CARD_HEIGHT = 28 -- the shortest a card shrinks to when many show
+local GAP = HudLayout.GAP
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "Prompts"
 gui.ResetOnSpawn = false
 gui.DisplayOrder = Theme.DisplayOrder.prompts -- under the MAC and GOD MODE panels
-gui.ScreenInsets = RightColumn.SCREEN_INSETS -- the right column's space (IgnoreGuiInset false)
+gui.ScreenInsets = RightColumn.SCREEN_INSETS -- the safe area (IgnoreGuiInset false)
 
 -- Suppression -------------------------------------------------------------------------------------
 
@@ -172,7 +168,7 @@ end
 local function makeCard(prompt: ProximityPrompt, inputType: Enum.ProximityPromptInputType): Card
 	local frame = Instance.new("TextButton")
 	frame.Name = prompt.Name
-	frame.AnchorPoint = Vector2.new(1, 0)
+	frame.AnchorPoint = Vector2.new(0, 0)
 	frame.Text = ""
 	frame.AutoButtonColor = false
 	frame.BackgroundColor3 = Theme.Colors.hud
@@ -316,44 +312,12 @@ local function layout()
 		return PromptRules.before(a.prompt, b.prompt)
 	end)
 
-	local toggle = RightColumn.toggle
-	local panelLefts = {}
-	for _, panel in RightColumn.panels do
-		if Hud.shownIn(panel) then
-			table.insert(panelLefts, panel.AbsolutePosition.X)
-		end
-	end
-	local controls = {}
-	for _, control in Hud.bottomControls() do
-		local x0 = control.AbsolutePosition.X
-		table.insert(controls, {
-			left = x0,
-			right = x0 + control.AbsoluteSize.X,
-			top = Hud.edgeY(control, false, gui),
-		})
-	end
-	local column = HudLayout.cardStack({
-		screen = gui.AbsoluteSize,
-		toggle = if toggle
-			then {
-				right = toggle.AbsolutePosition.X + toggle.AbsoluteSize.X,
-				bottom = Hud.edgeY(toggle, true, gui),
-			}
-			else nil,
-		panelLefts = panelLefts,
-		controls = controls,
-		count = #ordered,
-		width = CARD_WIDTH,
-		height = CARD_HEIGHT,
-		minHeight = MIN_CARD_HEIGHT,
-		gap = GAP,
-	})
-
-	local height = column.height
-	local insides = HudLayout.cardInsides(height, CARD_WIDTH)
+	local column = HudLayout.promptStack(gui.AbsoluteSize, #ordered, MIN_CARD_HEIGHT)
+	local width, height = column.width, column.height
+	local insides = HudLayout.cardInsides(height, width)
 	for index, card in ordered do
-		card.frame.Size = UDim2.fromOffset(CARD_WIDTH, height)
-		card.frame.Position = UDim2.fromOffset(column.right, HudLayout.cardTop(column, GAP, index))
+		card.frame.Size = UDim2.fromOffset(width, height)
+		card.frame.Position = UDim2.fromOffset(column.left, HudLayout.cardTop(column, GAP, index))
 		local badge = card.key.Parent :: Frame
 		badge.Size = UDim2.fromOffset(insides.side, insides.side)
 		badge.Position = UDim2.new(0, insides.margin, 0.5, 0)

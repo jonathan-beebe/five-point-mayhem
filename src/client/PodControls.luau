@@ -1,11 +1,11 @@
 -- Screen controls for flying pods (server PodFlight). While the local player sits in the driver
--- seat of a walker with a pod (model attribute PodBone), a wide button left of MechCamera's STAND
+-- seat of a walker with a pod (model attribute PodBone), a wide button above the action cluster
 -- reads LAUNCH (pod docked), RETURN HOME (flying) or RETURNING (the autopilot has it). On touch,
--- while flying, ▲ and ▼ left of VIEW climb and descend; keyboards use E and Q (CarInput reads
--- both). Passengers get only the jump lock. Near the ground (server attribute PodCanLand) a LAND
--- button (or L) appears where STAND was (STAND hides in flight): the pod settles to hover and the
--- pilot gets out. While the pod flies the seat is locked here too: jumping is disabled. The console
--- button's prompt (PodFlight) is drawn at the side of the screen with every other prompt
+-- while flying, ▼ left of VIEW and ▲ above ▼ climb and descend; keyboards use E and Q (CarInput
+-- reads both). Passengers get only the jump lock. Near the ground (server attribute PodCanLand) a
+-- LAND button (or L) appears where STAND was (STAND hides in flight): the pod settles to hover and
+-- the pilot gets out. While the pod flies the seat is locked here too: jumping is disabled. The
+-- console button's prompt (PodFlight) is drawn in the top-left corner with every other prompt
 -- (PromptPanel).
 
 local Players = game:GetService("Players")
@@ -19,7 +19,6 @@ local PodState = require(ReplicatedStorage.Shared.PodState)
 local RemoteActions = require(ReplicatedStorage.Shared.RemoteActions)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local MechCamera = require(script.Parent.MechCamera)
-local Hud = require(script.Parent.ui.Hud)
 local Theme = require(script.Parent.ui.Theme)
 local TouchButton = require(script.Parent.ui.TouchButton)
 
@@ -33,7 +32,6 @@ gui.Name = Names.Instances.PodButtons
 gui.ResetOnSpawn = false
 gui.DisplayOrder = Theme.DisplayOrder.touch
 gui.Enabled = false
-Hud.addBottomControls(gui)
 
 local function makeButton(name: string, text: string, color: Color3): TextButton
 	return TouchButton.new({
@@ -67,8 +65,8 @@ local function state(): PodState.State
 		else PodState.DOCKED
 end
 
--- The column MechCamera measured, two rows (HudLayout.podButtons): the pod button spans two slots
--- left of STAND, LAND takes STAND's slot, ▼ sits left of VIEW and ▲ left of ▼.
+-- The cluster MechCamera measured (HudLayout.podButtons): the pod button spans the cluster above
+-- its slots, LAND takes STAND's slot, ▼ sits left of VIEW and ▲ above ▼.
 local function layout()
 	local measured = MechCamera.layout
 	if not measured then
