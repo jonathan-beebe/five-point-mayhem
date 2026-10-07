@@ -645,9 +645,10 @@ do
 			end,
 		},
 	}
-	local buildingNames = {}
+	local buildingNames, realmNames = {}, {}
 	for _, region in Config.REGIONS do
 		buildingNames[region.id] = "building_" .. region.id
+		realmNames[region.id] = "realm_" .. region.id
 	end
 	local fakes: { [string]: any } = {
 		Remotes = stub,
@@ -655,7 +656,9 @@ do
 		Landscape = { build = noop, explosiveBarrel = noop },
 		Lamps = { build = noop },
 		Lobby = { build = noop },
-		Regions = { BUILDINGS = buildingNames },
+		Passes = { raise = noop, cut = noop },
+		Regions = { BUILDINGS = buildingNames, REALMS = realmNames },
+		WorldLayout = { frame = noop },
 		Roads = { build = noop },
 		CollisionGroups = { register = noop },
 		Combat = { setBarrelFactory = noop },
@@ -669,6 +672,9 @@ do
 		MacAccess = system("MacAccess"),
 	}
 	for _, name in buildingNames do
+		fakes[name] = { build = noop }
+	end
+	for _, name in realmNames do
 		fakes[name] = { build = noop }
 	end
 	local ok, err = pcall(loadWith, "src/server/init.server.luau", fakes, {
