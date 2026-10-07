@@ -1,7 +1,9 @@
 -- The land between the board and the five worlds: base ground out to WorldLayout.OUTER_EXTENT, a
 -- high range of peaks behind Landscape's rim, and a pass cut through both on each landmark's
 -- bearing. init.server calls `raise` before the realms build and `cut` after, so no realm's bowl
--- wall blocks a pass. Draws from its own Random: Landscape's seeded scenery stays as it was.
+-- wall blocks a pass, then `clearScenery` to take Landscape's trees and obstacles off each pass
+-- and out of its gate's way. Draws from its own Random: Landscape's seeded scenery stays as it
+-- was, less what is cleared.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -78,6 +80,28 @@ function Passes.cut()
 				Vector3.new(floorWidth, 8, segment.length),
 				M.Ground
 			)
+		end
+	end
+end
+
+-- Destroys the trees and obstacles Landscape scattered inside a pass's clearing
+-- (WorldLayout.clearingAt).
+function Passes.clearScenery(world: Instance)
+	local scenery = world:FindFirstChild("Scenery")
+	local trees = scenery and scenery:FindFirstChild("Trees")
+	local obstacles = scenery and scenery:FindFirstChild("Obstacles")
+	if trees then
+		for _, tree in trees:GetChildren() do
+			if tree:IsA("Model") and WorldLayout.clearingAt(tree:GetPivot().Position) then
+				tree:Destroy()
+			end
+		end
+	end
+	if obstacles then
+		for _, part in obstacles:GetDescendants() do
+			if part:IsA("BasePart") and WorldLayout.clearingAt(part.Position) then
+				part:Destroy()
+			end
 		end
 	end
 end

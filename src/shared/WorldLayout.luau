@@ -7,6 +7,7 @@
 --   r 1120..1320  the high range's peak centres (Passes); its balls reach r 1500
 --   r 1600..2400  a world's floor, centred on its landmark's bearing at r 2000
 --   r 900..1600   the pass on each bearing, from the rim's inner foot to the floor's edge
+--   r 910         the gate at each pass's mouth (world/gates), front toward the lobby
 
 local Config = require(script.Parent.Config)
 
@@ -35,6 +36,16 @@ WorldLayout.PASS_PROFILE = {
 	{ width = 260, bottom = 160, top = 600 },
 } :: { Step }
 
+-- Each pass's gate: its centre on the bearing, and the opening every gate leaves clear when
+-- open. Heron (cab top 51) walks through; two Rustbuckets (22-stud hulls) pass side by side.
+WorldLayout.GATE_RADIUS = WorldLayout.PASS_START + 10
+WorldLayout.GATE_OPENING = { width = 56, height = 66 }
+
+-- Scenery is cleared from each pass and round its gate: CLEARING_HALF_WIDTH either side of the
+-- bearing, from CLEARING_START out to PASS_END.
+WorldLayout.CLEARING_HALF_WIDTH = 90
+WorldLayout.CLEARING_START = WorldLayout.GATE_RADIUS - 50
+
 -- A world's bowl walls leave this half-angle open toward the hub, round the pass.
 WorldLayout.BOWL_GAP = math.rad(16)
 
@@ -58,6 +69,29 @@ end
 function WorldLayout.frame(index: number): CFrame
 	local center = WorldLayout.center(index)
 	return CFrame.lookAt(center, Vector3.zero)
+end
+
+-- Pass `index`'s gate at ground level, local -Z facing the lobby, local X across the pass.
+function WorldLayout.gateFrame(index: number): CFrame
+	local position = direction(index) * WorldLayout.GATE_RADIUS
+	return CFrame.lookAt(position, Vector3.zero)
+end
+
+-- The index of the pass whose clearing holds `position`, or nil.
+function WorldLayout.clearingAt(position: Vector3): number?
+	for index = 1, #Config.REGIONS do
+		local outward = direction(index)
+		local along = position.X * outward.X + position.Z * outward.Z
+		local across = position.Z * outward.X - position.X * outward.Z
+		if
+			along >= WorldLayout.CLEARING_START
+			and along <= WorldLayout.PASS_END
+			and math.abs(across) <= WorldLayout.CLEARING_HALF_WIDTH
+		then
+			return index
+		end
+	end
+	return nil
 end
 
 export type Segment = { cframe: CFrame, length: number }
