@@ -1,6 +1,8 @@
 -- God-mode panel for admins: one-tap powers, plus gifting any weapon or power-up to a player
 -- or to everyone. Its toggle tops the system rail; the panel opens in the rail's drawer
--- (ui/RightColumn). The server re-checks admin rights on every command.
+-- (ui/RightColumn). Top to bottom: the target, the powers four to a row, then the gift menus.
+-- On a small screen POWERS and GIFTS tabs show one section at a time; on a large one both show
+-- and the gifts sit two to a row. The server re-checks admin rights on every command.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -31,12 +33,19 @@ end
 
 local built = false
 
+local GOLD = rgb(255, 200, 40)
+local ROW = 44 -- every row's height: tabs, target, power and gift buttons
+local GAP = 6
+local PAD = 10
+
 local function build()
 	if built then
 		return
 	end
 	built = true
 	local target = "all"
+	local tab = "powers" -- small screens show one section at a time: "powers" or "gifts"
+	local small = true
 
 	local gui = create("ScreenGui", {
 		Name = "MayhemAdmin",
@@ -46,39 +55,79 @@ local function build()
 		Parent = player:WaitForChild("PlayerGui"),
 	})
 	local toggle = RightColumn.makeToggle(gui, 0, {
-		BackgroundColor3 = rgb(255, 200, 40),
+		BackgroundColor3 = GOLD,
 		Text = "👑 GOD MODE",
 		TextColor3 = rgb(40, 20, 0),
 	})
 	RightColumn.setLabels(toggle, "👑\nGOD", "👑 GOD MODE")
 
-	-- The whole panel scrolls as one, and is never taller than the drawer, so on a short (phone)
-	-- screen every part of it stays reachable.
+	-- The panel fills the drawer's width and is as tall as its content, up to the drawer's height;
+	-- past that it scrolls as one, so on a short (phone) screen every part stays reachable.
 	local width = RightColumn.PANEL_WIDTH
-	local panel = RightColumn.makePanel("ScrollingFrame", gui, rgb(255, 200, 40), {
+	local constraint = create("UISizeConstraint", { MaxSize = Vector2.new(width, 470) })
+	local panel = RightColumn.makePanel("ScrollingFrame", gui, GOLD, {
 		Size = UDim2.fromOffset(width, 0),
 		BackgroundColor3 = rgb(20, 16, 10),
 		BorderSizePixel = 0,
 		ScrollBarThickness = 6,
 		CanvasSize = UDim2.new(),
-	}, {
-		create("UISizeConstraint", { MaxSize = Vector2.new(width, 470) }),
-	}, true)
-
-	local targetButton = create("TextButton", {
-		Position = UDim2.fromOffset(10, 10),
-		Size = UDim2.fromOffset(280, 34),
-		BackgroundColor3 = rgb(60, 50, 30),
-		TextColor3 = rgb(255, 230, 150),
-		TextSize = 15,
-		Font = Theme.Fonts.bold,
+	}, { constraint }, true)
+	Create.padding(UDim.new(0, PAD), UDim.new(0, PAD)).Parent = panel
+	local list = create("UIListLayout", {
+		Padding = UDim.new(0, GAP),
+		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = panel,
-	}, { corner() })
+	})
 
+	-- A full-width row of the panel's list.
+	local function row(order: number, height: number?): Frame
+		return create("Frame", {
+			LayoutOrder = order,
+			Size = UDim2.new(1, -6, 0, height or ROW), -- -6: clear of the scroll bar
+			AutomaticSize = if height then Enum.AutomaticSize.None else Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1,
+			Parent = panel,
+		})
+	end
+
+	local function textButton(parent: Instance, order: number, text: string, color: Color3)
+		return create("TextButton", {
+			LayoutOrder = order,
+			BackgroundColor3 = color,
+			Text = text,
+			TextColor3 = rgb(255, 255, 255),
+			TextScaled = true,
+			Font = Theme.Fonts.bold,
+			Parent = parent,
+		}, {
+			corner(),
+			Create.padding(UDim.new(0, 6), UDim.new(0, 10)),
+			create("UITextSizeConstraint", { MaxTextSize = 15 }),
+		})
+	end
+
+	-- Tabs (small screens): POWERS | GIFTS.
+	local tabs = row(1, ROW)
+	create("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		Padding = UDim.new(0, GAP),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = tabs,
+	})
+	local tabButtons: { [string]: TextButton } = {}
+	for order, name in { "powers", "gifts" } do
+		local button = textButton(tabs, order, string.upper(name), rgb(60, 50, 30))
+		button.Size = UDim2.new(0.5, -GAP / 2, 1, 0)
+		tabButtons[name] = button
+	end
+
+	local targetButton = textButton(row(2, ROW), 0, "", rgb(60, 50, 30))
+	targetButton.Size = UDim2.fromScale(1, 1)
+	targetButton.TextColor3 = rgb(255, 230, 150)
 	local function refreshTarget()
 		targetButton.Text = "🎯 Target: "
 			.. (if target == "all" then "EVERYONE" else target)
-			.. "  (tap to change)"
+			.. "  ▾"
 	end
 	targetButton.Activated:Connect(function()
 		local names = { "all" }
@@ -91,26 +140,17 @@ local function build()
 	end)
 	refreshTarget()
 
-	-- Powers sit two to a row under the target button. An odd last power fills its row.
-	local GRID_TOP = targetButton.Position.Y.Offset + targetButton.Size.Y.Offset + 8
-	local FULL_WIDTH = targetButton.Size.X.Offset
-	local CELL_WIDTH, CELL_HEIGHT = 138, 40
-	local COLUMN_PITCH, ROW_PITCH = 142, 46
-	local rows = math.ceil(#POWERS / 2)
+	-- Powers: four to a row.
+	local powers = row(3)
+	create("UIGridLayout", {
+		CellSize = UDim2.new(0.25, -GAP * 3 / 4, 0, ROW),
+		CellPadding = UDim2.fromOffset(GAP, GAP),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = powers,
+	})
 	for index, power in POWERS do
-		local column = (index - 1) % 2
-		local row = math.floor((index - 1) / 2)
-		local alone = index == #POWERS and column == 0
-		local button = create("TextButton", {
-			Position = UDim2.fromOffset(10 + column * COLUMN_PITCH, GRID_TOP + row * ROW_PITCH),
-			Size = UDim2.fromOffset(if alone then FULL_WIDTH else CELL_WIDTH, CELL_HEIGHT),
-			BackgroundColor3 = power.color,
-			Text = power.label,
-			TextColor3 = rgb(255, 255, 255),
-			TextSize = 16,
-			Font = Theme.Fonts.title,
-			Parent = panel,
-		}, { corner() })
+		local button = textButton(powers, index, power.label, power.color)
+		button.Font = Theme.Fonts.title
 		button.Activated:Connect(function()
 			local argument = if power.targeted and target ~= "all" then target else nil
 			if power.command == "freeze" and target == "all" then
@@ -121,8 +161,8 @@ local function build()
 	end
 
 	local heading = create("TextLabel", {
-		Position = UDim2.fromOffset(10, GRID_TOP + rows * ROW_PITCH + 4),
-		Size = UDim2.fromOffset(FULL_WIDTH, 22),
+		LayoutOrder = 4,
+		Size = UDim2.new(1, -6, 0, 22),
 		BackgroundTransparency = 1,
 		TextColor3 = rgb(255, 210, 60),
 		TextSize = 16,
@@ -131,14 +171,11 @@ local function build()
 		Parent = panel,
 	})
 
-	-- The menus share the space under the heading: WEAPONS, VEHICLES and MECHS buttons above
-	-- the gifts, and one menu for each of those. One shows at a time. Menus grow to fit
-	-- their items; the panel scrolls them.
+	-- The menus: WEAPONS, VEHICLES and MECHS buttons above the gifts, and one menu for each of
+	-- those. One shows at a time; each grows to fit its items, two to a row on a large screen.
 	local menus: { [string]: Frame } = {}
-	local layouts: { [string]: UIListLayout } = {}
+	local grids: { UIGridLayout } = {}
 	local current = "gifts"
-	local MENU_TOP = heading.Position.Y.Offset + heading.Size.Y.Offset + 4
-	local MENU_BOTTOM_PADDING = 10
 	local HEADINGS = {
 		gifts = "🎁 GIVE TO TARGET",
 		weapons = "🎁 GIVE TO TARGET › WEAPONS",
@@ -146,67 +183,24 @@ local function build()
 		mechs = "🎁 GIVE TO TARGET › MECHS",
 	}
 
-	-- The canvas is sized from the open menu's measured height. AutomaticCanvasSize left the
-	-- canvas at the window's size, so there was nothing to scroll.
-	local function fitCanvas()
-		local height = layouts[current].AbsoluteContentSize.Y
-		panel.CanvasSize = UDim2.fromOffset(0, MENU_TOP + height + MENU_BOTTOM_PADDING)
-	end
-
-	local function show(name: string)
-		current = name
-		for each, menu in menus do
-			menu.Visible = each == name
-		end
-		heading.Text = HEADINGS[name]
-		fitCanvas()
-	end
-
-	-- Switches menu and scrolls the panel so the heading is at the top.
-	local function open(name: string)
-		show(name)
-		panel.CanvasPosition = Vector2.new(0, heading.Position.Y.Offset - 8)
-	end
-
-	local function button(menu: Frame, order: number, label: string, color: Color3)
-		return create("TextButton", {
-			LayoutOrder = order,
-			Size = UDim2.new(1, -8, 0, 30),
-			BackgroundColor3 = color,
-			Text = label,
-			TextColor3 = rgb(255, 255, 255),
-			TextSize = 14,
-			Font = Theme.Fonts.bold,
-			Parent = menu,
-		}, { corner() })
-	end
-
 	local function menu(name: string, entries: { { id: string, label: string } }, color: Color3)
-		local layout = create(
-			"UIListLayout",
-			{ Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }
+		local frame = row(5)
+		frame.Visible = false
+		table.insert(
+			grids,
+			create("UIGridLayout", {
+				CellPadding = UDim2.fromOffset(GAP, GAP),
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Parent = frame,
+			})
 		)
-		local list = create("Frame", {
-			Position = UDim2.fromOffset(10, MENU_TOP),
-			Size = UDim2.fromOffset(280, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			BackgroundTransparency = 1,
-			Visible = false,
-			Parent = panel,
-		}, { layout })
-		menus[name] = list
-		layouts[name] = layout
-		layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-			if current == name then
-				fitCanvas()
-			end
-		end)
+		menus[name] = frame
 		for order, entry in entries do
-			button(list, order, entry.label, color).Activated:Connect(function()
+			textButton(frame, order, entry.label, color).Activated:Connect(function()
 				Remotes.AdminCommand:FireServer("give", target, entry.id)
 			end)
 		end
-		return list
+		return frame
 	end
 
 	local weapons = {}
@@ -226,19 +220,63 @@ local function build()
 		{ name = "mechs", label = "🤖 MECHS  ›", entries = mechs },
 	}
 
+	-- Shows what the size class and the tab call for.
+	local function refresh()
+		tabs.Visible = small
+		local showPowers = not small or tab == "powers"
+		local showGifts = not small or tab == "gifts"
+		powers.Visible = showPowers
+		heading.Visible = showGifts
+		heading.Text = HEADINGS[current]
+		for name, frame in menus do
+			frame.Visible = showGifts and name == current
+		end
+		for name, button in tabButtons do
+			button.BackgroundColor3 = if name == tab then GOLD else rgb(60, 50, 30)
+			button.TextColor3 = if name == tab then rgb(40, 20, 0) else rgb(255, 230, 150)
+		end
+		local cell = if small then UDim2.new(1, 0, 0, ROW) else UDim2.new(0.5, -GAP / 2, 0, ROW)
+		for _, grid in grids do
+			grid.CellSize = cell
+		end
+	end
+
+	-- Switches menu and scrolls the panel so the heading is at the top.
+	local function open(name: string)
+		current = name
+		refresh()
+		local top = heading.AbsolutePosition.Y - panel.AbsolutePosition.Y
+		panel.CanvasPosition = Vector2.new(0, panel.CanvasPosition.Y + top)
+	end
+
 	local gifts = menu("gifts", GIFTS, rgb(90, 70, 20))
 	for offset, submenu in submenus do
-		button(gifts, offset - #submenus, submenu.label, rgb(70, 60, 110)).Activated:Connect(
+		textButton(gifts, offset - #submenus, submenu.label, rgb(70, 60, 110)).Activated:Connect(
 			function()
 				open(submenu.name)
 			end
 		)
-		local list = menu(submenu.name, submenu.entries, rgb(45, 40, 35))
-		button(list, 0, "‹  BACK", rgb(70, 60, 110)).Activated:Connect(function()
+		local items = menu(submenu.name, submenu.entries, rgb(45, 40, 35))
+		textButton(items, 0, "‹  BACK", rgb(70, 60, 110)).Activated:Connect(function()
 			open("gifts")
 		end)
 	end
-	show("gifts")
+
+	for name, button in tabButtons do
+		button.Activated:Connect(function()
+			tab = name
+			refresh()
+		end)
+	end
+
+	-- The canvas and the panel's height follow the content (AutomaticCanvasSize left the canvas at
+	-- the window's size, so there was nothing to scroll).
+	local function fit()
+		local height = list.AbsoluteContentSize.Y + PAD * 2
+		panel.CanvasSize = UDim2.fromOffset(0, height)
+		constraint.MaxSize = Vector2.new(math.huge, height)
+	end
+	list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fit)
 
 	toggle.Activated:Connect(function()
 		panel.Visible = not panel.Visible
@@ -249,6 +287,12 @@ local function build()
 	RightColumn.opened:Connect(function()
 		panel.Visible = false
 	end)
+	RightColumn.onLayout(function(isSmall)
+		small = isSmall
+		refresh()
+	end)
+	refresh()
+	fit()
 	RightColumn.watch(gui)
 end
 

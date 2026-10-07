@@ -7,7 +7,8 @@
 -- Placement: the cards stack down from the top-left corner of the safe area (under the Roblox top
 -- bar), clear of the thumbstick below and of the system rail and action cluster on the right,
 -- shrinking if there are many. Cards are wider and taller on a large screen. The arithmetic is
--- HudLayout.promptStack.
+-- HudLayout.promptStack. A prompt PromptRules.drawn turns down (the pod console's in the driver
+-- seat, where PodControls' button does the same) keeps working by key with no card.
 --
 -- Prompts that do nothing for the local player while seated in a vehicle are switched off on this
 -- client (MaxActivationDistance 0; the server never changes it after creation):
@@ -300,9 +301,15 @@ end
 -- Layout ------------------------------------------------------------------------------------------
 
 local function layout()
+	local sitting = seat()
+	local seatName = if sitting then sitting.Name else nil
 	local ordered: { Card } = {}
-	for _, card in cards do
-		table.insert(ordered, card)
+	for prompt, card in cards do
+		local shown = PromptRules.drawn(prompt.Name, seatName)
+		card.frame.Visible = shown
+		if shown then
+			table.insert(ordered, card)
+		end
 	end
 	if #ordered == 0 then
 		return

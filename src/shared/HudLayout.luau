@@ -15,7 +15,8 @@
 --   railTop(area)                        the first rail toggle's top
 --   railToggle(area, index)              the index-th (0-based) rail toggle (AnchorPoint 1, 0)
 --   statusPosition(area)                 the vehicle status (AnchorPoint 1, 0)
---   drawer(area)                         the open rail panel: position (AnchorPoint 1, 0), height
+--   drawer(area)                         the open rail panel: position (AnchorPoint 1, 0), the
+--                                        width of a panel that fills it, height
 --   promptStack(area, count, minHeight)  the prompt cards' column: left, top, width, card height
 --   cardTop(column, gap, index)          the top of the index-th card
 --   cardInsides(height, width)           a card's key badge and text box
@@ -45,18 +46,21 @@ HudLayout.SMALL_SIDE = 500
 HudLayout.STACK_SHARE = 0.45 -- prompt cards end above this share of the area's height
 HudLayout.PILL_SHARE = 0.7 -- the pod's state button is this share of a slot's height
 
-export type Sizes = { toggle: Vector2, status: Vector2, card: Vector2 }
+-- `drawer`: the width of a panel that fills the drawer (GOD MODE).
+export type Sizes = { toggle: Vector2, status: Vector2, card: Vector2, drawer: number }
 
 -- Small: square icon toggles. Large: full-width labelled toggles.
 local SMALL: Sizes = {
 	toggle = Vector2.new(56, 56),
 	status = Vector2.new(236, 40),
 	card = Vector2.new(236, 52),
+	drawer = 340,
 }
 local LARGE: Sizes = {
 	toggle = Vector2.new(220, 56),
 	status = Vector2.new(300, 48),
 	card = Vector2.new(300, 64),
+	drawer = 420,
 }
 
 function HudLayout.isSmall(area: Vector2): boolean
@@ -99,10 +103,11 @@ end
 
 -- The drawer opens left of the rail, top-aligned with it, and may run down to the bottom margin:
 -- an open panel covers the action cluster until it closes (the panels draw over the touch layer).
-function HudLayout.drawer(area: Vector2): { position: UDim2, height: number }
+function HudLayout.drawer(area: Vector2): { position: UDim2, width: number, height: number }
 	local top = HudLayout.railTop(area)
 	return {
 		position = UDim2.new(1, -leftOfRail(area), 0, top),
+		width = HudLayout.sizes(area).drawer,
 		height = math.max(area.Y - top - HudLayout.MARGIN, 0),
 	}
 end

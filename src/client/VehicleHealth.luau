@@ -2,7 +2,8 @@
 -- legs saddle). Server Vehicles keeps the model's Health and MaxHealth attributes; the bar is the
 -- vehicle status in the top-right corner (HudLayout.statusPosition: above the system rail on a
 -- small screen, left of it on a large one), goes green to yellow to red, and flashes white on
--- each hit. A wrecked vehicle (attribute Wrecked) hides it.
+-- each hit. The label ends with the seat's speed (studs/s), updated when its rounded value
+-- changes. A wrecked vehicle (attribute Wrecked) hides it.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -77,6 +78,7 @@ local vehicles: Instance? = nil -- workspace.Vehicles
 local current: Model? = nil -- the vehicle shown
 local connection: RBXScriptConnection? = nil
 local lastHealth = 0
+local speedText = HealthBar.speedText(0)
 
 local function refresh()
 	local model = current
@@ -89,7 +91,7 @@ local function refresh()
 	)
 	fill.Size = UDim2.fromScale(share, 1)
 	fill.BackgroundColor3 = HealthBar.colorFor(share)
-	label.Text = HealthBar.labelText(model.Name, health, maxHealth)
+	label.Text = HealthBar.labelText(model.Name, health, maxHealth) .. "  ·  " .. speedText
 	if health < lastHealth then
 		flash.BackgroundTransparency = 0.2
 		TweenService:Create(flash, TweenInfo.new(FLASH_TIME), { BackgroundTransparency = 1 }):Play()
@@ -98,11 +100,15 @@ local function refresh()
 	gui.Enabled = health > 0 and not model:GetAttribute(Names.Attributes.Wrecked)
 end
 
--- The vehicle model holding the local player's seat, if any.
-local function seatedIn(): Model?
+local function seatPart(): BasePart?
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	local seat = humanoid and humanoid.SeatPart
+	return humanoid and humanoid.SeatPart
+end
+
+-- The vehicle model holding the local player's seat, if any.
+local function seatedIn(): Model?
+	local seat = seatPart()
 	local model = vehicles and seat and seat.Parent
 	while model and model.Parent ~= vehicles do
 		model = model.Parent
@@ -143,6 +149,12 @@ function VehicleHealth.start()
 	vehicles = workspace:WaitForChild(Names.Instances.Vehicles)
 	RunService.Heartbeat:Connect(function()
 		watch(seatedIn())
+		local seat = seatPart()
+		local text = HealthBar.speedText(if seat then seat.AssemblyLinearVelocity.Magnitude else 0)
+		if text ~= speedText then
+			speedText = text
+			refresh()
+		end
 	end)
 end
 

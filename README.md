@@ -131,32 +131,28 @@ by respawning.
 ### The panel
 
 Admins see a **👑 GOD MODE** button at the top of the system rail in the top-right corner (a
-square **👑 GOD** icon on a phone). It opens the panel in the drawer to its left:
+square **👑 GOD** icon on a phone). It opens the panel in the drawer to its left. On a tablet or
+desktop it shows everything at once:
 
 ```
-┌──────────────────────────────────┐
-│ 🎯 Target: EVERYONE (tap to change) │  cycles EVERYONE → each player
-├────────────────┬─────────────────┤
-│   ☢ MAYHEM     │   ☄ METEORS     │
-│   🌙 GRAVITY   │   ❄ FREEZE      │  FREEZE and HORDE use the target
-│   ☀ DAY        │   🌑 NIGHT      │
-├────────────────┴─────────────────┤
-│            👹 HORDE              │
-├──────────────────────────────────┤
-│ 🎁 GIVE TO TARGET                 │
-│   🔫 WEAPONS  ›                   │  opens a menu of all 52 weapons
-│   🚙 VEHICLES  ›                  │  opens a menu of every vehicle except mechs
-│   🤖 MECHS  ›                     │  opens a menu of the walkers
-│   🧰 EVERY WEAPON                 │
-│   🎯 Sniper Rifle                 │
-│   ❤ Full heal                     │
-│   🛡 Shield (30s)                 │  tap one to give it to the target
-│   👟 Super speed                  │
-│   🦘 Mega jump                    │
-│   🗿 Giant                        │
-│   🚙 Random vehicle               │
-└──────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│ 🎯 Target: EVERYONE  ▾                            │  tap: EVERYONE → each player
+├────────────┬────────────┬────────────┬───────────┤
+│ ☢ MAYHEM   │ ☄ METEORS  │ 🌙 GRAVITY │ ❄ FREEZE  │  FREEZE and HORDE use the target
+│ ☀ DAY      │ 🌑 NIGHT   │ 👹 HORDE   │           │
+├────────────┴────────────┴────────────┴───────────┤
+│ 🎁 GIVE TO TARGET                                 │
+│ 🔫 WEAPONS  ›          │ 🚙 VEHICLES  ›           │  menus of all 52 weapons, every
+│ 🤖 MECHS  ›            │ 🧰 EVERY WEAPON          │  vehicle except mechs, the walkers
+│ 🎯 Sniper Rifle        │ ❤ Full heal              │
+│ 🛡 Shield (30s)        │ 👟 Super speed           │  tap one to give it to the target
+│ 🦘 Mega jump           │ 🗿 Giant                 │
+│ 🚙 Random vehicle      │                          │
+└──────────────────────────────────────────────────┘
 ```
+
+On a phone, **POWERS** and **GIFTS** tabs at the top show one section at a time, and the gifts sit
+one to a row. The panel scrolls when it is taller than the drawer.
 
 In the WEAPONS, VEHICLES and MECHS menus, tap an item to give it to the target, or **‹ BACK** to return
 to the gifts. The heading shows which menu is open.
@@ -354,8 +350,8 @@ size sets how much. Size is bulk: footprint × the height of its solid parts, ov
   chars black, and disappears 10 seconds later. A parked vehicle comes back at its spot with full
   health on the next 10-second respawn check; a `/give` vehicle is gone.
 - **Health bar**: whoever sits in a vehicle (any seat, Aurora's legs saddle too) sees its name and
-  health in a bar in the top-right corner (above the system rail on a phone, left of it on a
-  tablet or desktop). It flashes white on each hit.
+  health, and its speed in studs/s, in a bar in the top-right corner (above the system rail on a
+  phone, left of it on a tablet or desktop). It flashes white on each hit.
 - Crashes into walls and the ground count only for vehicles the server simulates: driven ones
   (the server keeps them after the driver gets out), shoved ones, and flying pods. One a
   player's client simulates (carrying only passengers, or never driven and near a player) takes
@@ -400,7 +396,8 @@ three: the pilot up front and two passengers behind (**F**, **Ride**, while it i
 Passengers look out in first person like the pilot.
 
 - **Launch**: in the pilot's seat, press **F** at the glowing button in the middle of the console,
-  or tap **LAUNCH** (above the action buttons). The pod lifts off and the legs park where they stand.
+  or tap **LAUNCH** (above the action buttons). The console's prompt card is hidden in the pilot's
+  seat, since **LAUNCH** does the same; **F** still works. The pod lifts off and the legs park where they stand.
 - **Fly**: WASD/arrows, thumbstick or gamepad fly forward and turn. **E** climbs and **Q**
   descends (touch: **▼** left of **VIEW**, **▲** above it). With neither, the pod holds its height. It
   never goes lower than 4 studs over the ground.
