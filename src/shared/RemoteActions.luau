@@ -16,6 +16,7 @@ return table.freeze({
 	}),
 	-- Remotes.PodCommand's action, for the pod the player drives (PodFlight runs them).
 	PodCommand = table.freeze({
+		DRONE = "drone", -- toggles the legs' drone mode (they follow the flying pod)
 		HOME = "home",
 		LAND = "land",
 		LAUNCH = "launch",

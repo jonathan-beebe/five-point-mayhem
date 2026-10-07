@@ -232,6 +232,11 @@ for _, state in { "docked", "flying", "returning", "landed", "wrecked" } do
 					not (view.landVisible or view.liftVisible) or PodState.inFlight(state),
 					label .. ": LAND and lift only in flight"
 				)
+				check(
+					not PodButtons.view(state, aboard, canLand, touch, true).droneVisible
+						or PodState.inFlight(state),
+					label .. ": DRONE only in flight"
+				)
 			end
 		end
 	end
@@ -248,10 +253,13 @@ equal(golden.land.size, UDim2.fromOffset(50, 50), "LAND one slot")
 equal(golden.land.position, UDim2.fromOffset(785, 330), "LAND in STAND's slot")
 equal(golden.up.position, UDim2.fromOffset(640, 340), "▲ above ▼")
 equal(golden.down.position, UDim2.fromOffset(640, 400), "▼ left of VIEW")
+equal(golden.drone.size, UDim2.fromOffset(50, 50), "DRONE one slot")
+equal(golden.drone.position, UDim2.fromOffset(700, 340), "DRONE above VIEW, right of ▲")
 local desk = HudLayout.podButtons(HudLayout.mechColumnFallback(Vector2.new(1000, 800)))
 equal(desk.pod.size, UDim2.fromOffset(380, 78), "fallback pod button size")
 equal(desk.pod.position, UDim2.new(0.85, 134, 0.95, -268), "fallback pod button above ▲")
 equal(desk.land.position, UDim2.new(0.85, 134, 0.95, 0), "fallback LAND in STAND's slot")
+equal(desk.drone.position, UDim2.new(0.85, 0, 0.95, -134), "fallback DRONE above VIEW")
 
 -- The top right: the vehicle status, the system rail and the drawer, per size class.
 Check.section("system rail")
@@ -334,9 +342,9 @@ equal(insides.side, 34, "badge side")
 equal(insides.textWidth, 220 - 48 - 7, "text width")
 
 -- Persistent HUD never sits at the screen centre (CLAUDE.md UI rules). Every touch button
--- (VIEW and SCOPE in the camera slot, STAND, and PodControls' pod, LAND, ▲ and ▼) stays inside its
--- gui, clear of the
--- screen's centre point, in the right half and in the lower half of the screen, laid out two ways:
+-- (VIEW and SCOPE in the camera slot, STAND, and PodControls' pod, LAND, ▲, ▼ and DRONE) stays
+-- inside its gui, clear of the screen's centre point, in the right half and in the lower half of
+-- the screen, and DRONE overlaps none of the others nor the jump button, laid out two ways:
 --   - measured from the jump button where Roblox's PlayerModule puts it (ControlModule/TouchJump
 --     `ResizeJumpButton`, in ControlModule's TouchControlFrame, which fills TouchGui: a ScreenGui
 --     with the default ScreenInsets, CoreUISafeInsets)
@@ -398,17 +406,27 @@ local SCREEN_SIZES = {
 	{ size = Vector2.new(320, 240), touch = false }, -- tiny desktop window
 }
 local BOTTOM_RIGHT = Vector2.new(1, 1)
-local function columnButtons(column, space: Space, label: string)
+local function overlaps(a, b): boolean
+	return a.left < b.right and b.left < a.right and a.top < b.bottom and b.top < a.bottom
+end
+local function columnButtons(column, space: Space, label: string, jump: any?)
 	local square = UDim2.fromOffset(column.size, column.size)
-	offCentre(
-		rect({ size = square, position = column.corner }, BOTTOM_RIGHT, space),
-		space,
-		"VIEW " .. label
-	)
+	local view = rect({ size = square, position = column.corner }, BOTTOM_RIGHT, space)
+	offCentre(view, space, "VIEW " .. label)
 	local stand = { size = square, position = HudLayout.standPosition(column) }
 	offCentre(rect(stand, BOTTOM_RIGHT, space), space, "STAND " .. label)
-	for name, placed in HudLayout.podButtons(column) do
-		offCentre(rect(placed, BOTTOM_RIGHT, space), space, name .. " " .. label)
+	local others = { VIEW = view, STAND = rect(stand, BOTTOM_RIGHT, space), jump = jump }
+	local pod = HudLayout.podButtons(column)
+	for name, placed in pod do
+		local box = rect(placed, BOTTOM_RIGHT, space)
+		offCentre(box, space, name .. " " .. label)
+		if name ~= "drone" then
+			others[name] = box
+		end
+	end
+	local drone = rect(pod.drone, BOTTOM_RIGHT, space)
+	for name, box in others do
+		check(not overlaps(drone, box), "drone clear of " .. name .. " " .. label)
 	end
 end
 local layouts = 0
@@ -425,7 +443,13 @@ for _, each in SCREEN_SIZES do
 		if each.touch then
 			local size, position = jumpButton(space.area)
 			local where = "jump button " .. label
-			columnButtons(HudLayout.mechColumn(position, size), space, where)
+			local jump = {
+				left = position.X,
+				top = position.Y,
+				right = position.X + size.X,
+				bottom = position.Y + size.Y,
+			}
+			columnButtons(HudLayout.mechColumn(position, size), space, where, jump)
 			layouts += 1
 		end
 	end

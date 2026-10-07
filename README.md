@@ -29,6 +29,7 @@ runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is
 | `src/shared/AdminCommands.luau` | Every admin command (chat command, GOD MODE button), the gifts, power tuning, and the target, gift label, chat and meteor rules |
 | `src/shared/Names.luau` | Attribute, tag, collision group and instance names shared between modules and with the client |
 | `src/shared/PodState.luau` | A flying pod's states and the rules read from them (server and client) |
+| `src/shared/LegsDrone.luau` | Drone mode's follow math: the throttle and steer that walk a pod walker's legs under the flying pod |
 | `src/shared/RemoteActions.luau` | The action strings remotes carry: pod and MAC commands, announcement styles |
 | `src/shared/RemoteGuard.luau` | What the server accepts from a client over a remote: finite drive axes, finite aim points, string arguments, and the per-player DriveInput rate limit |
 | `src/shared/NightLights.luau` | Night lighting rules the server applies (light level from the clock with dusk and dawn bands, where road and lobby lamps stand, which carry a light, firefly tree picks) |
@@ -72,7 +73,7 @@ runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is
   │ ┌ prompt card ────┐      ┌ drawer ──────────┐  [👑 GOD]      │
   │ ├ prompt card ────┤      │ GOD MODE or MAC  │  [🖥 MAC]      │
   │                          └──────────────────┘  ( LAUNCH )    │
-  │                                         [▲]  [     ]  [STAND]│
+  │                                         [▲]  [DRONE]  [STAND]│
   │  (thumbstick)          [hotbar]         [▼]  [VIEW ]  (JUMP) │
   └──────────────────────────────────────────────────────────────┘
   ```
@@ -84,8 +85,8 @@ runs only the tests. Files in `src/shared` are `--!strict`; the rest of `src` is
     buttons until it closes.
   - Top left, the prompt stack, under the Roblox top bar, clear of the thumbstick.
   - Bottom right, the action cluster round the jump button: VIEW or SCOPE left of it, STAND or
-    LAND above it, ▼ left of VIEW and ▲ above ▼, and the pod's LAUNCH / RETURN HOME button above
-    them all. Without a touch jump button (desktop), STAND takes the jump button's place and the
+    LAND above it, ▼ left of VIEW and ▲ above ▼, DRONE above VIEW (in flight), and the pod's
+    LAUNCH / RETURN HOME button above them all. Without a touch jump button (desktop), STAND takes the jump button's place and the
     cluster falls back to fractions of the screen.
   - Bottom left: Roblox's thumbstick.
 - Positions are measured from on-screen elements (the touch jump button, the gui's safe area),
@@ -410,6 +411,14 @@ Passengers look out in first person like the pilot.
   pilot presses **LAUNCH** (or **F**).
 - While the pod flies the seats are locked: **STAND** is hidden and jumping does nothing. If the
   pilot dies or leaves the game, the pod flies home on its own, passengers and all.
+- **Drone**: in flight, tap **DRONE** (above **VIEW**, right of **▲**) or press **G** to switch
+  the legs to drone mode (the button reads **DRONE ON**). The parked legs walk after the pod on
+  their own, turning in place first when it is behind them, climbing what a driven walker
+  climbs, and stopping when they stand within 4 studs (horizontally) of the point under it. They
+  stomp and fell trees as if the pilot drove them. Toggle it off and they stop where they are.
+  Drone turns off on **RETURN HOME**, **LAND**, a wreck, and when the pilot leaves the seat
+  (gets out, dies, leaves the game). Someone sitting on the legs' saddle takes them over: drone
+  turns off, and the pilot cannot switch it on while they ride.
 - **Drive the legs**: while the pod is away, walk up to the legs and press **E** (**Drive**) to
   sit on the saddle on top of the hips and walk the legs like any walker. When the pod returns
   home, the rider is put on the ground behind the legs before it docks.

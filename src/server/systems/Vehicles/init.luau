@@ -6,8 +6,9 @@
 -- ownership. Wrecked or abandoned vehicles return to their parking spot. A driven vehicle hurts
 -- whoever it touches (cars ram, walkers stomp), shoves the vehicles it hits, and fells trees. A
 -- walker with a pod (spec.pod) can send its cab flying (PodFlight); while the pod is away its legs
--- park. A hard crash damages a vehicle by its size (VehicleDamage); at no health it is wrecked: it
--- explodes, throws out whoever is aboard, and burns out. A driven walker climbs walls up to
+-- park, or in drone mode walk after it (Drive). A hard crash damages a vehicle by its size
+-- (VehicleDamage); at no health it is wrecked: it explodes, throws out whoever is aboard, and
+-- burns out. A driven walker climbs walls up to
 -- MechClimb.MAX_RISE: it senses them with rays, MechClimb decides, and a vertical velocity
 -- constraint (the "Climber") lifts it; the model's "Climbing" attribute says when.
 --
