@@ -335,7 +335,11 @@ add("RearViewMirror", V(0.6, 0.18, 0.06), CN(0, 5.35, 0.7), BLACK_MATTE)
 
 return {
 	name = "1969 Dodge Charger",
-	speed = 120,
+	-- Real: 220 km/h, 0-100 km/h in 7 s, brakes 0.7 g, coasts 0.2 g (VehicleDefaults maps them).
+	speed = 76,
+	acceleration = 9.2,
+	braking = 13.2,
+	coasting = 5.7,
 	turnRate = 2.2,
 	footprint = Vector2.new(7.8, 22.4),
 	collision = {

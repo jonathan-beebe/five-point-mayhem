@@ -228,7 +228,9 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
 `tools/tests/data_integrity.luau` enforces the cross-file rules (`lune run tools/test data`).
 
 **Vehicle.** 1) Entry in `src/shared/VehicleCatalog.luau` (`id`, `name`, `icon`, optional `bulk`).
-2) `src/server/vehicleModels/<id>.luau`, require-free, per `VehicleModel.Model`. 3) Engine profile
+2) `src/server/vehicleModels/<id>.luau`, require-free, per `VehicleModel.Model`; `speed`,
+`acceleration`, `braking`, `coasting` from the real vehicle by the mapping in
+`src/shared/VehicleDefaults.luau`, with a `-- Real:` comment. 3) Engine profile
 in `SoundCatalog.VEHICLES[id]`. 4) Render it with `tools/preview/render.py`. Parking, `/give <id>`
 and the GOD MODE VEHICLES menu pick it up from the catalog.
 *Walker:* catalog `mech = true`; model `gait = "mech"` with `bones` (plus `seatBone`, `cab`, `exit`,
@@ -236,7 +238,7 @@ and the GOD MODE VEHICLES menu pick it up from the catalog.
 (`mechVariant`) instead of `VEHICLES`. It parks in the guard ring round the lobby, appears in the
 MECHS menu and climbs unless `climbs = false`. Render mid-stride with `--phase 0..1`.
 Enforced: id pattern, unique id, name, icon; id ↔ model file; `define()`/`ModelChecks`;
-`mech` ↔ `gait`; sound entry in the right table.
+`mech` ↔ `gait`; sound entry in the right table; positive `acceleration`, `braking`, `coasting`.
 
 *Vehicle behaviour:* change the module that owns it in `systems/Vehicles/`
 (each header says what it owns); math goes in the `src/shared/Vehicle*` modules with a test. State

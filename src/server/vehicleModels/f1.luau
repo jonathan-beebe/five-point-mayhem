@@ -332,7 +332,11 @@ end
 
 return {
 	name = "Formula 1 Car",
-	speed = 150,
+	-- Real: 350 km/h, 0-100 km/h in 2.6 s, brakes 2.3 g, coasts 0.4 g (VehicleDefaults maps them).
+	speed = 104,
+	acceleration = 17.8,
+	braking = 29.3,
+	coasting = 9.1,
 	turnRate = 2.6,
 	footprint = Vector2.new(9.2, 25.3),
 	collision = {

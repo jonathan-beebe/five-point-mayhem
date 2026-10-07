@@ -509,7 +509,11 @@ cylinder("Antenna", V(1.2, 0.04, 0.04), CN(3.6, 3.95, -4.35) * CYLINDER_Y, GAP)
 
 return {
 	name = "DeLorean DMC-12",
-	speed = 105,
+	-- Real: 175 km/h, 0-100 km/h in 10.5 s, brakes 0.8 g, coasts 0.2 g (VehicleDefaults maps them).
+	speed = 65,
+	acceleration = 7,
+	braking = 14.5,
+	coasting = 5.7,
 	turnRate = 2.4,
 	footprint = Vector2.new(8.2, 19.2),
 	collision = {

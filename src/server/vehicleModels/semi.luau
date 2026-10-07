@@ -329,7 +329,11 @@ end
 
 return {
 	name = "Peterbilt 389 Semi",
-	speed = 80,
+	-- Real: 113 km/h, 0-100 km/h in 20 s, brakes 0.45 g, coasts 0.1 g (VehicleDefaults maps them).
+	speed = 49,
+	acceleration = 4.6,
+	braking = 9.9,
+	coasting = 3.6,
 	turnRate = 1.7,
 	footprint = Vector2.new(10, 35.2),
 	collision = {

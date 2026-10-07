@@ -368,7 +368,11 @@ cyl("ExhaustTip", V(0.8, 0.4, 0.4), C(4.6, 1.7, 1.8), CHROME)
 
 return {
 	name = "Fire Engine",
-	speed = 75,
+	-- Real: 110 km/h, 0-56 km/h in 18 s, brakes 0.5 g, coasts 0.1 g (VehicleDefaults maps them).
+	speed = 48,
+	acceleration = 3.3,
+	braking = 10.6,
+	coasting = 3.6,
 	turnRate = 1.7,
 	footprint = Vector2.new(10, 40),
 	collision = {

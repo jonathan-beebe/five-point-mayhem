@@ -379,7 +379,11 @@ part("SteeringColumn", v(0.18, 0.18, 0.9), WHEEL_FRAME * at(0, 0, -0.5), MATTE_B
 
 return {
 	name = "Bugatti Chiron",
-	speed = 145,
+	-- Real: 420 km/h, 0-100 km/h in 2.4 s, brakes 1.3 g, coasts 0.25 g (VehicleDefaults maps them).
+	speed = 117,
+	acceleration = 18.8,
+	braking = 20,
+	coasting = 6.7,
 	turnRate = 2.3,
 	footprint = Vector2.new(8.8, 20.0),
 	collision = {

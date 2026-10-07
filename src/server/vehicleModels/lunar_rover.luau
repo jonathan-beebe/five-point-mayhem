@@ -624,7 +624,11 @@ block("HammerHead", Vector3.new(0.3, 0.12, 0.12), CFrame.new(0.9, 3.28, 5.49), M
 
 return {
 	name = "Lunar Rover",
-	speed = 45,
+	-- Real: 13 km/h, 0-13 km/h in 4 s, brakes 0.15 g, coasts 0.1 g (VehicleDefaults maps them).
+	speed = 20,
+	acceleration = 5.9,
+	braking = 8.2,
+	coasting = 6.3,
 	turnRate = 2,
 	footprint = Vector2.new(8.4, 12.4),
 	collision = {

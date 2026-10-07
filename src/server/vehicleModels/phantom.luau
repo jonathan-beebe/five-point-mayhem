@@ -553,7 +553,11 @@ end
 
 return {
 	name = "Rolls-Royce Phantom",
-	speed = 110,
+	-- Real: 250 km/h, 0-100 km/h in 5.4 s, brakes 0.9 g, coasts 0.15 g (VehicleDefaults maps them).
+	speed = 83,
+	acceleration = 10.9,
+	braking = 15.7,
+	coasting = 4.7,
 	turnRate = 2,
 	footprint = Vector2.new(7.6, 22.6),
 	collision = {

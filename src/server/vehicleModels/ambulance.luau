@@ -354,7 +354,11 @@ part("BenchBack", V(0.3, 1.8, 6.0), C(4.45, 5.6, 5.0), BENCH_VINYL)
 
 return {
 	name = "Ambulance",
-	speed = 95,
+	-- Real: 130 km/h, 0-100 km/h in 18 s, brakes 0.6 g, coasts 0.12 g (VehicleDefaults maps them).
+	speed = 54,
+	acceleration = 4.9,
+	braking = 11.9,
+	coasting = 4.1,
 	turnRate = 2,
 	footprint = Vector2.new(9.4, 27.6),
 	collision = {

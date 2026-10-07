@@ -590,7 +590,11 @@ end
 
 return {
 	name = "Farm Tractor",
-	speed = 45,
+	-- Real: 50 km/h, 0-40 km/h in 10 s, brakes 0.4 g, coasts 0.2 g (VehicleDefaults maps them).
+	speed = 28,
+	acceleration = 3.9,
+	braking = 9.1,
+	coasting = 5.7,
 	turnRate = 2,
 	footprint = Vector2.new(11.8, 24),
 	collision = {

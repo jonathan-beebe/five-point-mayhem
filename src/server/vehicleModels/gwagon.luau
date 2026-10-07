@@ -822,7 +822,11 @@ block("TowHitchCover", Vector3.new(0.5, 0.3, 0.3), CFrame.new(0, 1.45, 9.05), TR
 
 return {
 	name = "Mercedes-AMG G 63",
-	speed = 100,
+	-- Real: 220 km/h, 0-100 km/h in 4.5 s, brakes 0.9 g, coasts 0.2 g (VehicleDefaults maps them).
+	speed = 76,
+	acceleration = 12.3,
+	braking = 15.7,
+	coasting = 5.7,
 	turnRate = 2.3,
 	footprint = Vector2.new(7.6, 18.6),
 	collision = {
