@@ -314,6 +314,14 @@ size sets how much. Size is bulk: footprint × the height of its solid parts, ov
   head-on, both speeds add: two Jeeps at 62 cost the Taxi 96. A walker's legs come down 1.5 times as hard: OG
   walking into a Jeep at 18 takes 47 of its 100, Aurora at full stride (30) wrecks it. A walker
   creeping under 2 studs/s or turning in place does no damage.
+- **Armor**: `armor` in `src/shared/VehicleCatalog.luau` divides what every crash and ram costs.
+  Abrams and Tiger 25, Stryker 6, Bulldozer 4, Humvee 3; every other vehicle 1 (none). Health
+  and the free bumps stay bulk's. An Abrams (168 health) takes 4 from a wall at 60 (43 such
+  crashes wreck it), 5 from another Abrams ramming it at 60 (36), 9 from a Rustbucket stomp (19)
+  and nothing from a Jeep ram or an OG stomp; two Abrams head-on at 60 each take 15 (11). A
+  Stryker wrecks in 14 crashes at 60 and 5 Abrams rams, a Jeep in 7 and 1.
+- Only crashes and rams damage vehicles. Explosions (wrecks, missiles, meteors) and the nuke hurt
+  players and creatures, not vehicles.
 - A crash worth less than 1 health is nothing: no sound, no sparks.
 - Each crash clangs and throws sparks. At half health the vehicle smokes; at a quarter it burns.
   Nothing repairs it.

@@ -9,6 +9,8 @@
 --   - rams: damage from the rammer's real closing speed; walkers stomp at walking pace, not
 --     creeping or turning in place, and throw a car they creep or turn into only that slowly
 --   - damage, damage as a share of health, and health grow with bulk; bulk clamps
+--   - armor (VehicleCatalog `armor`) divides damage; the events it takes to wreck each armored
+--     vehicle and two civilian ones, pinned (a golden table); tanks still wreck in principle
 --   - the tracker: crashes, landings and shoves count once; driving, braking, ramps, pods turning
 --     round and cleared jumps do not
 
@@ -18,6 +20,7 @@ local Check = require("../lib/Check")
 local Sandbox = require("../lib/Sandbox")
 
 local VehicleDamage = Sandbox.load("src/shared/VehicleDamage.luau")
+local VehicleCatalog = Sandbox.load("src/shared/VehicleCatalog.luau")
 local Vector3 = roblox.Vector3
 
 local DT = 1 / 60
@@ -78,6 +81,7 @@ for _, model in Sandbox.loadVehicleModels() do
 		ram = spec.ram or 1,
 		speed = spec.speed,
 		pod = pod,
+		armor = (VehicleCatalog.get(model.id) or {}).armor,
 	}
 end
 
@@ -230,6 +234,77 @@ do
 		end
 	end
 	check(VehicleDamage.shovePace(60, 1, false) == 60, "a car's throw keeps its pace")
+end
+
+-- Armor ----------------------------------------------------------------------------------------
+
+check(VehicleDamage.armor(nil) == 1, "no armor is 1")
+check(VehicleDamage.armor(0.5) == 1, "armor under 1 counts as none")
+check(VehicleDamage.armor(25) == 25, "armor 25 divides by 25")
+check(VehicleDamage.damage(jeep.bulk, 90, 0, nil, 1) == wall, "armor 1 costs what no armor does")
+check(
+	near(VehicleDamage.damage(jeep.bulk, 90, 0, nil, 4), wall / 4, 1e-9),
+	"armor 4 costs a quarter"
+)
+check(
+	VehicleDamage.damage(jeep.bulk, 90, 0, nil, wall / 0.9) == 0,
+	"armor that brings a crash under 1 health makes it nothing"
+)
+
+-- Events it takes to wreck a vehicle: crashes into a wall at 60, 24-stud drops, rams by an
+-- Abrams closing at 60, by a Bugatti at 145, Rustbucket stomps at 8, and Abrams head-on at 120
+-- (both at 60). Closing speeds are fixed, not the models' top speeds. 0: the event costs
+-- nothing. Generated once from the code at the commit that added armor; a tuning change
+-- regenerates it.
+local function toWreck(vehicle, amount: number): number
+	return if amount > 0 then math.ceil(VehicleDamage.maxHealth(vehicle.bulk) / amount) else 0
+end
+local function events(id: string): { number }
+	local struck = vehicles[id]
+	local function crash(lossH: number, lossV: number): number
+		return toWreck(
+			struck,
+			VehicleDamage.damage(struck.bulk, lossH, lossV, struck.walker, struck.armor)
+		)
+	end
+	local function ram(rammer, closing: number): number
+		local loss = VehicleDamage.ramLoss(closing, transfer(rammer, struck), rammer.stomps)
+		return toWreck(struck, VehicleDamage.damage(struck.bulk, loss, 0, nil, struck.armor))
+	end
+	return {
+		crash(60, 0),
+		crash(0, dropSpeed(24)),
+		ram(vehicles.abrams, 60),
+		ram(vehicles.bugatti, 145),
+		ram(vehicles.rustbucket, 8),
+		ram(vehicles.abrams, 120),
+	}
+end
+local WRECK_EVENTS = {
+	-- id          wall 60  drop 24  Abrams  Bugatti  Rustbucket  head-on
+	abrams = { 43, 21, 36, 42, 19, 11 },
+	tiger = { 46, 22, 24, 27, 13, 11 },
+	stryker = { 14, 7, 5, 6, 3, 3 },
+	bulldozer = { 8, 4, 2, 2, 2, 2 },
+	humvee = { 10, 4, 2, 2, 2, 2 },
+	taxi = { 4, 2, 1, 1, 1, 1 },
+	jeep = { 7, 3, 1, 1, 1, 1 },
+}
+for id, want in WRECK_EVENTS do
+	Check.equal(table.concat(events(id), " "), table.concat(want, " "), id .. ": events to wreck")
+end
+
+-- A tank still wrecks: the hardest ram (RAM_MAX_LOSS) and a 100-stud fall cost it health.
+for _, id in { "abrams", "tiger" } do
+	local tank = vehicles[id]
+	check(
+		VehicleDamage.damage(tank.bulk, 140, 0, nil, tank.armor) >= 1,
+		id .. ": the hardest ram costs health"
+	)
+	check(
+		VehicleDamage.damage(tank.bulk, 0, dropSpeed(100), false, tank.armor) >= 1,
+		id .. ": a 100-stud fall costs health"
+	)
 end
 
 -- Tracker --------------------------------------------------------------------------------------

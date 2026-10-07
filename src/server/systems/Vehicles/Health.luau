@@ -35,10 +35,11 @@ type Crash = Registry.Crash
 
 -- Each Heartbeat samples the velocity of the skid (and of a pod away from its legs) into a
 -- VehicleDamage tracker; a crash it reports costs the vehicle health (model attributes Health and
--- MaxHealth, from its bulk). Only assemblies the server simulates are tracked: a client's samples
--- arrive late and jumpy. Anything else that sets a tracked velocity (a shove, a pod docking)
--- clears the tracker. At half health the vehicle smokes, at a quarter it burns; at none it is
--- wrecked.
+-- MaxHealth, from its bulk; its catalog armor divides the cost). Only assemblies the server
+-- simulates are tracked: a client's samples arrive late and jumpy. Anything else that sets a
+-- tracked velocity (a shove, a pod docking) clears the tracker. At half health the vehicle
+-- smokes, at a quarter it burns; at none it is wrecked. Crashes and rams are the only damage:
+-- blasts (Combat.blast: wrecks, missiles, meteors) and the nuke hurt characters and creatures.
 
 local WRECK_DAMAGE = 35 -- the wreck's blast at its center
 local WRECK_THROW = 60 -- studs/s up that throws out whoever is aboard
@@ -56,6 +57,7 @@ local function newCrash(id: string, spec: VehicleModel.Model): Crash
 	local size = VehicleSizing.crash(spec, override)
 	return {
 		bulk = size.bulk,
+		armor = VehicleDamage.armor(entry and entry.armor),
 		walker = size.walker,
 		length = size.length,
 		height = size.height,
@@ -118,7 +120,7 @@ local function sampleCrash(
 	if not lossH or not lossV then
 		return
 	end
-	local amount = VehicleDamage.damage(bulk, lossH, lossV, walker)
+	local amount = VehicleDamage.damage(bulk, lossH, lossV, walker, crash.armor)
 	if amount <= 0 then
 		return
 	end
@@ -167,7 +169,8 @@ local function rammed(other: Car, loss: number, pod: boolean?)
 	local crash = other.crash
 	local part = if pod and other.pod then other.pod.root else other.skid
 	VehicleDamage.clear(if pod then crash.podTracker else crash.tracker)
-	local amount = VehicleDamage.damage(if pod then crash.podBulk else crash.bulk, loss, 0)
+	local bulk = if pod then crash.podBulk else crash.bulk
+	local amount = VehicleDamage.damage(bulk, loss, 0, nil, crash.armor)
 	local model = other.skid.Parent
 	if amount > 0 and model and model:IsA("Model") then
 		crashFeedback(model, part.Position, amount)
@@ -317,6 +320,7 @@ local function addHealth(model: Model, car: Car)
 end
 
 -- Takes `amount` health from a vehicle (crashes, rams; weapons could). A wreck takes no more.
+-- `amount` is final: crashes and rams apply armor in VehicleDamage.damage before they call it.
 function Health.damage(model: Model, amount: number)
 	local health = model:GetAttribute(Names.Attributes.Health)
 	if

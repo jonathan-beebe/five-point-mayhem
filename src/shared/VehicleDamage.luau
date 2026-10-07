@@ -8,6 +8,11 @@
 -- have more health, and a lower threshold: they cannot shed a crash as a light car does, and a
 -- crash past the threshold costs them more, in health and as a share of it.
 --
+-- Armor (VehicleCatalog `armor`, at least 1; 1 is none) divides what every crash and ram costs:
+-- a tank (25) takes 1/25 of what the same hull unarmored would. Health, thresholds and the wreck
+-- radius stay bulk's. Armor applies after the thresholds and before MIN_DAMAGE, so knocks that
+-- cost an armored vehicle under 1 health are nothing.
+--
 -- A crash is an episode: it starts on a frame that loses at least START_LOSS studs/s (or
 -- START_DECELERATION x dt, so a long frame needs more; above the drive constraints' hardest stop,
 -- ~670 studs/s^2, at any frame rate) and runs while the frames that follow keep
@@ -38,6 +43,7 @@ local DAMAGE = 0.3
 local BULK_EXPONENT = 0.5
 local SPEED_EXPONENT = 1.3
 local MIN_DAMAGE = 1 -- less is no crash: no sound, no sparks, no health lost
+local MIN_ARMOR = 1 -- none; a catalog `armor` below it counts as none
 -- A ram hits the struck vehicle like a crash at the rammer's closing speed (its velocity toward
 -- the struck one, less the struck one's) x the shove's transfer (mass ratio x ram), up to
 -- RAM_MAX_LOSS. A walker's legs come down on it: STOMP_SCALE times that, nothing below
@@ -83,8 +89,20 @@ function VehicleDamage.thresholds(bulk: number, walker: boolean?): (number, numb
 	return horizontal, vertical
 end
 
--- Health a crash that lost `lossH` horizontal and `lossV` vertical studs/s takes.
-function VehicleDamage.damage(bulk: number, lossH: number, lossV: number, walker: boolean?): number
+-- The divisor a catalog `armor` (nil: none) puts on damage.
+function VehicleDamage.armor(armor: number?): number
+	return math.max(armor or MIN_ARMOR, MIN_ARMOR)
+end
+
+-- Health a crash that lost `lossH` horizontal and `lossV` vertical studs/s takes; `armor` divides
+-- it (VehicleDamage.armor).
+function VehicleDamage.damage(
+	bulk: number,
+	lossH: number,
+	lossV: number,
+	walker: boolean?,
+	armor: number?
+): number
 	local horizontal, vertical = VehicleDamage.thresholds(bulk, walker)
 	local excessH = math.max(0, lossH - horizontal)
 	local excessV = math.max(0, lossV - vertical)
@@ -93,6 +111,7 @@ function VehicleDamage.damage(bulk: number, lossH: number, lossV: number, walker
 	end
 	local excess = math.sqrt(excessH ^ 2 + excessV ^ 2)
 	local amount = DAMAGE * bulk ^ BULK_EXPONENT * excess ^ SPEED_EXPONENT
+	amount /= VehicleDamage.armor(armor)
 	return if amount < MIN_DAMAGE then 0 else amount
 end
 

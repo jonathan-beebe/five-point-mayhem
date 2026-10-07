@@ -287,6 +287,16 @@ for id, vehicle in vehicles do
 		type(vehicle.icon) == "string" and vehicle.icon ~= "",
 		"vehicle " .. id .. ": needs an icon"
 	)
+	-- Crash toughness (VehicleDamage): bulk a positive size, armor a divisor of at least 1.
+	local bulk, armor = vehicle.bulk, vehicle.armor
+	check(
+		bulk == nil or (type(bulk) == "number" and bulk > 0 and bulk < math.huge),
+		"vehicle " .. id .. ": bulk must be a positive number"
+	)
+	check(
+		armor == nil or (type(armor) == "number" and armor >= 1 and armor < math.huge),
+		"vehicle " .. id .. ": armor must be a number of at least 1"
+	)
 end
 
 -- Model files -------------------------------------------------------------------------------
