@@ -6,6 +6,7 @@
 --                                 and the share 0..1
 --   colorFor(share)               green at full health, yellow at half, red at none
 --   labelText(name, health, max)  "<name>  <health rounded up> / <max>"
+--   speedText(speed)              "<speed rounded> spd" (studs/s); a non-finite speed reads 0
 --
 -- tools/tests/client_logic.luau compares each with the inline code it replaced.
 
@@ -32,6 +33,11 @@ end
 
 function HealthBar.labelText(name: string, health: number, maxHealth: number): string
 	return string.format("%s  %d / %d", name, math.ceil(health), maxHealth)
+end
+
+function HealthBar.speedText(speed: number): string
+	local finite = speed == speed and math.abs(speed) ~= math.huge
+	return string.format("%d spd", if finite then math.round(speed) else 0)
 end
 
 return table.freeze(HealthBar)

@@ -1106,6 +1106,20 @@ for _, promptName in promptNames do
 	end
 end
 
+-- Golden: only the pod console's prompt in a driver seat goes without a card.
+for _, promptName in promptNames do
+	for _, seatName in { Names.Instances.DriverSeat, "Seat", "" } do
+		for _, seated in { true, false } do
+			local want = not (seated and promptName == "PodPrompt" and seatName == "DriverSeat")
+			equal(
+				PromptRules.drawn(promptName, if seated then seatName else nil),
+				want,
+				string.format("drawn %s in %s (%s)", promptName, seatName, tostring(seated))
+			)
+		end
+	end
+end
+
 Check.section("PromptRules keys and order")
 local keyCodes = Enum.KeyCode:GetEnumItems()
 local promptTypes = Enum.ProximityPromptInputType:GetEnumItems()
@@ -1700,6 +1714,21 @@ equal(Loadout.toggle({ "a", "b", "c" }, "d"), "full", "a fourth weapon")
 equal(PodButtons.view("flying", true, true, false).text, "RETURN HOME", "flying text")
 equal(PromptRules.keyText(Enum.ProximityPromptInputType.Gamepad, K.ButtonX, K.E), "X", "ButtonX")
 equal(HealthBar.labelText("Jeep", 12.2, 100), "Jeep  13 / 100", "label")
+-- The status label's speed, golden values: rounded studs/s; a non-finite speed reads 0.
+for _, case in
+	{
+		{ 0, "0 spd" },
+		{ 0.4, "0 spd" },
+		{ 0.5, "1 spd" },
+		{ 58.6, "59 spd" },
+		{ 117, "117 spd" },
+		{ 0 / 0, "0 spd" },
+		{ math.huge, "0 spd" },
+		{ -math.huge, "0 spd" },
+	}
+do
+	equal(HealthBar.speedText(case[1]), case[2], "speed " .. tostring(case[1]))
+end
 check(ScopeMath.MAX_PITCH == math.rad(80), "MAX_PITCH")
 equal(NukeMath.WAVE_SEGMENTS, 72, "segments")
 equal(DriveAxes.RESEND_INTERVAL, 0.25, "resend interval")

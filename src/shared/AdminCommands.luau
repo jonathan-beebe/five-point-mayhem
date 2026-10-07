@@ -11,7 +11,7 @@ local AdminCommands = {}
 
 local rgb = Color3.fromRGB
 
--- A panel button. `slot` orders the buttons (two to a row); `targeted` buttons send the panel's
+-- A panel button. `slot` orders the buttons (four to a row); `targeted` buttons send the panel's
 -- target as the command's first argument.
 export type Panel = {
 	slot: number,

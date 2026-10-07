@@ -5,6 +5,7 @@
 --
 --   useful(where, promptName, seatName, passengerSeat)  whether a prompt does anything for a
 --                                                       player seated in a vehicle
+--   drawn(promptName, seatName)                         whether the prompt gets a card
 --   keyText(inputType, gamepadKey, keyboardKey)         "TAP", the key's name, or ""
 --   inputType(userInputType)                            the prompt input type of a last input
 --                                                       type, or nil
@@ -46,6 +47,13 @@ function PromptRules.useful(
 		return passengerSeat
 	end
 	return false
+end
+
+-- Whether a prompt gets a card for a player in a seat named `seatName` (nil: not seated). The pod
+-- console's prompt gets none in a driver seat: PodControls' LAUNCH / RETURN HOME button there does
+-- the same, and the prompt's key (F) still works without its card.
+function PromptRules.drawn(promptName: string, seatName: string?): boolean
+	return not (promptName == Names.Instances.PodPrompt and seatName == Names.Instances.DriverSeat)
 end
 
 -- The key badge's text: TAP on touch, else the gamepad or keyboard key without a "Button"

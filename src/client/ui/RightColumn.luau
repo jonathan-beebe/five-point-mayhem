@@ -10,9 +10,11 @@
 --   makePanel(className, gui, accent, properties, children?, fill?)
 --                                       a hidden drawer panel, outlined in `accent`, parented to
 --                                       `gui` and listed in `panels`; `fill` sizes it to the
---                                       drawer's height
+--                                       drawer (its width per size class, its height)
 --   layoutIn(area)                      places every toggle and panel for a gui area
 --   watch(gui)                          lays the rail out now and whenever `gui` resizes
+--   onLayout(callback)                  calls `callback(small)` after every layout (AdminPanel
+--                                       switches between its small and large arrangements)
 --   panels      every panel in the rail, open or not
 --   opened      fires when the MAC panel opens (notifyOpened), so GOD MODE's closes
 --
@@ -38,6 +40,7 @@ RightColumn.LARGE_TEXT = 20 -- a full-width toggle's label
 type Toggle = { button: TextButton, slot: number, small: string, large: string }
 
 local toggles: { Toggle } = {}
+local layoutCallbacks: { (boolean) -> () } = {}
 local filled: { [GuiObject]: true } = {} -- panels sized to the drawer's height
 RightColumn.panels = {} :: { GuiObject }
 
@@ -62,9 +65,16 @@ function RightColumn.layoutIn(area: Vector2)
 	for _, panel in RightColumn.panels do
 		panel.Position = drawer.position
 		if filled[panel] then
-			panel.Size = UDim2.fromOffset(RightColumn.PANEL_WIDTH, drawer.height)
+			panel.Size = UDim2.fromOffset(drawer.width, drawer.height)
 		end
 	end
+	for _, callback in layoutCallbacks do
+		callback(small)
+	end
+end
+
+function RightColumn.onLayout(callback: (boolean) -> ())
+	table.insert(layoutCallbacks, callback)
 end
 
 local watched: { ScreenGui } = {}
