@@ -10,6 +10,11 @@
 --   - rules: the rail and drawer line up, the status sits clear of the rail, the prompt stack
 --     stays above STACK_SHARE of the height and left of the centre, and every touch button stays
 --     in the lower right, clear of the screen centre, on phone, tablet and desktop screens
+--   - the armory: armorySheet in safe areas (margin, the ARMORY_MAX cap, too small); armory against
+--     the approved mockups' numbers (phone 932x430 small, tablet 1180x820 large); and its rules
+--     over sheets from a small phone to ARMORY_MAX under three screens: the size class follows
+--     the screen's shorter side, every element inside the sheet, columns side by side, cells fit
+--     the grid, the side column stacks without overlap with deploy last
 
 local luau = require("@lune/luau")
 local roblox = require("@lune/roblox")
@@ -424,5 +429,132 @@ for _, each in SCREEN_SIZES do
 	end
 end
 equal(layouts, 24, "layouts checked: 7 fallback, 5 measured, two top bars each")
+
+-- Armory ------------------------------------------------------------------------------------------
+
+Check.section("armory sheet")
+local function sameRect(got, x: number, y: number, w: number, h: number, label: string)
+	equal(
+		string.format("%g,%g %gx%g", got.x, got.y, got.w, got.h),
+		string.format("%g,%g %gx%g", x, y, w, h),
+		label
+	)
+end
+sameRect(HudLayout.armorySheet(Vector2.new(1180, 750), 12), 12, 12, 1156, 726, "tablet area")
+sameRect(HudLayout.armorySheet(Vector2.new(800, 360), 12), 12, 12, 776, 336, "phone area")
+sameRect(
+	HudLayout.armorySheet(Vector2.new(1920, 1022), 12),
+	320,
+	81,
+	1280,
+	860,
+	"desktop: at most ARMORY_MAX, centred"
+)
+sameRect(HudLayout.armorySheet(Vector2.new(10, 10), 12), 5, 5, 0, 0, "area smaller than margins")
+
+-- The approved mockups (Phone-Armory and Tablet-Armory, CSS px at the device's point size).
+local COUNTS = { categories = 7, slots = 3, teams = 5 }
+Check.section("armory: phone mockup (932x430, sheet 771x346)")
+local phoneArmory = HudLayout.armory(Vector2.new(771, 346), Vector2.new(932, 430), COUNTS)
+equal(phoneArmory.small, true, "small class")
+sameRect(phoneArmory.look, 609, 12, 150, 44, "Look around")
+sameRect(phoneArmory.category, 12, 66, 96, 36, "first category")
+equal(phoneArmory.categoryStep, 38, "category step")
+sameRect(phoneArmory.grid, 118, 66, 435, 268, "grid")
+equal(phoneArmory.columns, 3, "grid columns")
+equal(phoneArmory.cell, Vector2.new(136, 78), "card size")
+equal(phoneArmory.card.description.h, 0, "no description")
+sameRect(phoneArmory.loadoutLabel, 563, 66, 196, 12, "LOADOUT label: side column 196 wide")
+equal(phoneArmory.deploy.y + phoneArmory.deploy.h, 346 - 12, "deploy at the bottom")
+equal(phoneArmory.deploy.x + phoneArmory.deploy.w, 771 - 12, "deploy at the right")
+equal(phoneArmory.teamStep.Y, 0, "teams as dots in a row")
+equal(phoneArmory.team.w, phoneArmory.team.h, "dots are round")
+
+Check.section("armory: tablet mockup (1180x820, sheet 1148x734)")
+local tablet = HudLayout.armory(Vector2.new(1148, 734), Vector2.new(1180, 820), COUNTS)
+equal(tablet.small, false, "large class")
+sameRect(tablet.look, 958, 22, 170, 48, "Look around")
+sameRect(tablet.category, 20, 88, 140, 48, "first category")
+sameRect(tablet.grid, 176, 88, 656, 626, "grid")
+equal(tablet.columns, 4, "grid columns")
+equal(tablet.cell, Vector2.new(152, 124), "card size")
+check(tablet.card.description.h >= 3 * 11, "description: three lines or more")
+sameRect(tablet.slot, 848, 112, 280, 48, "first slot: full size")
+sameRect(tablet.teamLabel, 848, 290, 280, 16, "TEAM label")
+sameRect(tablet.team, 848, 314, 280, 44, "first team row: full size")
+equal(tablet.teamStep, Vector2.new(0, 52), "team rows down")
+equal(tablet.teamName.h, 0, "no team name line")
+sameRect(tablet.deploy, 848, 642, 280, 72, "deploy: full size, bottom right")
+
+-- Rules over sheets from a small phoneArmory to the largest sheet, both size classes.
+Check.section("armory: inside the sheet, no overlaps")
+local function inside(box, sheet: Vector2): boolean
+	return box.x >= 0 and box.y >= 0 and box.x + box.w <= sheet.X and box.y + box.h <= sheet.Y
+end
+local function shifted(box, step: Vector2, index: number)
+	return {
+		x = box.x + step.X * (index - 1),
+		y = box.y + step.Y * (index - 1),
+		w = box.w,
+		h = box.h,
+	}
+end
+local SHEETS = {
+	Vector2.new(560, 260),
+	Vector2.new(643, 293),
+	Vector2.new(771, 346),
+	Vector2.new(820, 520),
+	Vector2.new(1000, 600),
+	Vector2.new(1148, 734),
+	Vector2.new(1280, 860),
+}
+local SCREENS_FOR = { Vector2.new(667, 375), Vector2.new(932, 430), Vector2.new(1180, 820) }
+local armories = 0
+for _, sheet in SHEETS do
+	for _, screen in SCREENS_FOR do
+		local a = HudLayout.armory(sheet, screen, COUNTS)
+		local s = a.sizes
+		local where = string.format("sheet %s screen %s", tostring(sheet), tostring(screen))
+		armories += 1
+		equal(a.small, math.min(screen.X, screen.Y) <= 500, "size class " .. where)
+		local rects = {
+			title = a.title,
+			counter = a.counter,
+			look = a.look,
+			grid = a.grid,
+			loadout = a.loadoutLabel,
+			teamLabel = a.teamLabel,
+			teamName = a.teamName,
+			deploy = a.deploy,
+			lastCategory = shifted(a.category, Vector2.new(0, a.categoryStep), COUNTS.categories),
+			lastSlot = shifted(a.slot, Vector2.new(0, a.slotStep), COUNTS.slots),
+			lastTeam = shifted(a.team, a.teamStep, COUNTS.teams),
+		}
+		for name, box in rects do
+			check(inside(box, sheet), name .. " inside the sheet, " .. where)
+		end
+		-- Columns side by side; header above the body.
+		check(a.category.x + a.category.w < a.grid.x, "categories left of the grid, " .. where)
+		check(a.grid.x + a.grid.w < a.loadoutLabel.x, "grid left of the side column, " .. where)
+		check(a.look.y + a.look.h <= a.grid.y, "header above the body, " .. where)
+		check(a.title.x + a.title.w < a.look.x, "title left of Look around, " .. where)
+		-- The grid's cells fit its inner width.
+		local inner = a.grid.w - s.scrollBar - s.cardStroke * 2
+		check(
+			a.columns * a.cell.X + (a.columns - 1) * s.cardGap <= inner,
+			"cells fit the grid, " .. where
+		)
+		check(a.columns >= 1 and a.columns <= s.columns, "columns within the class's, " .. where)
+		-- The side column stacks down without overlap; deploy last.
+		local lastSlot, lastTeam = rects.lastSlot, rects.lastTeam
+		check(a.loadoutLabel.y + a.loadoutLabel.h <= a.slot.y, "LOADOUT above slots, " .. where)
+		check(lastSlot.y + lastSlot.h <= a.teamLabel.y, "slots above TEAM, " .. where)
+		check(a.teamLabel.y + a.teamLabel.h <= a.team.y, "TEAM above the teams, " .. where)
+		local teamsBottom = math.max(lastTeam.y + lastTeam.h, a.teamName.y + a.teamName.h)
+		check(teamsBottom <= a.deploy.y, "teams above deploy, " .. where)
+		check(a.deploy.h > 0 and a.slot.h > 0 and a.team.h > 0, "rows keep a size, " .. where)
+	end
+end
+equal(armories, 21, "armory layouts checked: 7 sheets, 3 screens")
 
 Check.finish()

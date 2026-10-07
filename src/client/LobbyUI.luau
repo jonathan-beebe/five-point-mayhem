@@ -1,7 +1,18 @@
--- The armory screen shown in the lobby: browse the catalog by category, pick up to three
--- weapons, pick a team, and deploy. The last loadout is remembered across respawns. start()
--- builds the screen: requiring this module builds nothing, so an error here cannot stop the client
--- bootstrap (init.client.luau) from requiring the other modules.
+-- The armory sheet shown in the lobby: browse the catalog by category, pick up to three weapons,
+-- pick a team, and deploy. The last loadout is remembered across respawns. start() builds the
+-- screen: requiring this module builds nothing, so an error here cannot stop the client bootstrap
+-- (init.client.luau) from requiring the other modules.
+--
+-- Two ScreenGuis. MayhemArmory (DisplayOrder modal, over the right column and its panels) holds
+-- the sheet: it fills the gui's safe area (ScreenInsets CoreUISafeInsets: below the top bar,
+-- inside the device's cutouts) less MARGIN. Header: ARMORY, the counter, Look around (hides the
+-- sheet). Body: categories, the weapon grid, then LOADOUT, TEAM and ENTER THE MAYHEM. MayhemLobby
+-- (DisplayOrder lobby) holds CHOOSE WEAPONS, which brings the sheet back.
+--
+-- layout() measures the gui and the viewport and applies HudLayout.armorySheet and
+-- HudLayout.armory (size class, columns, card size, every rect) on every size change. Small
+-- screens get compact cards (no description) and teams as colour dots; large ones cards with the
+-- description and teams as named rows. Both team forms are the same buttons, restyled.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -9,6 +20,7 @@ local Teams = game:GetService("Teams")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local HudLayout = require(ReplicatedStorage.Shared.HudLayout)
 local Loadout = require(ReplicatedStorage.Shared.Loadout)
 local Names = require(ReplicatedStorage.Shared.Names)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -23,82 +35,114 @@ local player = Players.LocalPlayer
 local rgb = Color3.fromRGB
 local create, label = Create.create, Create.label
 
-local BACKGROUND = rgb(18, 18, 28)
-local PANEL = rgb(32, 32, 48)
+local MARGIN = 12 -- gap between the sheet and its gui's safe area, as the right column's
+
+local SHEET = rgb(12, 16, 24)
+local CARD = rgb(26, 34, 48)
+local PICKED = rgb(16, 48, 58) -- a chosen card's and a filled slot's background
 local ACCENT = rgb(255, 60, 100)
 local GOLD = rgb(255, 210, 60)
 local TEXT = rgb(240, 240, 250)
-local MUTED = rgb(160, 160, 185)
-
-local CATEGORY_COLORS = {
-	Blades = rgb(120, 130, 160),
-	Guns = rgb(110, 90, 70),
-	Blasters = rgb(60, 140, 200),
-	Explosives = rgb(200, 80, 50),
-	Magic = rgb(140, 80, 200),
-	Silly = rgb(230, 110, 170),
-}
+local MUTED = rgb(199, 209, 220)
+local DIM = rgb(142, 153, 166) -- an empty slot
+local CYAN = Theme.Colors.cyan
+local ON_CYAN = rgb(4, 33, 43) -- text on the selected category
 
 local selected: { string } = {}
 local category = "All"
+local small = false -- the size class layout() last applied
 
 local function corner(radius: number): UICorner
 	return Create.corner(UDim.new(0, radius))
 end
 
+local function place(object: GuiObject, rect: HudLayout.Rect, dx: number?, dy: number?)
+	object.Position = UDim2.fromOffset(rect.x + (dx or 0), rect.y + (dy or 0))
+	object.Size = UDim2.fromOffset(rect.w, rect.h)
+end
+
+type Card = {
+	button: TextButton,
+	name: TextLabel,
+	meta: TextLabel,
+	description: TextLabel,
+	stat: TextLabel,
+}
+type Slot = { button: TextButton, number: TextLabel, name: TextLabel, remove: TextLabel }
+type Team = { button: TextButton, corner: UICorner, spec: { [string]: any } }
+
 -- Built by build() when start() runs; requiring this module builds nothing.
 local gui: ScreenGui
-local panel: Frame
-local scale: UIScale
+local armoryGui: ScreenGui
+local sheet: Frame
+local title: TextLabel
 local counter: TextLabel
+local lookButton: TextButton
 local openButton: TextButton
 local grid: ScrollingFrame
-local slots: { TextButton } = {}
-local teamButtons: { [string]: TextButton } = {}
-local cards: { [string]: TextButton } = {}
-local tabButtons: { [string]: TextButton } = {}
+local gridLayout: UIGridLayout
+local gridPadding: UIPadding
+local loadoutLabel: TextLabel
+local teamLabel: TextLabel
+local teamName: TextLabel
+local deployButton: TextButton
+local slots: { Slot } = {}
+local teams: { Team } = {}
+local cards: { [string]: Card } = {}
+local tabButtons: { TextButton } = {}
+local tabIds: { [TextButton]: string } = {}
 local hiddenByChoice = false
 
 -- Behaviour -----------------------------------------------------------------------------------
-
-local function rescale()
-	local viewport = Workspace.CurrentCamera.ViewportSize
-	scale.Scale = math.min(viewport.X / 1100, viewport.Y / 720, 1)
-end
 
 local function refresh()
 	local isAdmin = player:GetAttribute(Names.Attributes.IsAdmin) == true
 	local available = Loadout.availableCount(isAdmin)
 	Loadout.prune(selected, isAdmin)
 	counter.Text = string.format(
-		"%d weapons in the armory · carry up to %d · %d/%d chosen",
+		"%d weapons · carry up to %d · %d/%d chosen",
 		available,
 		Config.LOADOUT_SIZE,
 		#selected,
 		Config.LOADOUT_SIZE
 	)
 	for id, card in cards do
-		local stroke = card:FindFirstChild("Selected") :: UIStroke
-		local check = card:FindFirstChild("Check") :: TextLabel
-		local isSelected = table.find(selected, id) ~= nil
-		stroke.Enabled = isSelected
-		check.Visible = isSelected
+		local index = table.find(selected, id)
 		local weapon = WeaponCatalog.get(id) :: WeaponCatalog.Weapon
-		card.Visible = Loadout.isAvailable(weapon, isAdmin)
+		local stat = Loadout.statText(weapon)
+		if index then
+			stat = if stat == "" then "slot " .. index else stat .. " · slot " .. index
+		end
+		card.stat.Text = stat
+		card.button.BackgroundColor3 = if index then PICKED else CARD;
+		(card.button:FindFirstChild("Selected") :: UIStroke).Enabled = index ~= nil
+		card.button.Visible = Loadout.isAvailable(weapon, isAdmin)
 			and (category == "All" or weapon.category == category)
 	end
 	for index, slot in slots do
 		local weapon = selected[index] and WeaponCatalog.get(selected[index])
-		slot.Text = if weapon
-			then string.format("%d.  %s   ✕", index, weapon.name)
-			else string.format("%d.  — empty —", index)
-		slot.BackgroundColor3 = if weapon
-			then CATEGORY_COLORS[weapon.category]:Lerp(rgb(0, 0, 0), 0.4)
-			else PANEL
+		slot.name.Text = if weapon then weapon.name else "empty"
+		slot.name.TextColor3 = if weapon then TEXT else DIM
+		slot.remove.Visible = weapon ~= nil
+		slot.button.BackgroundColor3 = if weapon then PICKED else CARD
 	end
-	for name, button in teamButtons do
-		(button:FindFirstChild("Selected") :: UIStroke).Enabled = player.Team ~= nil
-			and player.Team.Name == name
+	local chosen = nil
+	for _, team in teams do
+		local isChosen = player.Team ~= nil and player.Team.Name == team.spec.name
+		if isChosen then
+			chosen = team.spec
+		end
+		(team.button:FindFirstChild("Selected") :: UIStroke).Enabled = isChosen
+		team.button.Text = if small
+			then ""
+			elseif isChosen then team.spec.name .. "  ·  " .. team.spec.blurb
+			else team.spec.name
+	end
+	teamName.Text = if chosen then chosen.name .. " · " .. chosen.blurb else "Tap a colour to pick"
+	for _, button in tabButtons do
+		local isCurrent = tabIds[button] == category
+		button.BackgroundTransparency = if isCurrent then 0 else 1
+		button.TextColor3 = if isCurrent then ON_CYAN else MUTED
 	end
 end
 
@@ -122,11 +166,100 @@ local function updateVisibility()
 	local inLobby = humanoid ~= nil
 		and humanoid.Health > 0
 		and not player:GetAttribute(Names.Attributes.Deployed)
-	panel.Visible = inLobby and not hiddenByChoice
+	sheet.Visible = inLobby and not hiddenByChoice
 	openButton.Visible = inLobby and hiddenByChoice
 end
 
 -- Layout --------------------------------------------------------------------------------------
+
+-- Applies HudLayout to every element: the gui's area (the viewport until the gui has a size),
+-- the sheet in it, then the sheet's insides from the sheet's size.
+local function layout()
+	local viewport = Workspace.CurrentCamera.ViewportSize
+	local area = armoryGui.AbsoluteSize
+	if area.X <= 0 or area.Y <= 0 then
+		area = viewport
+	end
+	local box = HudLayout.armorySheet(area, MARGIN)
+	place(sheet, box)
+	local l = HudLayout.armory(Vector2.new(box.w, box.h), viewport, {
+		categories = #tabButtons,
+		slots = #slots,
+		teams = #teams,
+	})
+	local s = l.sizes
+	small = l.small
+
+	place(title, l.title)
+	title.TextSize = s.titleSize
+	place(counter, l.counter)
+	counter.TextSize = s.counterSize
+	place(lookButton, l.look)
+	lookButton.TextSize = s.lookSize
+
+	for index, button in tabButtons do
+		place(button, l.category, 0, (index - 1) * l.categoryStep)
+		button.TextSize = s.categorySize
+	end
+
+	place(grid, l.grid)
+	grid.ScrollBarThickness = s.scrollBar
+	local inset = UDim.new(0, s.cardStroke)
+	gridPadding.PaddingLeft, gridPadding.PaddingRight = inset, inset
+	gridPadding.PaddingTop, gridPadding.PaddingBottom = inset, inset
+	gridLayout.CellSize = UDim2.fromOffset(l.cell.X, l.cell.Y)
+	gridLayout.CellPadding = UDim2.fromOffset(s.cardGap, s.cardGap)
+	for _, card in cards do
+		place(card.name, l.card.name)
+		card.name.TextSize = s.nameSize
+		place(card.meta, l.card.meta)
+		card.meta.TextSize = s.metaSize
+		place(card.description, l.card.description)
+		card.description.TextSize = s.descriptionSize
+		card.description.Visible = s.descriptionSize > 0
+		place(card.stat, l.card.stat)
+		card.stat.TextSize = s.statSize
+	end
+
+	place(loadoutLabel, l.loadoutLabel)
+	loadoutLabel.TextSize = s.labelSize
+	for index, slot in slots do
+		place(slot.button, l.slot, 0, (index - 1) * l.slotStep)
+		slot.number.TextSize = s.slotSize
+		slot.name.TextSize = s.slotSize
+		slot.remove.TextSize = s.slotSize
+	end
+
+	place(teamLabel, l.teamLabel)
+	teamLabel.TextSize = s.labelSize
+	for index, team in teams do
+		local step = l.teamStep * (index - 1)
+		place(team.button, l.team, step.X, step.Y)
+		team.button.TextSize = s.teamSize
+		team.button.BackgroundColor3 = if s.dots
+			then team.spec.color.Color
+			else team.spec.color.Color:Lerp(rgb(0, 0, 0), 0.35)
+		team.corner.CornerRadius = if s.dots then Theme.Radius.round else UDim.new(0, 12)
+	end
+	place(teamName, l.teamName)
+	teamName.TextSize = s.teamSize
+	teamName.Visible = s.dots
+
+	place(deployButton, l.deploy)
+	deployButton.TextSize = s.deploySize
+
+	refresh()
+end
+
+local function selectedStroke(): UIStroke
+	return create("UIStroke", {
+		Name = "Selected",
+		Color = CYAN,
+		Thickness = 2,
+		Enabled = false,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+	})
+end
 
 local function build()
 	gui = create("ScreenGui", {
@@ -136,43 +269,42 @@ local function build()
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		DisplayOrder = Theme.DisplayOrder.lobby,
 	})
-
-	panel = create("Frame", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(1060, 660),
-		BackgroundColor3 = BACKGROUND,
-		BackgroundTransparency = 0.08,
-		Parent = gui,
-	}, {
-		corner(18),
-		Create.stroke(ACCENT, 3),
+	armoryGui = create("ScreenGui", {
+		Name = "MayhemArmory",
+		ResetOnSpawn = false,
+		ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		DisplayOrder = Theme.DisplayOrder.modal,
 	})
-	scale = create("UIScale", { Parent = panel })
 
-	label("CHOOSE YOUR WEAPONS", 34, TEXT, {
+	local edge = Create.stroke(TEXT, 1.5)
+	edge.Transparency = 0.8
+	sheet = create("Frame", {
+		BackgroundColor3 = SHEET,
+		BackgroundTransparency = 0.04,
+		Parent = armoryGui,
+	}, { corner(20), edge })
+
+	title = label("ARMORY", 20, TEXT, {
 		Font = Theme.Fonts.title,
-		Position = UDim2.fromOffset(24, 14),
-		Size = UDim2.fromOffset(600, 40),
-		Parent = panel,
+		TextWrapped = false,
+		Parent = sheet,
 	})
-	counter = label("", 16, MUTED, {
-		Position = UDim2.fromOffset(26, 52),
-		Size = UDim2.fromOffset(600, 20),
-		Parent = panel,
+	counter = label("", 11, MUTED, {
+		TextWrapped = false,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = sheet,
 	})
 
-	local lookButton = create("TextButton", {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -20, 0, 18),
-		Size = UDim2.fromOffset(170, 40),
-		BackgroundColor3 = PANEL,
+	local lookEdge = Create.stroke(TEXT, 1.5, Enum.ApplyStrokeMode.Border)
+	lookEdge.Transparency = 0.72
+	lookButton = create("TextButton", {
+		BackgroundTransparency = 1,
 		Text = "👀 Look around",
 		TextColor3 = TEXT,
-		TextSize = 16,
 		Font = Theme.Fonts.bold,
-		Parent = panel,
-	}, { corner(10) })
+		Parent = sheet,
+	}, { Create.corner(Theme.Radius.round), lookEdge })
 
 	openButton = create("TextButton", {
 		AnchorPoint = Vector2.new(0.5, 1),
@@ -190,205 +322,162 @@ local function build()
 		Create.stroke(TEXT, 2, Enum.ApplyStrokeMode.Border),
 	})
 
-	-- Category tabs.
-	local tabs = create("Frame", {
-		Position = UDim2.fromOffset(20, 84),
-		Size = UDim2.fromOffset(700, 36),
-		BackgroundTransparency = 1,
-		Parent = panel,
-	}, {
-		create(
-			"UIListLayout",
-			{ FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6) }
-		),
-	})
+	-- Categories: a vertical list, the current one filled cyan.
+	local tabList = { "All" }
+	for _, entry in WeaponCatalog.CATEGORIES do
+		table.insert(tabList, entry.id)
+	end
+	for _, id in tabList do
+		local button = create("TextButton", {
+			BackgroundColor3 = CYAN,
+			BackgroundTransparency = 1,
+			Text = id,
+			TextColor3 = MUTED,
+			Font = Theme.Fonts.bold,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			AutoButtonColor = false,
+			Parent = sheet,
+		}, { corner(10), Create.padding(UDim.new(0, 12), UDim.new(0, 0)) })
+		button.Activated:Connect(function()
+			category = id
+			grid.CanvasPosition = Vector2.zero
+			refresh()
+		end)
+		table.insert(tabButtons, button)
+		tabIds[button] = id
+	end
 
+	gridLayout = create("UIGridLayout", { SortOrder = Enum.SortOrder.LayoutOrder })
+	gridPadding = Create.padding(UDim.new(0, 0), UDim.new(0, 0))
 	grid = create("ScrollingFrame", {
-		Position = UDim2.fromOffset(20, 128),
-		Size = UDim2.fromOffset(700, 512),
-		BackgroundColor3 = PANEL,
-		BackgroundTransparency = 0.4,
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ScrollBarThickness = 8,
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+		VerticalScrollBarInset = Enum.ScrollBarInset.Always,
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(),
-		Parent = panel,
-	}, {
-		corner(12),
-		create("UIGridLayout", {
-			CellSize = UDim2.fromOffset(164, 112),
-			CellPadding = UDim2.fromOffset(8, 8),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-		}),
-		Create.padding(UDim.new(0, 8), UDim.new(0, 8)),
-	})
-
-	-- Sidebar: loadout slots, teams, deploy.
-	local sidebar = create("Frame", {
-		Position = UDim2.fromOffset(736, 84),
-		Size = UDim2.fromOffset(304, 556),
-		BackgroundTransparency = 1,
-		Parent = panel,
-	})
-	label(
-		"YOUR LOADOUT",
-		20,
-		GOLD,
-		{ Font = Theme.Fonts.title, Size = UDim2.fromOffset(300, 26), Parent = sidebar }
-	)
-	for index = 1, Config.LOADOUT_SIZE do
-		slots[index] = create("TextButton", {
-			Position = UDim2.fromOffset(0, 30 + (index - 1) * 52),
-			Size = UDim2.fromOffset(304, 46),
-			BackgroundColor3 = PANEL,
-			TextColor3 = TEXT,
-			TextSize = 16,
-			Font = Theme.Fonts.bold,
-			Parent = sidebar,
-		}, { corner(10) })
-	end
-
-	label("TEAM", 20, GOLD, {
-		Font = Theme.Fonts.title,
-		Position = UDim2.fromOffset(0, 192),
-		Size = UDim2.fromOffset(300, 26),
-		Parent = sidebar,
-	})
-	for index, spec in Config.TEAMS do
-		local button = create("TextButton", {
-			Position = UDim2.fromOffset(0, 222 + (index - 1) * 44),
-			Size = UDim2.fromOffset(304, 38),
-			BackgroundColor3 = spec.color.Color:Lerp(rgb(0, 0, 0), 0.35),
-			Text = spec.name .. "  ·  " .. spec.blurb,
-			TextColor3 = TEXT,
-			TextSize = 14,
-			Font = Theme.Fonts.bold,
-			Parent = sidebar,
-		}, {
-			corner(10),
-			create("UIStroke", {
-				Name = "Selected",
-				Color = GOLD,
-				Thickness = 3,
-				Enabled = false,
-				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-			}),
-		})
-		button.Activated:Connect(function()
-			Remotes.ChooseTeam:FireServer(spec.name)
-		end)
-		teamButtons[spec.name] = button
-	end
-
-	local deployButton = create("TextButton", {
-		Position = UDim2.fromOffset(0, 452),
-		Size = UDim2.fromOffset(304, 96),
-		BackgroundColor3 = ACCENT,
-		Text = "ENTER THE MAYHEM",
-		TextColor3 = TEXT,
-		TextStrokeColor3 = rgb(40, 0, 10),
-		TextStrokeTransparency = 0.3,
-		TextSize = 30,
-		Font = Theme.Fonts.title,
-		TextWrapped = true,
-		Parent = sidebar,
-	}, {
-		corner(14),
-		Create.stroke(TEXT, 2, Enum.ApplyStrokeMode.Border),
-	})
+		Parent = sheet,
+	}, { gridLayout, gridPadding })
 
 	for order, weapon in WeaponCatalog.ALL do
-		local tint = CATEGORY_COLORS[weapon.category]
-		local card = create("TextButton", {
+		local card: Card = {
+			name = label(weapon.name, 12, TEXT, {
+				Name = "WeaponName",
+				TextWrapped = false,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+			}),
+			meta = label(Loadout.subtitle(weapon), 10, GOLD, {
+				Name = "Meta",
+				TextWrapped = false,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+			}),
+			description = label(weapon.description, 11, MUTED, {
+				Name = "Description",
+				Font = Theme.Fonts.regular,
+				TextYAlignment = Enum.TextYAlignment.Top,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+			}),
+			stat = label("", 10, TEXT, { Name = "Stat", TextWrapped = false }),
+			button = nil :: any,
+		}
+		card.button = create("TextButton", {
 			LayoutOrder = order,
-			BackgroundColor3 = tint:Lerp(rgb(0, 0, 0), 0.55),
+			BackgroundColor3 = CARD,
 			Text = "",
 			AutoButtonColor = true,
 			Parent = grid,
 		}, {
-			corner(10),
-			create("UIStroke", {
-				Name = "Selected",
-				Color = GOLD,
-				Thickness = 3,
-				Enabled = false,
-				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-			}),
-			create("Frame", {
-				Size = UDim2.fromOffset(14, 14),
-				Position = UDim2.fromOffset(8, 10),
-				BackgroundColor3 = weapon.color,
-				BorderSizePixel = 0,
-			}, { corner(7) }),
-			label(weapon.name, 15, TEXT, {
-				Position = UDim2.fromOffset(28, 6),
-				Size = UDim2.fromOffset(130, 22),
-				TextTruncate = Enum.TextTruncate.AtEnd,
-			}),
-			label(Loadout.subtitle(weapon), 12, GOLD, {
-				Position = UDim2.fromOffset(8, 30),
-				Size = UDim2.fromOffset(150, 16),
-			}),
-			label(weapon.description, 12, MUTED, {
-				Position = UDim2.fromOffset(8, 48),
-				Size = UDim2.fromOffset(150, 44),
-				Font = Theme.Fonts.regular,
-				TextYAlignment = Enum.TextYAlignment.Top,
-			}),
-			label(Loadout.statText(weapon), 12, TEXT, {
-				Position = UDim2.fromOffset(8, 92),
-				Size = UDim2.fromOffset(150, 16),
-			}),
-			label("✔", 22, GOLD, {
-				Name = "Check",
-				AnchorPoint = Vector2.new(1, 0),
-				Position = UDim2.new(1, -6, 0, 2),
-				Size = UDim2.fromOffset(24, 24),
-				Visible = false,
-				TextXAlignment = Enum.TextXAlignment.Right,
-			}),
+			corner(12),
+			selectedStroke(),
+			card.name,
+			card.meta,
+			card.description,
+			card.stat,
 		})
-		card.Activated:Connect(function()
+		card.button.Activated:Connect(function()
 			toggle(weapon.id)
 		end)
 		cards[weapon.id] = card
 	end
 
-	local tabList = { { id = "All", icon = "🌐" } }
-	for _, entry in WeaponCatalog.CATEGORIES do
-		table.insert(tabList, entry)
-	end
-	for order, entry in tabList do
-		local button = create("TextButton", {
-			LayoutOrder = order,
-			Size = UDim2.fromOffset(94, 36),
-			BackgroundColor3 = PANEL,
-			Text = entry.icon .. " " .. entry.id,
-			TextColor3 = TEXT,
-			TextSize = 13,
-			Font = Theme.Fonts.bold,
-			Parent = tabs,
-		}, { corner(8) })
-		button.Activated:Connect(function()
-			category = entry.id
-			for id, other in tabButtons do
-				other.BackgroundColor3 = if id == category then ACCENT else PANEL
-			end
-			grid.CanvasPosition = Vector2.zero
-			refresh()
-		end)
-		tabButtons[entry.id] = button
-	end
-	tabButtons.All.BackgroundColor3 = ACCENT
-
-	for index, slot in slots do
-		slot.Activated:Connect(function()
+	-- Side column: loadout slots (tap a filled one to empty it), teams, deploy.
+	loadoutLabel = label("LOADOUT", 11, GOLD, { Font = Theme.Fonts.title, Parent = sheet })
+	for index = 1, Config.LOADOUT_SIZE do
+		local slot: Slot = {
+			number = label(tostring(index), 12, MUTED, {
+				Position = UDim2.fromOffset(12, 0),
+				Size = UDim2.new(0, 16, 1, 0),
+			}),
+			name = label("", 12, DIM, {
+				Position = UDim2.fromOffset(32, 0),
+				Size = UDim2.new(1, -60, 1, 0),
+				TextWrapped = false,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+			}),
+			remove = label("✕", 12, MUTED, {
+				AnchorPoint = Vector2.new(1, 0),
+				Position = UDim2.new(1, -12, 0, 0),
+				Size = UDim2.new(0, 16, 1, 0),
+				TextXAlignment = Enum.TextXAlignment.Right,
+			}),
+			button = nil :: any,
+		}
+		slot.button = create("TextButton", {
+			BackgroundColor3 = CARD,
+			Text = "",
+			Parent = sheet,
+		}, { corner(10), slot.number, slot.name, slot.remove })
+		slot.button.Activated:Connect(function()
 			if selected[index] then
 				table.remove(selected, index)
 				refresh()
 			end
 		end)
+		slots[index] = slot
 	end
+
+	teamLabel = label("TEAM", 11, GOLD, { Font = Theme.Fonts.title, Parent = sheet })
+	for _, spec in Config.TEAMS do
+		local team: Team = { corner = corner(12), spec = spec, button = nil :: any }
+		team.button = create("TextButton", {
+			Text = "",
+			TextColor3 = TEXT,
+			Font = Theme.Fonts.bold,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Parent = sheet,
+		}, {
+			team.corner,
+			Create.padding(UDim.new(0, 14), UDim.new(0, 0)),
+			create("UIStroke", {
+				Name = "Selected",
+				Color = TEXT,
+				Thickness = 2,
+				Enabled = false,
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			}),
+		})
+		team.button.Activated:Connect(function()
+			Remotes.ChooseTeam:FireServer(spec.name)
+		end)
+		table.insert(teams, team)
+	end
+	teamName = label("", 11, MUTED, {
+		TextWrapped = false,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = sheet,
+	})
+
+	deployButton = create("TextButton", {
+		BackgroundColor3 = ACCENT,
+		Text = "ENTER THE MAYHEM",
+		TextColor3 = TEXT,
+		TextStrokeColor3 = rgb(40, 0, 10),
+		TextStrokeTransparency = 0.3,
+		Font = Theme.Fonts.title,
+		TextWrapped = true,
+		Parent = sheet,
+	}, { corner(16) })
 
 	deployButton.Activated:Connect(function()
 		Remotes.Deploy:FireServer(table.clone(selected))
@@ -407,10 +496,12 @@ end
 
 function LobbyUI.start()
 	build()
-	gui.Parent = player:WaitForChild("PlayerGui")
-	rescale()
-	Workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(rescale)
-	refresh()
+	local playerGui = player:WaitForChild("PlayerGui")
+	gui.Parent = playerGui
+	armoryGui.Parent = playerGui
+	layout()
+	Workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(layout)
+	armoryGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(layout)
 	updateVisibility()
 
 	player:GetAttributeChangedSignal(Names.Attributes.Deployed):Connect(function()
