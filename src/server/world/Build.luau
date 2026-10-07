@@ -2,6 +2,11 @@
 -- Conventions: a CFrame passed to a wall/building marks its ground-level center; local -Z is the
 -- front. Everything is anchored unless stated otherwise.
 
+local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Names = require(ReplicatedStorage.Shared.Names)
+
 local Build = {}
 
 export type PartOptions = {
@@ -81,6 +86,12 @@ function Build.wedge(
 	wedge.Material = material or Enum.Material.SmoothPlastic
 	wedge.Parent = parent
 	return wedge
+end
+
+-- Makes `part` glow by night only (systems/NightLights): a Neon part dims to plain by day, and
+-- its lights, fire and particle emitters switch on at dusk and off at dawn.
+function Build.nightLight(part: BasePart)
+	CollectionService:AddTag(part, Names.Tags.NightLight)
 end
 
 -- Upright cylinder centered on `center`.

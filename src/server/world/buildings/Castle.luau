@@ -30,6 +30,36 @@ local function flag(parent: Instance, base: CFrame)
 	Build.part(parent, Vector3.new(8, 1.2, 0.3), base * CFrame.new(4.2, 13.5, 0), RED, M.Fabric)
 end
 
+-- A torch in an iron bracket on a wall whose face is at `frame`, -Z out of the wall; lit by night
+-- only (Build.nightLight).
+local function wallTorch(parent: Instance, frame: CFrame)
+	Build.part(
+		parent,
+		Vector3.new(0.6, 0.6, 1.6),
+		frame * CFrame.new(0, 0, -0.8),
+		rgb(45, 45, 45),
+		M.Metal
+	)
+	local flame = Build.part(
+		parent,
+		Vector3.new(1.2, 1.6, 1.2),
+		frame * CFrame.new(0, 1, -1.6),
+		rgb(255, 150, 60),
+		M.Neon,
+		{ castShadow = false }
+	)
+	local fire = Instance.new("Fire")
+	fire.Size = 2
+	fire.Heat = 4
+	fire.Parent = flame
+	local light = Instance.new("PointLight")
+	light.Color = rgb(255, 150, 70)
+	light.Range = 18
+	light.Brightness = 1.5
+	light.Parent = flame
+	Build.nightLight(flame)
+end
+
 local function turret(parent: Instance, base: CFrame, diameter: number, height: number)
 	Build.column(
 		parent,
@@ -153,6 +183,8 @@ function Castle.build(parent: Instance, base: CFrame): Model
 	end
 	for _, side in { -1, 1 } do
 		banner(model, base * CFrame.new(side * 34, 18, -half - 0.3))
+		-- A torch on each gatehouse tower's face, beside the arch.
+		wallTorch(model, base * CFrame.new(side * 12, 14, -half - 7))
 	end
 
 	-- Stairs up to the rampart along the inside of the back and front walls.

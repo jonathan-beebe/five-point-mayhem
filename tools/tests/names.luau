@@ -50,6 +50,7 @@ local GOLDEN = {
 	["Names.Tags"] = {
 		ExplosiveBarrel = "ExplosiveBarrel",
 		MechCab = "MechCab",
+		NightLight = "NightLight",
 		NoClimb = "NoClimb",
 		Tree = "Tree",
 	},

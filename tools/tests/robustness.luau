@@ -14,6 +14,8 @@
 --     and before layOut (a layOut error leaves it running), waiting RESPAWN_INTERVAL first
 --   - Weapons/Firing: a weapon whose kind has no FIRE entry fires nothing, raises nothing, and
 --     warns once per kind
+--   - world/Lamps: a lamp whose build throws is warned; every other lamp is built and tagged, and
+--     every other lit lamp gets its light
 --   - init.server.luau: a system whose start() throws is warned; every later start runs, in boot
 --     order, and CharacterAutoLoads is turned back on
 --   - no endless loop in src/server outside util/Guard (`while true do`, `while task.wait(...)`,
@@ -553,6 +555,71 @@ do
 	equal(firedKinds[1], other.kind, "a kind with an entry still fires")
 end
 
+-- Lamps -----------------------------------------------------------------------------------------
+
+Check.section("Lamps: a lamp whose build throws")
+do
+	table.clear(warnings)
+	table.clear(instances)
+	local NightLights = Sandbox.require(Shared.NightLights)
+	local plans = NightLights.lobbyLamps()
+	for _, lamp in NightLights.roadLamps() do
+		table.insert(plans, lamp)
+	end
+	local BROKEN = 2 -- a lit lobby lamp
+	local columns, tagged = 0, 0
+	local fakeBuild = {
+		model = FakeInstance.new,
+		column = function()
+			columns += 1
+			if columns == BROKEN then
+				error("lamp failed", 0)
+			end
+			return FakeInstance.new("Part")
+		end,
+		part = function()
+			return FakeInstance.new("Part")
+		end,
+		nightLight = function()
+			tagged += 1
+		end,
+	}
+	local services: { [string]: any } = {
+		CollectionService = {
+			GetTagged = function()
+				return {}
+			end,
+		},
+	}
+	local ok, err = pcall(function()
+		local Lamps = loadWith("src/server/world/Lamps.luau", { Build = fakeBuild }, {
+			game = {
+				GetService = function(_, name)
+					return services[name] or node(name)
+				end,
+			},
+			Instance = FakeInstance,
+		})
+		Lamps.build(FakeInstance.new("Model"))
+	end)
+	check(ok, "Lamps.build runs to the end: " .. tostring(err))
+	equal(warned("lamp failed"), 1, "the failing lamp is warned")
+	equal(tagged, #plans - 1, "every other lamp is built and tagged")
+	local lit = 0
+	for index, lamp in plans do
+		if lamp.lit and index ~= BROKEN then
+			lit += 1
+		end
+	end
+	local lights = 0
+	for _, instance in instances do
+		if instance.ClassName == "SpotLight" then
+			lights += 1
+		end
+	end
+	equal(lights, math.min(lit, NightLights.MAX_LIGHTS), "every other lit lamp has its light")
+end
+
 -- Server boot (init.server.luau) ----------------------------------------------------------------
 
 Check.section("init.server: a system whose start() throws")
@@ -586,6 +653,7 @@ do
 		Remotes = stub,
 		Build = { model = FakeInstance.new },
 		Landscape = { build = noop, explosiveBarrel = noop },
+		Lamps = { build = noop },
 		Lobby = { build = noop },
 		Regions = { BUILDINGS = buildingNames },
 		Roads = { build = noop },
@@ -593,6 +661,7 @@ do
 		Combat = { setBarrelFactory = noop },
 		Weapons = { displayModel = noop },
 		DayNight = system("DayNight"),
+		NightLights = system("NightLights"),
 		Session = system("Session"),
 		Creatures = system("Creatures", true),
 		Vehicles = system("Vehicles"),
@@ -619,7 +688,7 @@ do
 	check(ok, "the boot runs to the end: " .. tostring(err))
 	equal(
 		table.concat(started, " "),
-		"DayNight Session Creatures Vehicles Admin MacAccess",
+		"DayNight NightLights Session Creatures Vehicles Admin MacAccess",
 		"every start runs, in boot order"
 	)
 	equal(warned("Creatures start failed"), 1, "the failing start is warned")

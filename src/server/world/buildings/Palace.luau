@@ -131,6 +131,27 @@ local function nestingDoll(parent: Instance, base: CFrame, scale: number, color:
 	)
 end
 
+-- A lantern hung on a pillar whose face is at `frame`, -Z out of it; lit by night only
+-- (Build.nightLight).
+local function porchLantern(parent: Instance, frame: CFrame)
+	Build.part(parent, Vector3.new(0.4, 0.4, 1.4), frame * CFrame.new(0, 1.4, -0.7), GOLD, M.Metal)
+	local lamp = Build.part(
+		parent,
+		Vector3.new(1.4, 2, 1.4),
+		frame * CFrame.new(0, 0, -1.6),
+		rgb(255, 210, 150),
+		M.Neon,
+		{ castShadow = false }
+	)
+	Build.part(parent, Vector3.new(1.8, 0.4, 1.8), frame * CFrame.new(0, 1.2, -1.6), GOLD, M.Metal)
+	local light = Instance.new("PointLight")
+	light.Color = rgb(255, 200, 140)
+	light.Range = 16
+	light.Brightness = 1.2
+	light.Parent = lamp
+	Build.nightLight(lamp)
+end
+
 local function snowman(parent: Instance, base: CFrame)
 	Build.ball(parent, (base * CFrame.new(0, 3, 0)).Position, 6, WHITE, M.Snow)
 	Build.ball(parent, (base * CFrame.new(0, 7.5, 0)).Position, 4.4, WHITE, M.Snow)
@@ -189,6 +210,7 @@ function Palace.build(parent: Instance, base: CFrame): Model
 			WHITE,
 			M.Concrete
 		)
+		porchLantern(model, hallBase * CFrame.new(side * 10, 12, -DEPTH / 2 - 10))
 	end
 	Build.part(
 		model,

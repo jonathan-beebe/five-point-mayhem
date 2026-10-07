@@ -30,16 +30,18 @@ src/shared/   ReplicatedStorage.Shared. Every file --!strict. Loads under Lune.
 src/server/   ServerScriptService.Server. init.server.luau boots in this order:
   1. CollisionGroups.register (every group and pair), barrel factory, lighting, DayNight.start,
      gravity
-  2. buildWorld(): Lobby, Roads, one building per Config.REGIONS entry (in order), Landscape
-  3. Session, Creatures, Vehicles (PodFlight.start, then layOut), Admin, MacAccess .start()
+  2. buildWorld(): Lobby, Roads, one building per Config.REGIONS entry (in order), Landscape,
+     Lamps (night lamps, fireflies; no draws from the seeded generators)
+  3. NightLights, Session, Creatures, Vehicles (PodFlight.start, then layOut), Admin,
+     MacAccess .start()
   (Requiring Systems.Vehicles, first from Admin, creates the workspace Vehicles folder and
   connects its Heartbeats, DriveInput, PlayerRemoving and the Tree tag listener; requiring
   Systems.Weapons, first from Session, creates the WeaponEffects folder and connects its
   Heartbeat, PlayerRemoving and FireWeapon: see Hazards.)
   4. CharacterAutoLoads back on: nobody spawns before the lobby exists
-  world/      Build helpers, Lobby, Roads, Landscape, Regions (per-landmark data), buildings/
+  world/      Build helpers, Lobby, Roads, Landscape, Lamps, Regions (per-landmark data), buildings/
   systems/    Combat, Weapons, WeaponSounds, Session, Creatures, Vehicles, PodFlight, Admin,
-              MacAccess, DayNight, CollisionGroups, and the model formats
+              MacAccess, DayNight, NightLights, CollisionGroups, and the model formats
               VehicleModel, WeaponModel, CreatureModel
     Vehicles/ init.luau is the facade (damage, spawnNear, start) and wires the system. Modules:
               Registry (folder, `cars`, Car/Crash), Specs (model files, placeholder), Placement
@@ -146,6 +148,8 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   NukeMath (follows Config.NUKE_*)         NukeStrike     client_logic
   ConfirmTap                               MacPanel       client_logic
   HudLayout                                client HUD     hud_layout
+  NightLights                              Lamps          night_lights
+                                             NightLights
   ```
 - Remote handlers trust nothing a client sends: any value, NaN and ±inf included (`math.clamp`
   passes NaN through). Check each argument with `src/shared/RemoteGuard` before use: numbers with
