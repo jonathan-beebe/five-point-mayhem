@@ -974,6 +974,7 @@ local ORDERS = {
 	lobby = 10,
 	prompts = 14,
 	panels = 15,
+	modal = 18,
 	announcer = 20,
 }
 for key, value in ORDERS do
@@ -990,6 +991,7 @@ local GUIS = {
 	{ file = "MechCamera", layer = "touch" },
 	{ file = "PodControls", layer = "touch" },
 	{ file = "LobbyUI", layer = "lobby" },
+	{ file = "LobbyUI", layer = "modal" },
 	{ file = "PromptPanel", layer = "prompts" },
 	{ file = "AdminPanel", layer = "panels" },
 	{ file = "MacPanel", layer = "panels" },

@@ -6,10 +6,11 @@
 --   5   vehicleBar  VehicleHealth's bar (the vehicle status, top right)
 --   6   touch       the action cluster round the jump button: SniperScope's SCOPE, MechCamera's
 --                   VIEW and STAND, PodControls' pod, LAND, ▲ and ▼
---   10  lobby       LobbyUI's armory and its CHOOSE WEAPONS button
+--   10  lobby       LobbyUI's CHOOSE WEAPONS button
 --   14  prompts     PromptPanel's cards (top left), under the system rail's panels
 --   15  panels      the system rail (top right): GOD MODE (AdminPanel) and MAC (MacPanel), and
 --                   their drawer, over the action cluster while open
+--   18  modal       LobbyUI's armory sheet, over the system rail and its drawer
 --   20  announcer   Announcer's banner and full-screen flash, over everything
 
 local rgb = Color3.fromRGB
@@ -23,6 +24,7 @@ Theme.DisplayOrder = table.freeze({
 	lobby = 10,
 	prompts = 14,
 	panels = 15,
+	modal = 18,
 	announcer = 20,
 })
 
