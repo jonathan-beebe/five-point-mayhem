@@ -26,6 +26,8 @@ Names.Attributes = table.freeze({
 	HideInCockpit = "HideInCockpit", -- part, Vehicles: hidden in the cockpit view (MechCamera)
 	Home = "Home", -- explosive barrel, Landscape: where it respawns (Combat)
 	IsAdmin = "IsAdmin", -- player, Session (AdminPanel, LobbyUI)
+	-- Pod walker model, PodFlight: the legs follow the flying pod (PodControls).
+	LegsDrone = "LegsDrone",
 	LegsSeat = "LegsSeat", -- pod walker's legs seat, Vehicles (MechCamera)
 	MaxHealth = "MaxHealth", -- vehicle model, Vehicles (VehicleHealth)
 	MayhemCar = "MayhemCar", -- driver or legs seat, Vehicles (CarInput, VehicleSounds)

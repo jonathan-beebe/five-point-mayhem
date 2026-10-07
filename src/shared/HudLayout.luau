@@ -6,8 +6,8 @@
 --   top right     the vehicle status, the system rail (GOD MODE, MAC) and the drawer each opens
 --   top left      the prompt stack, under the Roblox top bar
 --   bottom right  the action cluster round the jump button: camera slot (VIEW, SCOPE) left of
---                 jump, seat slot (STAND, LAND) above it, ▲ and ▼ left of the camera slot, and the
---                 pod's state button above them all
+--                 jump, seat slot (STAND, LAND) above it, ▲ and ▼ left of the camera slot, DRONE
+--                 above the camera slot, and the pod's state button above them all
 --   bottom left   the thumbstick (Roblox's), kept clear
 --
 --   isSmall(area)                        a phone-sized gui area: the small size class
@@ -23,7 +23,8 @@
 --   mechColumn(jumpPosition, jumpSize)   the action cluster's slots, from the jump button
 --   mechColumnFallback(viewport)         the same without a jump button: fractions of the screen
 --   standPosition(column)                the seat slot (STAND, LAND)
---   podButtons(column)                   PodControls' pod, LAND, ▲ and ▼ round that cluster
+--   podButtons(column)                   PodControls' pod, LAND, ▲, ▼ and DRONE round that
+--                                        cluster
 --   armorySheet(area, margin)            the lobby armory's sheet in its gui's safe area
 --   armory(sheet, screen, counts)        everything inside that sheet, per size class
 --
@@ -202,13 +203,14 @@ end
 
 export type Placed = { size: UDim2, position: UDim2 }
 
--- ▼ sits left of the camera slot and ▲ above ▼; LAND takes the seat slot (LAND shows only in
--- flight, when MechCamera hides STAND). The pod's state button spans from ▲'s left edge to the
--- seat slot's right edge, a gap above the higher of the two, PILL_SHARE of a slot tall, so it
--- stays in the lower half of the screen (tested).
+-- ▼ sits left of the camera slot and ▲ above ▼; DRONE above the camera slot, right of ▲; LAND
+-- takes the seat slot (LAND shows only in flight, when MechCamera hides STAND). DRONE's top is
+-- ▲'s, so the pod's state button clears it too. The pod's state button spans from ▲'s left edge
+-- to the seat slot's right edge, a gap above the higher of the two, PILL_SHARE of a slot tall, so
+-- it stays in the lower half of the screen (tested).
 function HudLayout.podButtons(
 	column: Column
-): { pod: Placed, land: Placed, up: Placed, down: Placed }
+): { pod: Placed, land: Placed, up: Placed, down: Placed, drone: Placed }
 	local size, gap = column.size, column.gap
 	local step = size + gap
 	local square = UDim2.fromOffset(size, size)
@@ -230,6 +232,7 @@ function HudLayout.podButtons(
 		land = { size = square, position = seat },
 		up = { size = square, position = corner - UDim2.fromOffset(step, step) },
 		down = { size = square, position = corner - UDim2.fromOffset(step, 0) },
+		drone = { size = square, position = corner - UDim2.fromOffset(0, step) },
 	}
 end
 

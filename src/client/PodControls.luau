@@ -4,7 +4,9 @@
 -- while flying, ▼ left of VIEW and ▲ above ▼ climb and descend; keyboards use E and Q (CarInput
 -- reads both). Passengers get only the jump lock. Near the ground (server attribute PodCanLand) a
 -- LAND button (or L) appears where STAND was (STAND hides in flight): the pod settles to hover and
--- the pilot gets out. While the pod flies the seat is locked here too: jumping is disabled. The
+-- the pilot gets out. In flight a DRONE button (or G) above VIEW, right of ▲, toggles drone mode:
+-- the parked legs walk after the pod (server PodFlight; it reads ON while the model's LegsDrone
+-- attribute is true). While the pod flies the seat is locked here too: jumping is disabled. The
 -- console button's prompt (PodFlight) is drawn in the top-left corner with every other prompt
 -- (PromptPanel).
 
@@ -52,6 +54,7 @@ local podButton = makeButton("Pod", "LAUNCH", PodButtons.REST_COLOR)
 local upButton = makeButton("Up", "▲", Theme.Colors.hud)
 local downButton = makeButton("Down", "▼", Theme.Colors.hud)
 local landButton = makeButton("Land", "LAND", rgb(20, 130, 70))
+local droneButton = makeButton("Drone", "DRONE\nOFF", PodButtons.DRONE_OFF_COLOR)
 
 local model: Model? = nil -- the pod walker the local player drives
 local humanoid: Humanoid? = nil
@@ -66,7 +69,7 @@ local function state(): PodState.State
 end
 
 -- The cluster MechCamera measured (HudLayout.podButtons): the pod button spans the cluster above
--- its slots, LAND takes STAND's slot, ▼ sits left of VIEW and ▲ above ▼.
+-- its slots, LAND takes STAND's slot, ▼ sits left of VIEW and ▲ above ▼, DRONE above VIEW.
 local function layout()
 	local measured = MechCamera.layout
 	if not measured then
@@ -82,6 +85,8 @@ local function layout()
 	upButton.Position = placed.up.position
 	downButton.Size = placed.down.size
 	downButton.Position = placed.down.position
+	droneButton.Size = placed.drone.size
+	droneButton.Position = placed.drone.position
 end
 
 local function lockJump(locked: boolean)
@@ -99,7 +104,8 @@ local function refresh()
 		state(),
 		model ~= nil,
 		model ~= nil and model:GetAttribute(Names.Attributes.PodCanLand) == true,
-		UserInputService.TouchEnabled
+		UserInputService.TouchEnabled,
+		model ~= nil and model:GetAttribute(Names.Attributes.LegsDrone) == true
 	)
 	gui.Enabled = model ~= nil and not passenger
 	podButton.Text = view.text
@@ -109,6 +115,9 @@ local function refresh()
 	landButton.Visible = view.landVisible
 	upButton.Visible = view.liftVisible
 	downButton.Visible = view.liftVisible
+	droneButton.Visible = view.droneVisible
+	droneButton.Text = view.droneText
+	droneButton.BackgroundColor3 = view.droneColor
 	if not view.flying then
 		touchLift.up, touchLift.down = false, false
 	end
@@ -128,7 +137,11 @@ local function setModel(new: Model?)
 	model = new
 	if new then
 		watching = new.AttributeChanged:Connect(function(name)
-			if name == Names.Attributes.PodState or name == Names.Attributes.PodCanLand then
+			if
+				name == Names.Attributes.PodState
+				or name == Names.Attributes.PodCanLand
+				or name == Names.Attributes.LegsDrone
+			then
 				refresh()
 			end
 		end)
@@ -193,14 +206,17 @@ function PodControls.start()
 	landButton.Activated:Connect(function()
 		Remotes.PodCommand:FireServer(RemoteActions.PodCommand.LAND)
 	end)
+	droneButton.Activated:Connect(function()
+		Remotes.PodCommand:FireServer(RemoteActions.PodCommand.DRONE)
+	end)
 	UserInputService.InputBegan:Connect(function(input, processed)
-		if
-			not processed
-			and input.KeyCode == Enum.KeyCode.L
-			and landButton.Visible
-			and gui.Enabled
-		then
+		if processed or not gui.Enabled then
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.L and landButton.Visible then
 			Remotes.PodCommand:FireServer(RemoteActions.PodCommand.LAND)
+		elseif input.KeyCode == Enum.KeyCode.G and droneButton.Visible then
+			Remotes.PodCommand:FireServer(RemoteActions.PodCommand.DRONE)
 		end
 	end)
 	hold(upButton, "up")

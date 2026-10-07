@@ -13,6 +13,13 @@
 --
 -- Passenger seats ride along. They are locked in flight too; a passenger who dies stays out.
 --
+-- While the pod flies the pilot can toggle DRONE: the legs, with nobody on their saddle, walk
+-- after the pod on their own until they stand under it (Vehicles/Drive applies
+-- src/shared/LegsDrone.luau). Drone turns off when the pod stops flying (RETURN HOME, the
+-- autopilot, LAND, docking, a wreck), when the pilot leaves the seat (getting out, dying, leaving
+-- the game), and when someone sits on the legs' saddle: that rider drives the legs. The model's
+-- LegsDrone attribute says whether it is on.
+--
 -- Within LAND_HEIGHT of the ground the pilot can LAND: the pod settles to hover just over the
 -- ground and everyone aboard is put outside, behind it, to explore. Its Board prompt (E) seats
 -- whoever walks up, the pilot's seat first. It stays landed until the pilot presses LAUNCH, so
@@ -77,6 +84,7 @@ export type Pod = {
 	launchedAt: number,
 	returningSince: number,
 	phase: PodPilot.Phase,
+	drone: boolean, -- the legs follow the pod (only while flying)
 }
 
 local pods: { [Model]: Pod } = {}
@@ -110,7 +118,23 @@ local function freeSeat(pod: Pod): (Seat | VehicleSeat)?
 	return nil
 end
 
+-- Drone mode on or off, published on the LegsDrone attribute. The server simulates the legs it
+-- walks, as it does for a seated driver.
+local function setDrone(pod: Pod, on: boolean)
+	if pod.drone == on then
+		return
+	end
+	pod.drone = on
+	pod.model:SetAttribute(Names.Attributes.LegsDrone, on)
+	if on then
+		Ownership.set(pod.skid, nil)
+	end
+end
+
 local function setState(pod: Pod, state: State)
+	if state ~= PodState.FLYING then
+		setDrone(pod, false) -- before the state: the legs stop before the autopilot docks
+	end
 	pod.state = state
 	pod.model:SetAttribute(Names.Attributes.PodState, state)
 	local action, enabled = PodPilot.prompt(state)
@@ -305,6 +329,7 @@ local function onOccupant(pod: Pod)
 		pod.pilot = nil
 		return
 	end
+	setDrone(pod, false) -- the pilot left the seat in flight; a re-seated pilot toggles it again
 	local pilot = pod.pilot
 	task.defer(function()
 		if pod.seat.Occupant then
@@ -426,7 +451,9 @@ function PodFlight.new(setup: Setup): Pod
 		launchedAt = 0,
 		returningSince = 0,
 		phase = "climb",
+		drone = false,
 	}
+	setup.model:SetAttribute(Names.Attributes.LegsDrone, false)
 	setup.model:SetAttribute(
 		Names.Attributes.PodBone,
 		string.sub(root.Name, #Names.Instances.BonePrefix + 1)
@@ -455,6 +482,15 @@ function PodFlight.new(setup: Setup): Pod
 	setup.seat:GetPropertyChangedSignal("Occupant"):Connect(function()
 		onOccupant(pod)
 	end)
+	-- A rider on the legs' saddle takes them over: drone turns off.
+	local legsSeat = setup.legsSeat
+	if legsSeat then
+		legsSeat:GetPropertyChangedSignal("Occupant"):Connect(function()
+			if legsSeat.Occupant then
+				setDrone(pod, false)
+			end
+		end)
+	end
 	pods[setup.model] = pod
 	return pod
 end
@@ -471,6 +507,12 @@ function PodFlight.command(player: Player, pod: Pod, action: any)
 		goHome(pod)
 	elseif action == RemoteActions.PodCommand.LAND then
 		land(pod)
+	elseif action == RemoteActions.PodCommand.DRONE then
+		-- Only in flight, and not while someone rides the legs (they drive them).
+		local ridden = pod.legsSeat ~= nil and pod.legsSeat.Occupant ~= nil
+		if pod.state == PodState.FLYING and (pod.drone or not ridden) then
+			setDrone(pod, not pod.drone)
+		end
 	end
 end
 
@@ -497,6 +539,15 @@ function PodFlight.wreck(pod: Pod)
 	setState(pod, PodState.WRECKED)
 	pod.mover.Enabled = false
 	pod.aligner.Enabled = false
+end
+
+-- Where a pod walker's legs walk to in drone mode (the flying pod's root), or nil: no pod, drone
+-- off, or not flying.
+function PodFlight.droneGoal(pod: Pod?): Vector3?
+	if pod and pod.drone and pod.state == PodState.FLYING then
+		return pod.root.Position
+	end
+	return nil
 end
 
 -- Whether the walker's pod sits on its legs (a walker without a pod always does).

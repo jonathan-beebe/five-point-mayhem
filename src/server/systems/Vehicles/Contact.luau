@@ -1,7 +1,8 @@
 -- Contact damage and ramming. Each Heartbeat (`heartbeat`) samples every live car for crash
 -- damage (Health.trackCrash), and a driven one hurts whoever it touches (cars ram, walkers stomp),
--- shoves the vehicles it hits (Health.rammed) and fells trees (Trees). `addGrove` adds a tagged
--- tree's grove to what vehicles can ram. init.luau connects both.
+-- shoves the vehicles it hits (Health.rammed) and fells trees (Trees). Drone legs (Drive) count
+-- as driven by the pod's pilot. `addGrove` adds a tagged tree's grove to what vehicles can ram.
+-- init.luau connects both.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -98,6 +99,9 @@ local function hurtTouching(model: Model, car: Car, dt: number, checkTargets: bo
 	car.pace = VehicleRam.decayPace(car.pace, speed, dt)
 	local legsDriver = legsDriverSeat(car)
 	local occupant = legsDriver and legsDriver.Occupant
+	if not occupant and PodFlight.droneGoal(car.pod) then
+		occupant = (car.pod :: PodFlight.Pod).seat.Occupant -- drone legs: the pilot drives them
+	end
 	local now = os.clock()
 	-- A shoved vehicle hits nothing until it is back under control: no chains of shoves.
 	if not occupant or now < car.stunnedUntil then

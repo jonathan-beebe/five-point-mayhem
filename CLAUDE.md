@@ -134,6 +134,7 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   RemoteGuard                              Drive Firing   remote_guard, remote_handlers
                                              Admin
   PodPilot                                 PodFlight      pod_pilot
+  LegsDrone                                Drive          legs_drone
   CreatureBrain                            Creatures      creature_brain (+ CreatureCatalog)
   AdminCommands                            Admin          admin_commands
   Loadout                                  LobbyUI        client_logic, session

@@ -1067,6 +1067,47 @@ for stateIndex = 1, 6 do
 end
 equal(podCases, 240, "pod cases")
 
+-- DRONE (added after the reference): shown to the pilot in flight only; ON only while the
+-- LegsDrone attribute is true there. Golden rules over every state, aboard, canLand, touch, drone.
+Check.section("PodButtons drone")
+local droneCases = 0
+for _, state in { "docked", "flying", "returning", "landed", "wrecked" } do
+	for _, aboard in { true, false } do
+		for _, canLand in { true, false } do
+			for _, touch in { true, false } do
+				for droneIndex = 1, 3 do
+					local drone = ({ true, false, nil } :: { boolean? })[droneIndex]
+					local view = PodButtons.view(state :: any, aboard, canLand, touch, drone)
+					local label = string.format(
+						"%s aboard %s land %s touch %s drone %s",
+						state,
+						tostring(aboard),
+						tostring(canLand),
+						tostring(touch),
+						tostring(drone)
+					)
+					local flying = aboard and state == "flying"
+					local on = flying and drone == true
+					equal(view.droneVisible, flying, label .. " visible")
+					equal(
+						view.droneText,
+						if on then "DRONE\nON" else "DRONE\nOFF",
+						label .. " text"
+					)
+					equal(
+						view.droneColor,
+						if on then PodButtons.DRONE_ON_COLOR else PodButtons.DRONE_OFF_COLOR,
+						label .. " colour"
+					)
+					droneCases += 1
+				end
+			end
+		end
+	end
+end
+equal(droneCases, 120, "drone cases")
+equal(PodButtons.DRONE_OFF_COLOR, Color3.fromRGB(20, 20, 28), "DRONE OFF is the HUD colour")
+
 -- PromptRules -------------------------------------------------------------------------------------
 
 Check.section("PromptRules useful")

@@ -1,15 +1,18 @@
 -- Driving. The driver's client sends its stick/keys over the DriveInput remote (`onInput`); each
 -- Heartbeat (`heartbeat`) turns them into targets for the velocity constraints on the skid of
 -- every live car. Without a driver a car settles or holds its parking brake; a shoved car flies
--- free. `onInput` applies RemoteGuard: a non-finite axis is 0, and each player's events pass a
--- token bucket (DRIVE_RATE, DRIVE_BURST); `forget` drops a leaving player's, and events from a
--- player who left (no Parent) are ignored. init.luau connects
--- all three.
+-- free. A pod walker's legs in drone mode (PodFlight.droneGoal) with nobody on their saddle drive
+-- themselves: LegsDrone.follow gives the throttle and steer, and the driven path takes it from
+-- there, climbing included. `onInput` applies RemoteGuard: a non-finite axis is 0, and each
+-- player's events pass a token bucket (DRIVE_RATE, DRIVE_BURST); `forget` drops a leaving
+-- player's, and events from a player who left (no Parent) are ignored. init.luau connects all
+-- three.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Names = require(ReplicatedStorage.Shared.Names)
 local RemoteGuard = require(ReplicatedStorage.Shared.RemoteGuard)
+local LegsDrone = require(ReplicatedStorage.Shared.LegsDrone)
 local VehicleDrive = require(ReplicatedStorage.Shared.VehicleDrive)
 local PodFlight = require(script.Parent.Parent.PodFlight)
 local Characters = require(script.Parent.Parent.util.Characters)
@@ -32,6 +35,7 @@ local limiters: { [Player]: RemoteGuard.Limiter } = {}
 local function drive(car: Car, dt: number)
 	local legsDriver = legsDriverSeat(car)
 	local occupant = legsDriver and legsDriver.Occupant
+	local goal = if occupant then nil else PodFlight.droneGoal(car.pod)
 	local skid = car.skid
 	-- A shoved vehicle flies free for a moment: the drive constraints would cancel the shove.
 	if os.clock() < car.stunnedUntil then
@@ -43,9 +47,10 @@ local function drive(car: Car, dt: number)
 	-- Without a driver, ordinary physics has the car while it is at rest; when it moves (shoved,
 	-- abandoned rolling) the constraints bleed off its speed and spin. A parking brake holds it
 	-- still. With a driver, the drive constraints steer it, in the air too: arcade cars keep
-	-- control off jumps.
-	if not occupant then
+	-- control off jumps. Drone legs drive as if driven.
+	if not occupant and not goal then
 		car.yaw = 0
+		car.throttle, car.steer = 0, 0 -- nothing left over from drone mode for the next driver
 		stopClimb(car)
 		local velocity = skid.AssemblyLinearVelocity
 		local flat = Vector2.new(velocity.X, velocity.Z)
@@ -77,6 +82,9 @@ local function drive(car: Car, dt: number)
 
 	local topSpeed = (car.seat:GetAttribute(Names.Attributes.TopSpeed) :: number?)
 		or VehicleDrive.DEFAULT_TOP_SPEED
+	if goal then
+		car.throttle, car.steer = LegsDrone.follow(skid.CFrame, goal, topSpeed, car.acceleration)
+	end
 	local look = skid.CFrame.LookVector
 	local forward = Vector3.new(look.X, 0, look.Z).Unit
 	local speed = skid.AssemblyLinearVelocity:Dot(forward)

@@ -32,6 +32,7 @@ local GOLDEN = {
 		HideInCockpit = "HideInCockpit",
 		Home = "Home",
 		IsAdmin = "IsAdmin",
+		LegsDrone = "LegsDrone",
 		LegsSeat = "LegsSeat",
 		MaxHealth = "MaxHealth",
 		MayhemCar = "MayhemCar",
@@ -85,7 +86,12 @@ local GOLDEN = {
 	},
 	["RemoteActions.AnnounceStyle"] = { ALARM = "alarm", MAYHEM = "mayhem" },
 	["RemoteActions.MacCommand"] = { NUKE = "nuke", SNIPER = "sniper" },
-	["RemoteActions.PodCommand"] = { HOME = "home", LAND = "land", LAUNCH = "launch" },
+	["RemoteActions.PodCommand"] = {
+		DRONE = "drone",
+		HOME = "home",
+		LAND = "land",
+		LAUNCH = "launch",
+	},
 }
 
 local GROUPS = {
