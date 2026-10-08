@@ -41,11 +41,13 @@ for _, region in Config.REGIONS do
 	BUILDINGS[region.id] = require(World.buildings[name] :: ModuleScript)
 end
 
--- Each world's realm module past its pass (Regions.REALMS), by region id.
-local REALMS = {}
+-- Each world's realm module past its pass and gate module at its mouth (both named by
+-- Regions.REALMS), by region id.
+local REALMS, GATES = {}, {}
 for _, region in Config.REGIONS do
 	local name = assert(Regions.REALMS[region.id], "Regions.REALMS has no " .. region.id)
 	REALMS[region.id] = require(World.realms[name] :: ModuleScript)
+	GATES[region.id] = require(World.gates[name] :: ModuleScript)
 end
 
 local function clearTemplate()
@@ -106,6 +108,15 @@ local function buildWorld()
 		)
 	end
 	Guard.run("cut Passes", Passes.cut)
+	Guard.run("clear Passes", Passes.clearScenery, world)
+	for index, region in Config.REGIONS do
+		Guard.run(
+			"build " .. region.id .. " gate",
+			GATES[region.id].build,
+			world,
+			WorldLayout.gateFrame(index)
+		)
+	end
 	-- Lamps and fireflies last: fireflies gather under the trees. Each lamp is guarded inside.
 	Guard.run("build Lamps", Lamps.build, world)
 	print(string.format("[Mayhem] world built in %.1fs", os.clock() - started))

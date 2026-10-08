@@ -6,6 +6,10 @@
 --     base ground
 --   - each pass: segments along the bearing, overlapping, covering PASS_START..PASS_END, past the
 --     outer road; the profile clears two Rustbuckets abreast and Heron's cab, widening upward
+--   - gates: on the bearing inside the pass's mouth, facing the lobby; the opening clears Heron's
+--     cab and two Rustbuckets and fits the pass floor
+--   - clearingAt: the pass and its gate's surroundings, nothing short of CLEARING_START (past the
+--     outer road), nothing to the side, nil at the lobby and the landmarks
 --   - inBowlGap: open toward the lobby, closed elsewhere, wrapping
 --   - outerTiles: the ring of tiles round Landscape's square, none inside it, no two the same
 
@@ -30,6 +34,7 @@ local RANGE_REACH = WorldLayout.RANGE_OUTER + 180
 local BOWL_REACH = WorldLayout.FLOOR_RADIUS + 170 + 170
 -- Clearances: two Rustbucket hulls (22) abreast with room; Heron's cab top (51).
 local TWO_WALKERS = 60
+local TWO_HULLS = 44
 local HERON_TOP = 51
 
 local function flat(v): number
@@ -99,6 +104,51 @@ check(profile[1].top > HERON_TOP, "floor step clears Heron's cab")
 for number = 2, #profile do
 	check(profile[number].width > profile[number - 1].width, "step " .. number .. " widens")
 	equal(profile[number].bottom, profile[number - 1].top, "step " .. number .. " stacks")
+end
+
+Check.section("gates")
+local opening = WorldLayout.GATE_OPENING
+check(opening.width > TWO_HULLS, "gate opening fits two Rustbuckets")
+check(opening.height > HERON_TOP, "gate opening clears Heron's cab")
+check(opening.width < profile[1].width, "gate opening inside the pass floor")
+check(
+	WorldLayout.GATE_RADIUS > WorldLayout.PASS_START
+		and WorldLayout.GATE_RADIUS < WorldLayout.PASS_END,
+	"gate inside the pass"
+)
+for index = 1, #Config.REGIONS do
+	local frame = WorldLayout.gateFrame(index)
+	local outward = WorldLayout.center(index).Unit
+	check(near(flat(frame.Position), WorldLayout.GATE_RADIUS, 1e-3), "gate " .. index .. " radius")
+	check(near(frame.Position.Unit:Dot(outward), 1, 1e-6), "gate " .. index .. " on the bearing")
+	equal(frame.Position.Y, 0, "gate " .. index .. " at ground level")
+	check(near(frame.LookVector:Dot(-outward), 1, 1e-6), "gate " .. index .. " faces the lobby")
+end
+
+Check.section("clearingAt")
+check(WorldLayout.CLEARING_START > Config.OUTER_ROAD_RADIUS + 30, "clearing past the outer road")
+check(WorldLayout.clearingAt(Vector3.zero) == nil, "no clearing at the lobby")
+for index = 1, #Config.REGIONS do
+	local label = "pass " .. index
+	check(WorldLayout.clearingAt(Config.regionCenter(index)) == nil, label .. ": landmark kept")
+	local gate = WorldLayout.gateFrame(index)
+	equal(WorldLayout.clearingAt(gate.Position), index, label .. ": gate")
+	local edge = WorldLayout.CLEARING_HALF_WIDTH
+	equal(
+		WorldLayout.clearingAt(gate:PointToWorldSpace(Vector3.new(edge - 1, 0, -30))),
+		index,
+		label .. ": wing"
+	)
+	check(
+		WorldLayout.clearingAt(gate:PointToWorldSpace(Vector3.new(edge + 1, 0, 0))) == nil,
+		label .. ": side"
+	)
+	local outward = WorldLayout.center(index).Unit
+	equal(WorldLayout.clearingAt(outward * 1500), index, label .. ": deep in the pass")
+	check(
+		WorldLayout.clearingAt(outward * (WorldLayout.CLEARING_START - 1)) == nil,
+		label .. ": short of the clearing"
+	)
 end
 
 Check.section("inBowlGap")

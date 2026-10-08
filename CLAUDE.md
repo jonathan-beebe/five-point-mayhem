@@ -32,7 +32,8 @@ src/server/   ServerScriptService.Server. init.server.luau boots in this order:
      gravity
   2. buildWorld(): Lobby, Roads, one building per Config.REGIONS entry (in order), Landscape,
      Passes.raise (base ground, high range), one realm per region (in order), Passes.cut (the
-     passes), Lamps (night lamps, fireflies; no draws from the seeded generators)
+     passes), Passes.clearScenery, one gate per region, Lamps (night lamps, fireflies; no draws
+     from the seeded generators)
   3. NightLights, Session, Creatures, Vehicles (PodFlight.start, then layOut), Admin,
      MacAccess .start()
   (Requiring Systems.Vehicles, first from Admin, creates the workspace Vehicles folder and
@@ -46,6 +47,9 @@ src/server/   ServerScriptService.Server. init.server.luau boots in this order:
               from WorldLayout.frame; Basin carves the land. A realm is self-contained (its own
               Random, materials, lighting and scenery; no requires between realms; shared code in
               src/shared) so it can move to a place of its own
+    gates/    one module per world (same name as its realm), `build(parent, base)` at
+              WorldLayout.gateFrame: the themed gate at the pass's mouth with the world's name.
+              Gate: the shared model, plaque and door (`Open` attribute; `Gate.setOpen`)
   systems/    Combat, Weapons, WeaponSounds, Session, Creatures, Vehicles, PodFlight, Admin,
               MacAccess, DayNight, NightLights, CollisionGroups, and the model formats
               VehicleModel, WeaponModel, CreatureModel
@@ -324,9 +328,11 @@ on (cross roads, lobby showcase, admin hordes).
 3) `world/buildings/<Name>.luau` exporting
 `build(parent: Instance, base: CFrame): Model`; local -Z of `base` faces the lobby.
 4) `CreatureCatalog.REGION_KIND` and `LAIRS` (landmark's local frame). It reshuffles seeded
-scenery. 5) `world/realms/<Name>.luau` exporting `build(parent: Instance, origin: CFrame): Model`.
-Enforced: all six tables match REGIONS both ways; building and realm files, materials, tree styles
-and `REGION_KIND` kinds exist.
+scenery. 5) `world/realms/<Name>.luau` exporting `build(parent: Instance, origin: CFrame): Model`
+and `world/gates/<Name>.luau` exporting `build(parent: Instance, base: CFrame): Model`, leaving
+`WorldLayout.GATE_OPENING` clear when open, its door through `Gate.door`.
+Enforced: all six tables match REGIONS both ways; building, realm and gate files, materials, tree
+styles and `REGION_KIND` kinds exist.
 
 ## Debugging: TEMPORARY probes
 
