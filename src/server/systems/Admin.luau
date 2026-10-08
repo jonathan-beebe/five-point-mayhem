@@ -10,6 +10,8 @@
 --   /horde [who]               summon a monster horde (around a player, or across the board)
 --   /day                       jump to morning (cycle keeps running)
 --   /night                     jump to nightfall (cycle keeps running)
+--   /goto <world> [who]        send players to a world's gate, in the vehicle they are driving
+--                              or riding (world: the start of its name or its landmark's id)
 --
 -- <who> is "all", "me", or the start of a player's name.
 --
@@ -31,6 +33,7 @@ local RemoteGuard = require(ReplicatedStorage.Shared.RemoteGuard)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
 local WeaponCatalog = require(ReplicatedStorage.Shared.WeaponCatalog)
+local WorldLayout = require(ReplicatedStorage.Shared.WorldLayout)
 local Combat = require(script.Parent.Combat)
 local Creatures = require(script.Parent.Creatures)
 local DayNight = require(script.Parent.DayNight)
@@ -39,6 +42,7 @@ local Session = require(script.Parent.Session)
 local Vehicles = require(script.Parent.Vehicles)
 local Weapons = require(script.Parent.Weapons)
 local Characters = require(script.Parent.util.Characters)
+local Seats = require(script.Parent.util.Seats)
 
 local Admin = {}
 
@@ -46,6 +50,8 @@ local rgb = Color3.fromRGB
 local random = Random.new()
 
 local TUNING = AdminCommands.TUNING
+-- A standing character's root above the ground.
+local ROOT_HEIGHT = 3
 
 local function announce(text: string, color: Color3, seconds: number, style: string?)
 	Remotes.Announce:FireAllClients(text, color, seconds, style)
@@ -383,6 +389,40 @@ local function setTime(night: boolean)
 	announce(if night then "🌑 NIGHT FALLS" else "☀ DAYBREAK", rgb(200, 200, 255), 3)
 end
 
+local function regionNames(region: typeof(Config.REGIONS[1])): (string, string)
+	return region.world, region.id
+end
+
+-- Sends each target to world `world`'s gate (WorldLayout.arrival, one spot each): a seated
+-- target's vehicle goes with them (Vehicles.carry); otherwise they leave any seat and go on foot.
+local function sendToGate(caller: Player, world: string?, who: string?)
+	local index = AdminCommands.worldIndex(world, Config.REGIONS, regionNames)
+	if not index then
+		return
+	end
+	local names = {}
+	for _, player in resolveTargets(caller, who) do
+		local character, humanoid, root = Characters.living(player)
+		if character and humanoid and root then
+			local spot = WorldLayout.arrival(index, #names + 1)
+			if not Vehicles.carry(humanoid, spot) then
+				if humanoid.SeatPart then
+					Seats.unseat(humanoid.SeatPart :: Seat, humanoid)
+				end
+				Characters.moveRootTo(character, root, spot * CFrame.new(0, ROOT_HEIGHT, 0))
+			end
+			table.insert(names, player.DisplayName)
+		end
+	end
+	if #names > 0 then
+		announce(
+			"🚪 " .. table.concat(names, ", ") .. " → " .. Config.REGIONS[index].world,
+			rgb(200, 180, 255),
+			3
+		)
+	end
+end
+
 -- Dispatch -----------------------------------------------------------------------------------
 
 -- One handler per AdminCommands id (tools/tests/admin_commands checks both ways). The test reads
@@ -412,6 +452,9 @@ local HANDLERS: { [string]: Handler } = {
 	end,
 	night = function()
 		setTime(true)
+	end,
+	["goto"] = function(caller, first, second)
+		sendToGate(caller, first, second)
 	end,
 }
 -- Exposed for tools/tests/admin_commands only; nothing in the game calls them.

@@ -144,11 +144,11 @@ desktop it shows everything at once:
 ├────────────┴────────────┴────────────┴───────────┤
 │ 🎁 GIVE TO TARGET                                 │
 │ 🔫 WEAPONS  ›          │ 🚙 VEHICLES  ›           │  menus of all 52 weapons, every
-│ 🤖 MECHS  ›            │ 🧰 EVERY WEAPON          │  vehicle except mechs, the walkers
-│ 🎯 Sniper Rifle        │ ❤ Full heal              │
-│ 🛡 Shield (30s)        │ 👟 Super speed           │  tap one to give it to the target
-│ 🦘 Mega jump           │ 🗿 Giant                 │
-│ 🚙 Random vehicle      │                          │
+│ 🤖 MECHS  ›            │ 🚪 GATES  ›              │  vehicle except mechs, the walkers,
+│ 🧰 EVERY WEAPON        │ 🎯 Sniper Rifle          │  the five world gates
+│ ❤ Full heal            │ 🛡 Shield (30s)          │  tap one to give it to the target
+│ 👟 Super speed         │ 🦘 Mega jump             │
+│ 🗿 Giant               │ 🚙 Random vehicle        │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -156,7 +156,8 @@ On a phone, **POWERS** and **GIFTS** tabs at the top show one section at a time,
 one to a row. The panel scrolls when it is taller than the drawer.
 
 In the WEAPONS, VEHICLES and MECHS menus, tap an item to give it to the target, or **‹ BACK** to return
-to the gifts. The heading shows which menu is open.
+to the gifts. In the GATES menu, tap a world to send the target to its gate. The heading shows which
+menu is open.
 
 The panel is never taller than the space below the buttons (at most 470 pixels), and its whole
 contents scroll together, so every part is reachable on a phone.
@@ -206,6 +207,7 @@ or display name, case-insensitive. The first matching player wins.
 | `/horde [who]` | 👹 HORDE | Summon a monster horde |
 | `/day` | ☀ DAY | Jump to morning |
 | `/night` | 🌑 NIGHT | Jump to nightfall |
+| `/goto <world> [who]` | 🚪 GATES list | Send players to a world's gate |
 
 ### The powers
 
@@ -267,6 +269,17 @@ Both `<who>` and `<item>` are required. Examples: `/give all rocket`, `/give me 
   landmarks, 30 in all.
 - Mostly zombies, with goblins, slimes, brutes, and every landmark monster mixed in.
 - Summoned monsters do not respawn. The game caps monsters at 170 alive.
+
+**🚪 GATES** — `/goto <world> [who]`
+
+- `<world>` is the start of a world's name, with or without "the" (`ash`, `taka`, `manifest`,
+  `tam`, `tri`), or its landmark's id (`castle`, `pagoda`, `tower`, `pyramid`, `palace`).
+  `[who]` defaults to `me`.
+- Each target lands 60 studs in front of the gate on the lobby side, facing it; more targets fill
+  lanes 30 studs apart beside and behind the first.
+- A target driving or riding a vehicle or mech arrives in it, with everyone aboard. A rider in
+  Aurora's flying pod arrives in the pod, 20 studs up. A rider on Aurora's legs while the pod is
+  away, or in any other seat, arrives on foot.
 
 **☀ DAY / 🌑 NIGHT** — `/day`, `/night`
 

@@ -53,11 +53,12 @@ src/server/   ServerScriptService.Server. init.server.luau boots in this order:
   systems/    Combat, Weapons, WeaponSounds, Session, Creatures, Vehicles, PodFlight, Admin,
               MacAccess, DayNight, NightLights, CollisionGroups, and the model formats
               VehicleModel, WeaponModel, CreatureModel
-    Vehicles/ init.luau is the facade (damage, spawnNear, start) and wires the system. Modules:
-              Registry (folder, `cars`, Car/Crash), Specs (model files, placeholder), Placement
-              (vehicle space, welds, onTerrain), Climb, Drive, Health (crashes, wrecks), Trees,
-              Contact (rams, contact damage), Boarding (prompts, cab), Builder, Parking (spots,
-              respawn loop). init.luau's header lists the require graph.
+    Vehicles/ init.luau is the facade (carry, damage, spawnNear, start) and wires the system.
+              Modules: Registry (folder, `cars`, Car/Crash), Specs (model files, placeholder),
+              Placement (vehicle space, welds, onTerrain), Climb, Drive, Health (crashes, wrecks),
+              Trees, Relocate (carry a vehicle and its riders), Contact (rams, contact damage),
+              Boarding (prompts, cab), Builder, Parking (spots, respawn loop). init.luau's header
+              lists the require graph.
     Weapons/  init.luau is the facade (createTool, displayModel, give, holds) and wires it.
               Modules: FallbackModels (models by catalog shape, loads under Lune), Effects
               (WeaponEffects folder, the shared Random, beam/flash/lightning), Aim (Shot, spread,
@@ -148,6 +149,7 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   LegsDrone                                Drive          legs_drone
   CreatureBrain                            Creatures      creature_brain (+ CreatureCatalog)
   AdminCommands                            Admin          admin_commands
+  WorldLayout (arrival)                    Admin          world_layout
   Loadout                                  LobbyUI        client_logic, session
                                              Session
   PodButtons                               PodControls    client_logic
@@ -320,7 +322,7 @@ gui's `AbsoluteSize` with `CoreUISafeInsets` for the corners; re-layout on resiz
 goes in `HudLayout` with a golden case in `tools/tests/hud_layout.luau`. 4) Name what needs a
 human in Studio: placement on phone, tablet and desktop.
 
-**Landmark / region.** 1) Append to `Config.REGIONS` (`id`, `name`, `country`).
+**Landmark / region.** 1) Append to `Config.REGIONS` (`id`, `name`, `country`, `world`).
 `Config.regionAngle` spaces regions 360° / #REGIONS apart; `Config.betweenRegions` is half a step
 on (cross roads, lobby showcase, admin hordes).
 2) `src/server/world/Regions.luau`: `BUILDINGS` (module name), `GROUND` (`Enum.Material`),

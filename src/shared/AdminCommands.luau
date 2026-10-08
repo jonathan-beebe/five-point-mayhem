@@ -27,7 +27,7 @@ export type Command = {
 	panel: Panel?, -- a GOD MODE power button
 }
 
--- `/give` has no button: the panel's gift menus send it.
+-- `/give` and `/goto` have no button: the panel's gift menus send `give`, its GATES menu `goto`.
 AdminCommands.COMMANDS = {
 	{
 		id = "mayhem",
@@ -102,6 +102,7 @@ AdminCommands.COMMANDS = {
 			hint = "Jump to nightfall",
 		},
 	},
+	{ id = "goto", chat = true },
 } :: { Command }
 
 -- The chat commands' ids, in COMMANDS order.
@@ -208,6 +209,31 @@ function AdminCommands.giftLabel(
 		elseif vehicle then vehicle.name
 		elseif weapon then weapon.name
 		else nil
+end
+
+-- `/goto <world> [who]`: the index in `regions` (Config.REGIONS) of the first whose world name,
+-- that name less a leading "the ", or region id (`names` returns the world name and the id)
+-- starts with `query`, case-insensitive; nil for none or an empty query.
+function AdminCommands.worldIndex<R>(
+	query: string?,
+	regions: { R },
+	names: (R) -> (string, string)
+): number?
+	local wanted = string.lower(query or "")
+	if wanted == "" then
+		return nil
+	end
+	for index, region in regions do
+		local worldName, id = names(region)
+		local world = string.lower(worldName)
+		local bare = if string.sub(world, 1, 4) == "the " then string.sub(world, 5) else world
+		for _, name in { world, bare, string.lower(id) } do
+			if string.sub(name, 1, #wanted) == wanted then
+				return index
+			end
+		end
+	end
+	return nil
 end
 
 -- A chat command's arguments: the second, third and fourth space-separated words of `text`.

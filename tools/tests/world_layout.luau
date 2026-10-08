@@ -8,6 +8,9 @@
 --     outer road; the profile clears two Rustbuckets abreast and Heron's cab, widening upward
 --   - gates: on the bearing inside the pass's mouth, facing the lobby; the opening clears Heron's
 --     cab and two Rustbuckets and fits the pass floor
+--   - arrival: the first spot ARRIVAL_DISTANCE before the gate on the bearing, facing the gate;
+--     the next in lanes right and left, then rows back; every spot in the clearing, short of the
+--     gate's statues, apart from the others
 --   - clearingAt: the pass and its gate's surroundings, nothing short of CLEARING_START (past the
 --     outer road), nothing to the side, nil at the lobby and the landmarks
 --   - inBowlGap: open toward the lobby, closed elsewhere, wrapping
@@ -123,6 +126,41 @@ for index = 1, #Config.REGIONS do
 	check(near(frame.Position.Unit:Dot(outward), 1, 1e-6), "gate " .. index .. " on the bearing")
 	equal(frame.Position.Y, 0, "gate " .. index .. " at ground level")
 	check(near(frame.LookVector:Dot(-outward), 1, 1e-6), "gate " .. index .. " faces the lobby")
+end
+
+Check.section("arrival")
+-- The gates' statues and wings stand at most 33 in front of the gate (Tridevyatoe's pool).
+local STATUES = 33
+for index = 1, #Config.REGIONS do
+	local gate = WorldLayout.gateFrame(index)
+	local first = WorldLayout.arrival(index, 1)
+	local label = "arrival " .. index
+	local expected = gate.Position + gate.LookVector * WorldLayout.ARRIVAL_DISTANCE
+	check(near((first.Position - expected).Magnitude, 0, 1e-3), label .. ": first on the bearing")
+	check(near(first.LookVector:Dot(-gate.LookVector), 1, 1e-6), label .. ": faces the gate")
+	local spots = {}
+	for slot = 1, 12 do
+		local spot = WorldLayout.arrival(index, slot)
+		local local_ = gate:PointToObjectSpace(spot.Position)
+		equal(WorldLayout.clearingAt(spot.Position), index, label .. " slot " .. slot .. " cleared")
+		check(-local_.Z > STATUES + 15, label .. " slot " .. slot .. " short of the statues")
+		equal(spot.Position.Y, 0, label .. " slot " .. slot .. " at ground level")
+		for other, earlier in spots do
+			check(
+				(spot.Position - earlier).Magnitude >= WorldLayout.ARRIVAL_SPACING - 1e-3,
+				label .. " slots " .. other .. " and " .. slot .. " apart"
+			)
+		end
+		table.insert(spots, spot.Position)
+	end
+	local second = gate:PointToObjectSpace(WorldLayout.arrival(index, 2).Position)
+	local third = gate:PointToObjectSpace(WorldLayout.arrival(index, 3).Position)
+	check(second.X > 0 and third.X < 0, label .. ": lanes right then left")
+	local sixth = gate:PointToObjectSpace(WorldLayout.arrival(index, 6).Position)
+	check(
+		near(sixth.X, 0, 1e-3) and sixth.Z < -WorldLayout.ARRIVAL_DISTANCE,
+		label .. ": then a row back"
+	)
 end
 
 Check.section("clearingAt")

@@ -15,6 +15,7 @@
 --     Admin.luau returned, copied below word for word as the reference; chatArguments (whose
 --     inline code was the module's code word for word) returns the golden outputs generated once
 --     from the code at a50e99c
+--   - worldIndex: each world by name, bare name, prefix and region id, in any case; nil otherwise
 --   - `/horde` with no target sends one horde per region, half a region step past each: the same
 --     points as at f35d32f for five regions, and 30 degrees past each with a sixth
 --
@@ -167,7 +168,8 @@ local POWERS = {
 		targeted = true,
 	},
 }
-local CHAT = { "mayhem", "give", "meteors", "gravity", "freeze", "horde", "day", "night" }
+-- `goto` added after 3c65531 (the gate teleport).
+local CHAT = { "mayhem", "give", "meteors", "gravity", "freeze", "horde", "day", "night", "goto" }
 local GIFTS = {
 	{ id = "arsenal", label = "🧰 EVERY WEAPON" },
 	{ id = "sniper", label = "🎯 Sniper Rifle" },
@@ -362,6 +364,42 @@ for _, row in CHAT_ARGUMENTS do
 	)
 	equal(select("#", AdminCommands.chatArguments(text)), 3, "chatArguments returns 3 values")
 end
+
+Check.section("AdminCommands.worldIndex")
+-- Every world by its full name, its name without "the ", a prefix of either, its region id, any
+-- case; nil for nothing, an empty query and a name no world starts with.
+local Config = Sandbox.require(Shared.Config)
+local function regionNames(region)
+	return region.world, region.id
+end
+local WORLD_QUERIES = {
+	{ "the ashen moor", 1 },
+	{ "ashen", 1 },
+	{ "ASH", 1 },
+	{ "The", 1 },
+	{ "castle", 1 },
+	{ "taka", 2 },
+	{ "pagoda", 2 },
+	{ "manifest excess", 3 },
+	{ "Man", 3 },
+	{ "tower", 3 },
+	{ "tam", 4 },
+	{ "pyr", 4 },
+	{ "t", 1 },
+	{ "tri", 5 },
+	{ "palace", 5 },
+	{ "moor", nil },
+	{ "", nil },
+	{ "x", nil },
+}
+for _, row in WORLD_QUERIES do
+	equal(
+		AdminCommands.worldIndex(row[1], Config.REGIONS, regionNames),
+		row[2],
+		"worldIndex " .. show(row[1])
+	)
+end
+equal(AdminCommands.worldIndex(nil, Config.REGIONS, regionNames), nil, "worldIndex nil")
 
 Check.section("AdminCommands.meteorSeconds")
 local firsts = {
@@ -635,7 +673,6 @@ end
 ]],
 	{ debugName = "horde reference" }
 )
-local Config = Sandbox.require(Shared.Config)
 for _, regions in { 5, 6 } do
 	local added = regions - #Config.REGIONS
 	for index = 1, added do

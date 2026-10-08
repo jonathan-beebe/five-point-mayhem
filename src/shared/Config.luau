@@ -73,12 +73,13 @@ Config.TEAMS = {
 }
 
 -- The five landmarks, clockwise from north. Index order drives placement around the ring.
+-- `world` names the world past the landmark's pass (world/realms, world/gates).
 Config.REGIONS = {
-	{ id = "castle", name = "Stonehold Castle", country = "England" },
-	{ id = "pagoda", name = "Sakura Hall", country = "Japan" },
-	{ id = "tower", name = "Mayhem Tower", country = "USA" },
-	{ id = "pyramid", name = "Jaguar Pyramid", country = "Mexico" },
-	{ id = "palace", name = "Frost Palace", country = "Russia" },
+	{ id = "castle", name = "Stonehold Castle", country = "England", world = "The Ashen Moor" },
+	{ id = "pagoda", name = "Sakura Hall", country = "Japan", world = "Takamagahara" },
+	{ id = "tower", name = "Mayhem Tower", country = "USA", world = "Manifest Excess" },
+	{ id = "pyramid", name = "Jaguar Pyramid", country = "Mexico", world = "Tamoanchan" },
+	{ id = "palace", name = "Frost Palace", country = "Russia", world = "Tridevyatoe" },
 }
 
 -- Degrees between neighbouring regions round the ring (72 for five).
