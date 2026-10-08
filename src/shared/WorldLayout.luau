@@ -41,10 +41,20 @@ WorldLayout.PASS_PROFILE = {
 WorldLayout.GATE_RADIUS = WorldLayout.PASS_START + 10
 WorldLayout.GATE_OPENING = { width = 56, height = 66 }
 
--- Scenery is cleared from each pass and round its gate: CLEARING_HALF_WIDTH either side of the
--- bearing, from CLEARING_START out to PASS_END.
+-- Where the admin `goto` sets targets down before a gate: ARRIVAL_DISTANCE in front of it on the
+-- lobby side, the next targets in lanes ARRIVAL_SPACING apart (centre, right, left, ...) and then
+-- in rows further back.
+WorldLayout.ARRIVAL_DISTANCE = 60
+WorldLayout.ARRIVAL_SPACING = 30
+local LANES = { 0, 1, -1, 2, -2 }
+
+-- Scenery is cleared from each pass, round its gate and over its first three rows of arrivals:
+-- CLEARING_HALF_WIDTH either side of the bearing, from CLEARING_START out to PASS_END.
 WorldLayout.CLEARING_HALF_WIDTH = 90
-WorldLayout.CLEARING_START = WorldLayout.GATE_RADIUS - 50
+WorldLayout.CLEARING_START = WorldLayout.GATE_RADIUS
+	- WorldLayout.ARRIVAL_DISTANCE
+	- 2 * WorldLayout.ARRIVAL_SPACING
+	- 20
 
 -- A world's bowl walls leave this half-angle open toward the hub, round the pass.
 WorldLayout.BOWL_GAP = math.rad(16)
@@ -75,6 +85,18 @@ end
 function WorldLayout.gateFrame(index: number): CFrame
 	local position = direction(index) * WorldLayout.GATE_RADIUS
 	return CFrame.lookAt(position, Vector3.zero)
+end
+
+-- Target `slot`'s spot before pass `index`'s gate at ground level, local -Z facing the gate.
+function WorldLayout.arrival(index: number, slot: number): CFrame
+	local lane = LANES[(slot - 1) % #LANES + 1]
+	local row = (slot - 1) // #LANES
+	local gate = WorldLayout.gateFrame(index)
+	local spacing = WorldLayout.ARRIVAL_SPACING
+	local spot = gate:PointToWorldSpace(
+		Vector3.new(lane * spacing, 0, -(WorldLayout.ARRIVAL_DISTANCE + row * spacing))
+	)
+	return CFrame.lookAt(spot, spot - gate.LookVector)
 end
 
 -- The index of the pass whose clearing holds `position`, or nil.

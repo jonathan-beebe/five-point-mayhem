@@ -15,13 +15,13 @@
 -- This module is the facade; each module in the folder says in its header what it owns. Requires
 -- inside the folder (each row requires only rows above it, so there are no cycles):
 --   Registry, Specs, Placement   none
---   Climb, Trees                 Registry
+--   Climb, Trees, Relocate       Registry
 --   Drive, Health                Climb, Registry
 --   Contact                      Health, Placement, Registry, Trees
 --   Boarding                     Placement
 --   Builder                      Boarding, Climb, Health, Placement, Registry, Specs
 --   Parking                      Builder, Specs
---   init                         Contact, Drive, Health, Parking
+--   init                         Contact, Drive, Health, Parking, Relocate
 -- Requiring this module wires the system, in this order (CLAUDE.md, Hazards): the Vehicles folder
 -- in workspace (Registry), the Heartbeat that drives, DriveInput, PlayerRemoving (forget the
 -- DriveInput limit), the tree tag listener, then the Heartbeat that samples crashes and contact.
@@ -37,6 +37,7 @@ local Contact = require(script.Contact)
 local Drive = require(script.Drive)
 local Health = require(script.Health)
 local Parking = require(script.Parking)
+local Relocate = require(script.Relocate)
 
 local Vehicles = {}
 
@@ -50,6 +51,7 @@ end
 RunService.Heartbeat:Connect(Contact.heartbeat)
 
 -- The public API; each function's comment is at its definition.
+Vehicles.carry = Relocate.carry
 Vehicles.damage = Health.damage
 Vehicles.spawnNear = Parking.spawnNear
 Vehicles.start = Parking.start

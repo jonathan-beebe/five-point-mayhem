@@ -1,6 +1,7 @@
--- God-mode panel for admins: one-tap powers, plus gifting any weapon or power-up to a player
--- or to everyone. Its toggle tops the system rail; the panel opens in the rail's drawer
--- (ui/RightColumn). Top to bottom: the target, the powers four to a row, then the gift menus.
+-- God-mode panel for admins: one-tap powers, gifting any weapon or power-up to a player or to
+-- everyone, and sending them to a world's gate. Its toggle tops the system rail; the panel opens
+-- in the rail's drawer (ui/RightColumn). Top to bottom: the target, the powers four to a row,
+-- then the gift menus (the GATES menu among them).
 -- On a small screen POWERS and GIFTS tabs show one section at a time; on a large one both show
 -- and the gifts sit two to a row. The server re-checks admin rights on every command.
 
@@ -8,6 +9,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local AdminCommands = require(ReplicatedStorage.Shared.AdminCommands)
+local Config = require(ReplicatedStorage.Shared.Config)
 local Names = require(ReplicatedStorage.Shared.Names)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local VehicleCatalog = require(ReplicatedStorage.Shared.VehicleCatalog)
@@ -171,8 +173,9 @@ local function build()
 		Parent = panel,
 	})
 
-	-- The menus: WEAPONS, VEHICLES and MECHS buttons above the gifts, and one menu for each of
-	-- those. One shows at a time; each grows to fit its items, two to a row on a large screen.
+	-- The menus: WEAPONS, VEHICLES, MECHS and GATES buttons above the gifts, and one menu for
+	-- each of those. One shows at a time; each grows to fit its items, two to a row on a large
+	-- screen. Every menu gives its item to the target but GATES, which sends the target there.
 	local menus: { [string]: Frame } = {}
 	local grids: { UIGridLayout } = {}
 	local current = "gifts"
@@ -181,9 +184,19 @@ local function build()
 		weapons = "🎁 GIVE TO TARGET › WEAPONS",
 		vehicles = "🎁 GIVE TO TARGET › VEHICLES",
 		mechs = "🎁 GIVE TO TARGET › MECHS",
+		gates = "🚪 SEND TARGET › GATES",
 	}
 
-	local function menu(name: string, entries: { { id: string, label: string } }, color: Color3)
+	local function give(id: string)
+		Remotes.AdminCommand:FireServer("give", target, id)
+	end
+
+	local function menu(
+		name: string,
+		entries: { { id: string, label: string } },
+		color: Color3,
+		send: (id: string) -> ()
+	)
 		local frame = row(5)
 		frame.Visible = false
 		table.insert(
@@ -197,7 +210,7 @@ local function build()
 		menus[name] = frame
 		for order, entry in entries do
 			textButton(frame, order, entry.label, color).Activated:Connect(function()
-				Remotes.AdminCommand:FireServer("give", target, entry.id)
+				send(entry.id)
 			end)
 		end
 		return frame
@@ -214,10 +227,18 @@ local function build()
 			{ id = vehicle.id, label = vehicle.icon .. " " .. vehicle.name }
 		)
 	end
+	local gates = {}
+	for _, region in Config.REGIONS do
+		table.insert(gates, { id = region.id, label = "🚪 " .. region.world })
+	end
+	local function sendToGate(id: string)
+		Remotes.AdminCommand:FireServer("goto", id, target)
+	end
 	local submenus = {
-		{ name = "weapons", label = "🔫 WEAPONS  ›", entries = weapons },
-		{ name = "vehicles", label = "🚙 VEHICLES  ›", entries = vehicles },
-		{ name = "mechs", label = "🤖 MECHS  ›", entries = mechs },
+		{ name = "weapons", label = "🔫 WEAPONS  ›", entries = weapons, send = give },
+		{ name = "vehicles", label = "🚙 VEHICLES  ›", entries = vehicles, send = give },
+		{ name = "mechs", label = "🤖 MECHS  ›", entries = mechs, send = give },
+		{ name = "gates", label = "🚪 GATES  ›", entries = gates, send = sendToGate },
 	}
 
 	-- Shows what the size class and the tab call for.
@@ -249,14 +270,14 @@ local function build()
 		panel.CanvasPosition = Vector2.new(0, panel.CanvasPosition.Y + top)
 	end
 
-	local gifts = menu("gifts", GIFTS, rgb(90, 70, 20))
+	local gifts = menu("gifts", GIFTS, rgb(90, 70, 20), give)
 	for offset, submenu in submenus do
 		textButton(gifts, offset - #submenus, submenu.label, rgb(70, 60, 110)).Activated:Connect(
 			function()
 				open(submenu.name)
 			end
 		)
-		local items = menu(submenu.name, submenu.entries, rgb(45, 40, 35))
+		local items = menu(submenu.name, submenu.entries, rgb(45, 40, 35), submenu.send)
 		textButton(items, 0, "‹  BACK", rgb(70, 60, 110)).Activated:Connect(function()
 			open("gifts")
 		end)
