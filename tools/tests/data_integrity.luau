@@ -10,7 +10,8 @@
 --   - every vehicle model sets acceleration, braking and coasting (VehicleDefaults' mapping)
 --   - sounds: every weapon and vehicle has its SoundCatalog entry (walkers in MECHS), no entry
 --     names an unknown id, pooled weapons are automatic, every walker's cues are complete
---   - regions: every Config.REGIONS id has a building, ground, trees, a themed monster and a lair
+--   - regions: every Config.REGIONS id has a building, ground, trees, a realm, a themed monster and
+--     a lair
 --
 -- The catalogs, Config, CreatureCatalog, the world's Regions data, Weapons/FallbackModels and the
 -- model files load through Sandbox, the data modules by the instance paths the game requires them
@@ -504,6 +505,7 @@ local perRegion = {
 	["Regions.BUILDINGS"] = Regions.BUILDINGS,
 	["Regions.GROUND"] = Regions.GROUND,
 	["Regions.TREES"] = Regions.TREES,
+	["Regions.REALMS"] = Regions.REALMS,
 	["CreatureCatalog.REGION_KIND"] = CreatureCatalog.REGION_KIND,
 	["CreatureCatalog.LAIRS"] = CreatureCatalog.LAIRS,
 }
@@ -525,6 +527,13 @@ for id, name in Regions.BUILDINGS do
 			.. ": no src/server/world/buildings/"
 			.. tostring(name)
 			.. ".luau"
+	)
+end
+for id, name in Regions.REALMS do
+	-- init.server requires script.world.realms[name].
+	check(
+		fs.isFile(Sandbox.ROOT .. "/src/server/world/realms/" .. tostring(name) .. ".luau"),
+		"Regions.REALMS." .. id .. ": no src/server/world/realms/" .. tostring(name) .. ".luau"
 	)
 end
 for id, material in Regions.GROUND do

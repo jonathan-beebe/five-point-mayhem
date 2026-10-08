@@ -31,7 +31,8 @@ src/server/   ServerScriptService.Server. init.server.luau boots in this order:
   1. CollisionGroups.register (every group and pair), barrel factory, lighting, DayNight.start,
      gravity
   2. buildWorld(): Lobby, Roads, one building per Config.REGIONS entry (in order), Landscape,
-     Lamps (night lamps, fireflies; no draws from the seeded generators)
+     Passes.raise (base ground, high range), one realm per region (in order), Passes.cut (the
+     passes), Lamps (night lamps, fireflies; no draws from the seeded generators)
   3. NightLights, Session, Creatures, Vehicles (PodFlight.start, then layOut), Admin,
      MacAccess .start()
   (Requiring Systems.Vehicles, first from Admin, creates the workspace Vehicles folder and
@@ -39,7 +40,12 @@ src/server/   ServerScriptService.Server. init.server.luau boots in this order:
   Systems.Weapons, first from Session, creates the WeaponEffects folder and connects its
   Heartbeat, PlayerRemoving and FireWeapon: see Hazards.)
   4. CharacterAutoLoads back on: nobody spawns before the lobby exists
-  world/      Build helpers, Lobby, Roads, Landscape, Lamps, Regions (per-landmark data), buildings/
+  world/      Build helpers, Lobby, Roads, Landscape, Lamps, Regions (per-landmark data),
+              buildings/, Passes (high range and passes past the rim)
+    realms/   one module per world past a pass (Regions.REALMS), `build(parent, origin)`, origin
+              from WorldLayout.frame; Basin carves the land. A realm is self-contained (its own
+              Random, materials, lighting and scenery; no requires between realms; shared code in
+              src/shared) so it can move to a place of its own
   systems/    Combat, Weapons, WeaponSounds, Session, Creatures, Vehicles, PodFlight, Admin,
               MacAccess, DayNight, NightLights, CollisionGroups, and the model formats
               VehicleModel, WeaponModel, CreatureModel
@@ -68,6 +74,7 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
 
 - World building is seeded (`Build` crates `Random.new(77)`, `Landscape` `Random.new(1337)`) and
   consumes randomness in `Config.REGIONS` order. Reordering world-building calls reshuffles the map.
+  `Passes` (`Random.new(4242)`) and each realm (its `LAND.seed`) draw from their own generators.
 - Vehicle and creature model files are require-free: a plain table using only Roblox datatypes
   and the Luau standard library, so Lune (tests, `tools/preview/export.luau`) loads them without
   the game. Format and units are documented in `systems/VehicleModel.luau` and
@@ -151,6 +158,8 @@ tools/        lib/ (Sandbox, Check, ModelChecks), tests/, test.luau, check.luau,
   HudLayout                                client HUD     hud_layout
   NightLights                              Lamps          night_lights
                                              NightLights
+  WorldLayout                              Passes         world_layout
+                                             realms/
   ```
 - Remote handlers trust nothing a client sends: any value, NaN and ±inf included (`math.clamp`
   passes NaN through). Check each argument with `src/shared/RemoteGuard` before use: numbers with
@@ -311,10 +320,12 @@ human in Studio: placement on phone, tablet and desktop.
 `Config.regionAngle` spaces regions 360° / #REGIONS apart; `Config.betweenRegions` is half a step
 on (cross roads, lobby showcase, admin hordes).
 2) `src/server/world/Regions.luau`: `BUILDINGS` (module name), `GROUND` (`Enum.Material`),
-`TREES` (styles from Landscape's `TREE_BUILDERS`). 3) `world/buildings/<Name>.luau` exporting
+`TREES` (styles from Landscape's `TREE_BUILDERS`), `REALMS` (module in `world/realms/`).
+3) `world/buildings/<Name>.luau` exporting
 `build(parent: Instance, base: CFrame): Model`; local -Z of `base` faces the lobby.
 4) `CreatureCatalog.REGION_KIND` and `LAIRS` (landmark's local frame). It reshuffles seeded
-scenery. Enforced: all five tables match REGIONS both ways; building file, materials, tree styles
+scenery. 5) `world/realms/<Name>.luau` exporting `build(parent: Instance, origin: CFrame): Model`.
+Enforced: all six tables match REGIONS both ways; building and realm files, materials, tree styles
 and `REGION_KIND` kinds exist.
 
 ## Debugging: TEMPORARY probes

@@ -9,6 +9,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 Players.CharacterAutoLoads = false
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local WorldLayout = require(ReplicatedStorage.Shared.WorldLayout)
 require(ReplicatedStorage.Shared.Remotes)
 
 local World = script.world
@@ -17,6 +18,7 @@ local Build = require(World.Build)
 local Lamps = require(World.Lamps)
 local Landscape = require(World.Landscape)
 local Lobby = require(World.Lobby)
+local Passes = require(World.Passes)
 local Regions = require(World.Regions)
 local Roads = require(World.Roads)
 
@@ -37,6 +39,13 @@ local BUILDINGS = {}
 for _, region in Config.REGIONS do
 	local name = assert(Regions.BUILDINGS[region.id], "Regions.BUILDINGS has no " .. region.id)
 	BUILDINGS[region.id] = require(World.buildings[name] :: ModuleScript)
+end
+
+-- Each world's realm module past its pass (Regions.REALMS), by region id.
+local REALMS = {}
+for _, region in Config.REGIONS do
+	local name = assert(Regions.REALMS[region.id], "Regions.REALMS has no " .. region.id)
+	REALMS[region.id] = require(World.realms[name] :: ModuleScript)
 end
 
 local function clearTemplate()
@@ -86,6 +95,17 @@ local function buildWorld()
 		end
 	end
 	Landscape.build(world)
+	-- The worlds past the rim: the high range, each realm's land, then the passes cut through both.
+	Guard.run("raise Passes", Passes.raise)
+	for index, region in Config.REGIONS do
+		Guard.run(
+			"build " .. region.id .. " realm",
+			REALMS[region.id].build,
+			world,
+			WorldLayout.frame(index)
+		)
+	end
+	Guard.run("cut Passes", Passes.cut)
 	-- Lamps and fireflies last: fireflies gather under the trees. Each lamp is guarded inside.
 	Guard.run("build Lamps", Lamps.build, world)
 	print(string.format("[Mayhem] world built in %.1fs", os.clock() - started))
